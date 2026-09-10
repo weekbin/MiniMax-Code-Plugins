@@ -3,7 +3,7 @@
 This directory holds `base.png` samples that the maintainer has successfully extracted. They serve two purposes:
 
 1. **抽卡的基础图** — pass them as `input_file_paths` to `image_synthesize` together with `reference/sample_0*.png` to lock the character anatomy and the scene layout, then vary only the pose / expression.
-2. **Reference for the scene table** — the file naming matches the scene directory in `~/Works/octopus-worker-meme/` so consumers can cross-reference.
+2. **Reference for the scene table** — the file naming matches the maintainer's external scene table, e.g. `<works>/octopus-worker-meme/<scene-number>-<scene-name>/`, so consumers can cross-reference.
 
 | File | Source | Use as `image_synthesize` input_file_path? |
 |---|---|---|

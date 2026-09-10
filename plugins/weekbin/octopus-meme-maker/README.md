@@ -5,10 +5,10 @@ Generate Smooth Squishmallow-style pink-octopus office-worker GIF memes from a s
 ## Try it
 
 ```text
-Make me a new octopus worker meme: 摆烂躺平 (lying flat on the desk, one eye half-closed, the other fully closed, the tip of one tentacle holding a coffee cup). The character must match the existing reference samples in reference/sample_01..06.png. Save the result to 04-lying-flat/ and follow the 4-stage pipeline in skills/octopus-meme-maker/SKILL.md.
+Make me a new octopus worker meme: 摆烂躺平 (lying flat on the desk, one eye half-closed, the other fully closed, the tip of one tentacle holding a coffee cup). The character must match the existing reference samples in reference/sample_01..06.png. Save the result to <scene-dir>/ and follow the 4-stage pipeline in skills/octopus-meme-maker/SKILL.md.
 ```
 
-Expected result: `04-lying-flat/base.png` (2048×2048 base) → `04-lying-flat/video.mp4` (1080p 6s 24fps) → `04-lying-flat/final.gif` (720×720 ≤ 6.4 MB) → `04-lying-flat/final-mini.gif` (480×480 ≤ 1.7 MB).
+Expected result: `<scene-dir>/base.png` (2048×2048 base) → `<scene-dir>/video.mp4` (1080p 6s 24fps) → `<scene-dir>/final.gif` (720×720 ≤ 6.4 MB) → `<scene-dir>/final-mini.gif` (480×480 ≤ 1.7 MB).
 
 ## What's in this Plugin
 
@@ -25,6 +25,7 @@ Expected result: `04-lying-flat/base.png` (2048×2048 base) → `04-lying-flat/v
 
 ## Requirements
 
+- `minMcodeVersion`: `0.2.0` (the Plugin uses `image_synthesize` and `gen_videos` host tools; both were stabilized in 0.2.0)
 - Python 3.10+
 - `pip install Pillow`
 - `ffmpeg` 4.4+ on `PATH` (verify with `ffmpeg -version`)
@@ -34,6 +35,13 @@ Expected result: `04-lying-flat/base.png` (2048×2048 base) → `04-lying-flat/v
   - Windows: `C:\Windows\Fonts\msyh.ttc`, `C:\Windows\Fonts\simhei.ttf`
   - Pass `--font <path>` to override.
 - MiniMax Code's `image_synthesize` and `gen_videos` tools (used by stage 1 and stage 2 of the pipeline; not bundled in this Plugin — they are part of the host).
+
+## What this Plugin does NOT do
+
+- **No credentials**: it does not read, write, accept, or transmit any API key, OAuth token, refresh token, client secret, username, password, or any other form of authentication credential. The Plugin has no login flow and no `Authorization` header.
+- **No network access at runtime**: the shipped Python scripts run entirely on the local machine and only call `ffmpeg` and `Pillow` from the local system. They do not open any TCP / UDP / WebSocket connection.
+- **No telemetry**: the Plugin does not phone home, does not log usage, and does not embed any analytics SDK. It ships no Google Analytics, no Sentry, no Mixpanel, no Cloudflare beacon, and no error reporter.
+- **No third-party services**: the Plugin does not call any remote service. (Stage 1 and stage 2 of the pipeline call MiniMax Code's `image_synthesize` and `gen_videos` host tools, but those are part of the host runtime — the Plugin itself never makes a remote call.)
 
 ## Supported platforms
 

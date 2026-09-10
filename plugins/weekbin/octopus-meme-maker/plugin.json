@@ -2,11 +2,14 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "octopus-meme-maker",
   "version": "0.1.0",
-  "description": "Generate a Smooth Squishmallow-style pink-octopus office-worker GIF meme from a scene description, using a 4-stage pipeline (base pose -> 6s video -> transparent text overlay -> 720x720 GIF). Produces a 480x480 mini-GIF for chat apps. Use this skill when the user asks for a cute octopus meme, a worker-octopus sticker, a Squishmallow-style GIF, or wants to extend the existing 30+ scene library.",
+  "description": "Generate Smooth Squishmallow-style pink-octopus office-worker GIF memes from a scene description. Ships 6 character reference frames, 2 illustrative H3 animation samples, 3 base pose samples, and 3 cross-platform Python scripts (Windows / macOS / Linux) that assemble the final 720x720 + 480x480 GIF.",
   "author": {
     "name": "weekbin",
+    "email": "weekbin@example.com",
     "url": "https://github.com/weekbin"
   },
+  "homepage": "https://github.com/weekbin/MiniMax-Code-Plugins/tree/main/plugins/weekbin/octopus-meme-maker",
+  "repository": "https://github.com/weekbin/MiniMax-Code-Plugins/tree/main/plugins/weekbin/octopus-meme-maker",
   "license": "Apache-2.0",
   "keywords": [
     "minimax-code",

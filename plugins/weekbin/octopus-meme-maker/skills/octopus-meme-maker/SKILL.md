@@ -1,6 +1,12 @@
 ---
 name: octopus-meme-maker
 description: Use this skill when the user asks for a new pink-octopus office-worker GIF meme, a Smooth Squishmallow-style worker octopus sticker, a 4-character Chinese caption on a 720x720 looping GIF, or wants to add a scene to an existing meme library. Drives a 4-stage pipeline (base pose via image_synthesize -> 6s 24fps video via gen_videos -> transparent Chinese text overlay via Pillow -> 720x720 + 480x480 GIF via ffmpeg) and enforces a strict character-anatomy ban-list. Read this skill before starting any new scene.
+license: Apache-2.0
+metadata:
+  author: weekbin
+  version: 0.1.0
+  scope: plugin-portable
+  minMcodeVersion: 0.2.0
 ---
 
 # Octopus Meme Maker

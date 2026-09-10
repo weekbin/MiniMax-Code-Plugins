@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "name": "octopus-meme-maker",
+  "displayName": "Octopus Meme Maker",
+  "version": "0.1.0",
+  "description": "Generate Smooth Squishmallow-style pink-octopus office-worker GIF memes from a scene description. Ships 6 character reference frames, 2 illustrative H3 animation samples, 3 base pose samples, and 3 cross-platform Python scripts that assemble the final 720x720 + 480x480 GIF.",
+  "author": "weekbin <https://github.com/weekbin>",
+  "icon": "icon.png",
+  "category": "Other",
+  "exampleQueries": [
+    "Make me a new octopus worker meme: 摆烂躺平 (lying flat on the desk, one eye half-closed, the tip of one tentacle holding a coffee cup).",
+    "Generate a '我裂开了' (I'm falling apart) octopus GIF meme with both hands on the head, eyes spiraling.",
+    "Add a scene to the existing 30+ octopus meme library: '请大家喝奶茶' (treating everyone to milk tea) with 8 tentacles each holding a colorful cup."
+  ],
+  "apps": [],
+  "mcpServers": [],
+  "skills": [
+    "skills/octopus-meme-maker/SKILL.md"
+  ]
+}
