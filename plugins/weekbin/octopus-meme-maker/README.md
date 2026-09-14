@@ -25,7 +25,7 @@ Expected result: `<scene-dir>/base.png` (2048×2048 base) → `<scene-dir>/video
 
 ## Requirements
 
-- `minMcodeVersion`: `0.2.0` (the Plugin uses `image_synthesize` and `gen_videos` host tools; both were stabilized in 0.2.0)
+- A MiniMax Code build that provides the `image_synthesize` and `gen_videos` host tools (those are host capabilities, not part of this Plugin; verified on mcode 0.4.6). Stage 1 and stage 2 of the pipeline call them directly.
 - Python 3.10+
 - `pip install Pillow`
 - `ffmpeg` 4.4+ on `PATH` (verify with `ffmpeg -version`)

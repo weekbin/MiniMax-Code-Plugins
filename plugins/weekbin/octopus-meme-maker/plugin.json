@@ -2,7 +2,7 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "octopus-meme-maker",
   "version": "0.1.0",
-  "description": "把一段场景描述变成粉红色章鱼打工人的 GIF 表情包：输出 720x720 循环 GIF 和适合聊天发送的 480x480 小图。包内附角色参考帧、H3 动画样片、抽卡基础图和 3 个跨平台 Python 脚本（Windows / macOS / Linux）。 / Generate Smooth Squishmallow-style pink-octopus office-worker GIF memes from a scene description: a 720x720 looping GIF plus a 480x480 mini-GIF for chat apps. Bundles 6 character reference frames, 2 illustrative H3 animation samples, 3 base pose samples, and 3 cross-platform Python scripts (Windows / macOS / Linux).",
+  "description": "把一段场景描述变成粉红色章鱼打工人的 GIF 表情包：输出 720x720 循环 GIF 和适合聊天发送的 480x480 小图。包内附角色参考帧、H3 动画样片、抽卡基础图和 3 个跨平台 Python 脚本（Windows / macOS / Linux）。**需要 MiniMax Code 提供 `image_synthesize` 与 `gen_videos` 两个宿主工具**（已在 mcode 0.4.6 验证）。 / Generate Smooth Squishmallow-style pink-octopus office-worker GIF memes from a scene description: a 720x720 looping GIF plus a 480x480 mini-GIF for chat apps. Bundles 6 character reference frames, 2 illustrative H3 animation samples, 3 base pose samples, and 3 cross-platform Python scripts (Windows / macOS / Linux). **Requires MiniMax Code with the `image_synthesize` and `gen_videos` host tools available** (verified on mcode 0.4.6).",
   "author": {
     "name": "weekbin",
     "email": "weekbin@example.com",

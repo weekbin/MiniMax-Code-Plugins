@@ -5,8 +5,6 @@ license: Apache-2.0
 metadata:
   author: weekbin
   version: 0.1.0
-  scope: plugin-portable
-  minMcodeVersion: 0.2.0
 ---
 
 # Octopus Meme Maker

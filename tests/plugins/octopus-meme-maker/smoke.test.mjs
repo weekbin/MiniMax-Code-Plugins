@@ -151,9 +151,65 @@ test('README has "What this Plugin does NOT do" 4-section disclosure', () => {
   }
 });
 
-test('README states minMcodeVersion', () => {
+test('README states the host-tool requirement', () => {
   const text = readText(README);
-  assert.match(text, /minMcodeVersion/);
+  assert.match(text, /image_synthesize/, 'README must name the image_synthesize host tool');
+  assert.match(text, /gen_videos/, 'README must name the gen_videos host tool');
+});
+
+// ---------------------------------------------------------------------------
+// 4b. Host version pin surface (fail-closed, mirroring the PR #33 round-7
+//     precedent). The portable Plugin schema declares no `requirements` field,
+//     and `metadata.minMcodeVersion` is the wrong surface for it: the only
+//     permitted place for a host version constraint is the human-readable
+//     `description`, which both the marketplace UI and the agent's own
+//     discovery surface render.
+// ---------------------------------------------------------------------------
+
+test('plugin.json does NOT declare a requirements field', () => {
+  const m = readJson(PLUGIN_JSON);
+  assert.equal(
+    'requirements' in m,
+    false,
+    'the portable Plugin schema has no `requirements` field; the repository validator rejects it as an unknown field',
+  );
+});
+
+test('plugin.json description carries the host-tool requirement', () => {
+  const m = readJson(PLUGIN_JSON);
+  assert.match(m.description, /image_synthesize/, 'description must name the image_synthesize host tool');
+  assert.match(m.description, /gen_videos/, 'description must name the gen_videos host tool');
+});
+
+test('SKILL.md does not pin the host version via metadata.minMcodeVersion', () => {
+  const text = readText(SKILL);
+  const fm = text.match(/^---\n([\s\S]+?)\n---/);
+  assert.ok(fm, 'YAML frontmatter required');
+  assert.equal(
+    /minMcodeVersion/.test(fm[1]),
+    false,
+    'metadata.minMcodeVersion is the wrong surface for a host version pin (PR #33 round-7)',
+  );
+  assert.equal(
+    /^\s*scope:/m.test(fm[1]),
+    false,
+    'invented metadata key `scope` must not be declared',
+  );
+});
+
+test('SKILL.md metadata maps strings to strings only', () => {
+  const text = readText(SKILL);
+  const fm = text.match(/^---\n([\s\S]+?)\n---/);
+  assert.ok(fm, 'YAML frontmatter required');
+  const block = fm[1].match(/^metadata:\n((?:\s+.+\n?)+)/m);
+  if (!block) return; // metadata is optional
+  for (const line of block[1].trimEnd().split('\n')) {
+    const value = line.replace(/^\s+[^:]+:\s*/, '');
+    assert.ok(
+      !/^\d+(\.\d+)?$/.test(value),
+      `metadata value must be a string, not a number: "${line.trim()}"`,
+    );
+  }
 });
 
 // ---------------------------------------------------------------------------
