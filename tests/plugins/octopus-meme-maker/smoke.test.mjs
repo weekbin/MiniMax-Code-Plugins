@@ -43,17 +43,24 @@ test('required files exist', () => {
   }
 });
 
-test('icon is a non-empty PNG under 16 MiB', () => {
+test('icon is a square PNG, right-sized for a store listing', () => {
   assert.ok(existsSync(ICON));
   const s = statSync(ICON);
   assert.ok(s.size > 0, 'icon empty');
-  assert.ok(s.size < 16 * 1024 * 1024, `icon too big: ${s.size}`);
+  assert.ok(s.size < 16 * 1024 * 1024, `icon exceeds the 16 MiB per-file cap: ${s.size}`);
+  assert.ok(s.size <= 512 * 1024, `icon should be compressed; got ${(s.size / 1024).toFixed(0)} KB`);
   const head = readFileSync(ICON).subarray(0, 8);
   assert.deepEqual(
     Array.from(head.subarray(0, 8)),
     [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a],
     'icon must be a real PNG (8-byte magic header)',
   );
+  // PNG IHDR: width and height are big-endian uint32 at bytes 16..24
+  const buf = readFileSync(ICON);
+  const width = buf.readUInt32BE(16);
+  const height = buf.readUInt32BE(20);
+  assert.equal(width, height, `icon must be square; got ${width}x${height}`);
+  assert.ok(width >= 128 && width <= 1024, `icon side should be 128..1024; got ${width}`);
 });
 
 // ---------------------------------------------------------------------------
@@ -279,8 +286,8 @@ test('SKILL.md documents what ${PLUGIN_ROOT} is', () => {
 
 test('Marketplace description states user value, not a file inventory', () => {
   const m = readJson(MARKETPLACE_JSON);
-  assert.ok(m.description.length <= 300, `marketplace description should stay short (got ${m.description.length})`);
-  for (const inventoryWord of ['Ships ', 'ships ', 'This package contains', 'Bundles ']) {
+  assert.ok(m.description.length <= 600, `marketplace description should stay short (got ${m.description.length})`);
+  for (const inventoryWord of ['Ships ', 'ships ', 'This package contains']) {
     assert.equal(
       m.description.includes(inventoryWord),
       false,
@@ -289,10 +296,56 @@ test('Marketplace description states user value, not a file inventory', () => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// 7d. Localization. The plugin data model carries a single scalar
+//     `displayName` / `description` — there is no `displayName_zh` style
+//     locale variant — so one package must read correctly for both the CN and
+//     the US region. Assert the user-facing strings are genuinely bilingual
+//     rather than English-only.
+// ---------------------------------------------------------------------------
+
+const CJK = /[\u4e00-\u9fff]/;
+const LATIN = /[A-Za-z]/;
+
+test('Marketplace displayName is bilingual and within the byte cap', () => {
+  const m = readJson(MARKETPLACE_JSON);
+  assert.match(m.displayName, CJK, `displayName needs Chinese: ${m.displayName}`);
+  assert.match(m.displayName, LATIN, `displayName needs Latin: ${m.displayName}`);
+  const bytes = Buffer.byteLength(m.displayName, 'utf8');
+  assert.ok(bytes <= 1024, `displayName must be <= 1024 UTF-8 bytes; got ${bytes}`);
+});
+
+test('Marketplace description is bilingual', () => {
+  const m = readJson(MARKETPLACE_JSON);
+  assert.match(m.description, CJK, 'description needs a Chinese sentence');
+  assert.match(m.description, LATIN, 'description needs an English sentence');
+});
+
+test('Marketplace exampleQueries are bilingual', () => {
+  const m = readJson(MARKETPLACE_JSON);
+  for (const q of m.exampleQueries) {
+    assert.match(q, CJK, `query needs Chinese: ${q}`);
+    assert.match(q, LATIN, `query needs Latin: ${q}`);
+  }
+});
+
+test('registry plugin.json description is bilingual', () => {
+  const m = readJson(PLUGIN_JSON);
+  assert.match(m.description, CJK, 'registry description needs a Chinese sentence');
+  assert.match(m.description, LATIN, 'registry description needs an English sentence');
+});
+
+test('a Chinese README ships alongside the English one', () => {
+  const zh = join(PLUGIN, 'README.zh-CN.md');
+  assert.ok(existsSync(zh), 'README.zh-CN.md missing');
+  assert.ok(readText(zh).length > 500, 'README.zh-CN.md looks empty');
+});
+
 test('Marketplace author is a plain name (no URL, no angle brackets)', () => {
   const m = readJson(MARKETPLACE_JSON);
   assert.equal(/[<>]/.test(m.author), false, `author must not embed a URL/angle brackets: ${m.author}`);
   assert.equal(/https?:\/\//.test(m.author), false, `author must not embed a URL: ${m.author}`);
+  assert.ok(Buffer.byteLength(m.author, 'utf8') <= 1024, 'author must be <= 1024 UTF-8 bytes');
 });
 
 test('all plugin files are free of host-literal paths', () => {

@@ -73,8 +73,19 @@ This directory is both a community-registry Plugin and a MiniMax Marketplace pac
 
 - `plugin.json` — the community-registry manifest (`$schema: https://agent-plugins.org/schemas/1.0.0/plugin.schema.json`).
 - `.minimax-plugin/plugin.json` — the Marketplace entry point. A Marketplace ZIP or GitHub subdirectory submission must have this file directly at its root.
+- `README.zh-CN.md` — Chinese translation of this file.
 
 For a Marketplace submission, point the source at this directory (`plugins/weekbin/octopus-meme-maker`). The registry-only `plugin.json` and the `examples/` directory are not referenced by the Marketplace manifest.
+
+### About the icon
+
+`icon.png` is referenced by the Marketplace manifest's `icon` field (512×512 PNG, square, transparent background).
+
+The client renders a plugin's icon from the `icon_url` the desktop service returns for that plugin — it does not read an `icon.png` from the installed plugin directory. A plugin installed locally from the community registry therefore shows the client's default icon; the bundled `icon.png` starts appearing only **after the package is published to the Marketplace**, when the intake pipeline extracts it and the catalog begins serving it.
+
+### Localization
+
+The client's plugin data model carries a single scalar `displayName` / `description` — there is no `displayName_zh`-style locale variant. Region (CN / US) is chosen at submission time, not per field. This package therefore uses bilingual user-facing strings (Chinese first, English second) so one package reads correctly in both regions.
 
 ## License
 
