@@ -175,6 +175,28 @@ test('plugin.json does NOT declare a requirements field', () => {
   );
 });
 
+test('descriptions are plain text, not markdown', () => {
+  // The desktop UI renders `description` as plain text. Markdown emphasis or
+  // code spans therefore show up literally, e.g. "**Requires ...**" and
+  // "`image_synthesize`". Keep both manifests free of markdown syntax.
+  for (const [label, raw] of [
+    ['plugin.json', readJson(PLUGIN_JSON)],
+    ['.minimax-plugin/plugin.json', readJson(MARKETPLACE_JSON)],
+  ]) {
+    for (const field of ['description', 'displayName']) {
+      const value = raw[field];
+      if (typeof value !== 'string') continue;
+      for (const token of ['**', '`', '__', '##', '](']) {
+        assert.equal(
+          value.includes(token),
+          false,
+          `${label}.${field} must not contain markdown "${token}": ${value}`,
+        );
+      }
+    }
+  }
+});
+
 test('plugin.json description carries the host-tool requirement', () => {
   const m = readJson(PLUGIN_JSON);
   assert.match(m.description, /image_synthesize/, 'description must name the image_synthesize host tool');
