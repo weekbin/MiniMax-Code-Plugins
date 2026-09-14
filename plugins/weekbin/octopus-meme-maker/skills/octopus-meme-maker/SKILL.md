@@ -82,19 +82,32 @@ shows 6 distinct numbered cells.
 ### 2.3 Hand the contact sheet to the user
 
 Deliver the contact sheet to the user as an inline image — use a `<media />`
-tag so all 6 candidates are visible at once without leaving the chat — then
-**PAUSE and wait** for one of three signals:
+tag so all 6 candidates are visible at once without leaving the chat. Then
+**STOP and wait** for the user to pick. This is a hard gate that nothing
+in Stage 1 or Stage 2 may bypass.
 
 | User signal | Action |
 |---|---|
 | **A number** ("3", "选 2", "第 5 张") | Copy `iterations/vN-{N}-base.jpg` → `<scene-dir>/base.png` and proceed to Stage 2. |
-| **All-bad signal** ("全部不行" / "再抽" / "继续抽卡" / "都不行") | Start a new round: bump N → N+1, refine the prompt per § 7.1, re-run § 2.1 and § 2.2. |
+| **All-bad signal** ("全部不行" / "再抽" / "继续抽卡" / "都不行") | Start a new round: bump N → N+1, refine the prompt per § 7.1, re-run § 2.1 and § 2.2. Repeat until the user picks. |
 | **Specific feedback** ("3 号嘴有问题" / "想要更慵懒" / "表情再焦一点") | Treat as both a pick AND a refinement: lock the chosen one as `base.png`, note the feedback, then start a follow-up round N+1 with the feedback applied before committing to Stage 2. |
 
-Do not start Stage 2 until the user has explicitly chosen a number or
-issued an all-bad signal. Do not pick on the user's behalf. Do not skip
-the contact sheet even if the first candidate "looks great" — the user is
-the curator.
+**The contact-sheet loop is mandatory and runs until the user picks.**
+
+- **STOP after every contact-sheet delivery.** Do not start Stage 2, do not
+  start a follow-up round, do not move on in any way — the loop must wait
+  for the user's reply.
+- **Loop indefinitely.** There is no upper bound on `N`; keep re-rolling
+  with the user's feedback applied until they pick a number or signal
+  abandon / relax.
+- **Only the user ends the loop.** A single 'best of 1-2' round, picking
+  on the user's behalf because a candidate 'looks great', or skipping the
+  contact sheet to save time are all unauthorised shortcuts and forbidden.
+  The user is the curator; the model's taste does not count.
+
+Exit signal of § 2.3: the user has typed a number (e.g. "3" / "选 2") OR
+has explicitly signalled that they want to abandon / relax the prompt. No
+other input counts.
 
 ### 2.4 Prompt skeleton
 
@@ -106,9 +119,10 @@ Style: Squishmallow / Pop Mart 3D render, NOT furry, NOT stitched plush.
 ```
 
 Exit condition: `<scene-dir>/base.png` is a 2048×2048 PNG copied from a
-contact-sheet candidate the user has explicitly chosen. If `N` ever reaches
-4 without a pick, escalate to the user with the current best candidate and
-ask whether to relax the prompt or abandon the scene.
+contact-sheet candidate the user has explicitly chosen. The contact-sheet
+loop has no upper bound on rounds — keep re-rolling until the user picks.
+Only an explicit user signal ("选了 / OK / 继续 / 放弃 / 放松 prompt") ends
+the loop; nothing else counts.
 
 ## 3. Stage 2 — 6s video (gen_videos, 1080p 24fps)
 
@@ -204,7 +218,7 @@ The scene carries heavy motion blur, a wide gradient, or many distinct colours. 
 
 | Stage | Tool | Output | Exit criterion |
 |---|---|---|---|
-| 1. base pose | `image_synthesize` + `make_contact_sheet.py` | `<scene-dir>/base.png` | 2048×2048 PNG, user-picked from a 6-image contact sheet |
+| 1. base pose (loop) | `image_synthesize` + `make_contact_sheet.py` | `<scene-dir>/base.png` | 2048×2048 PNG, user-picked from a 6-image contact sheet; loop N → N+1 indefinitely until user picks |
 | 2. video | `gen_videos` | `<scene-dir>/video.mp4` | 1080×1080, 141 frames @ 24fps |
 | 3. preview | `make_preview_strip.py` | `frames-check/preview.png` | 5 frames wide |
 | 4. GIF | `make_gif.py` | `final.gif` + `final-mini.gif` | 720,720,141 and 480,480,141 |
@@ -213,8 +227,8 @@ For character anatomy, prompt template, and reference frames, see `reference.md`
 
 ## 9. Hard Rules
 
-- **Stage 1 must run a full 6-candidate contact-sheet round before asking the user to pick.** A single "best of 1-2" round is an unauthorised shortcut; the user is the curator, not the model. Iterate round N+1, N+2, ... until the user picks or signals all-bad escalation.
-- **Never pick on the user's behalf.** Stage 2 must not start until the user has explicitly chosen a number or issued an all-bad signal.
+- **Stage 1 IS a contact-sheet loop. Generate 6 candidates, compose a contact sheet, deliver to the user via `<media />`, then STOP and wait for the user to pick. Loop N → N+1, N+2, ... indefinitely until the user picks a number or explicitly signals abandon / relax. Stage 2 must not start until the user has picked.** This is the most important rule in this file. A single 'best of 1-2' round, picking on the user's behalf, or skipping the contact sheet because a candidate 'looks great' are all forbidden. The user is the curator, not the model.
+- **Never pick on the user's behalf.** Stage 2 must not start until the user has explicitly chosen a number or issued an abandon / relax signal.
 - **Never crop the video to fit text.** The text is composited as a transparent overlay, not baked into the video.
 - **Never hardcode scene paths.** Use `<scene-dir>` as a parameter; the Plugin must work for any user-provided scene name.
 - **Never delete old iteration files.** They are evidence and let the user compare across rounds.
