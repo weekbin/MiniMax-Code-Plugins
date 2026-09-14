@@ -24,8 +24,7 @@ import tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 TEXT_OVERLAY_SCRIPT = os.path.join(HERE, "make_text_overlay.py")
 
-FRAMES = 141            # 5.87s @ 24fps
-DURATION = "5.87"        # seconds kept from the source video
+DURATION = "5.87"        # seconds kept from the source video (141 frames @ 24fps)
 OUTPUT_W = 720           # main GIF width
 OUTPUT_H = 720           # main GIF height
 MINI_W = 480             # mini GIF width
@@ -58,6 +57,38 @@ def require_text_overlay_script():
         sys.exit(1)
 
 
+def warn_if_not_square(video):
+    """The composite forces OUTPUT_W x OUTPUT_H, so a non-square source is squashed."""
+    probe = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0",
+         "-show_entries", "stream=width,height",
+         "-of", "csv=p=0:s=x", video],
+        capture_output=True, text=True,
+    )
+    if probe.returncode != 0:
+        return  # rendering will surface the real error
+    parts = probe.stdout.strip().split("x")
+    if len(parts) != 2:
+        return
+    try:
+        w, h = int(parts[0]), int(parts[1])
+    except ValueError:
+        return
+    if w != h:
+        print(
+            f"WARNING: source video is {w}x{h}, not square. The composite scales it to "
+            f"{OUTPUT_W}x{OUTPUT_H}, which will distort the image. Re-encode to 1:1 first.",
+            file=sys.stderr,
+        )
+    if (w, h) != (1080, 1080):
+        print(
+            f"NOTE: source video is {w}x{h}; the intended capture size is 1080x1080. "
+            "Rendering continues and scales to "
+            f"{OUTPUT_W}x{OUTPUT_H}.",
+            file=sys.stderr,
+        )
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("scene_dir", help="Scene directory containing video.mp4")
@@ -74,6 +105,7 @@ def main():
 
     require_ffmpeg()
     require_text_overlay_script()
+    warn_if_not_square(video)
 
     workdir = tempfile.mkdtemp(prefix="octopus_gif_")
     frames_dir = os.path.join(workdir, "frames")
@@ -100,7 +132,7 @@ def main():
             f"[0:v]scale={OUTPUT_W}:{OUTPUT_H}[vid];"
             f"[1:v]scale={OVERLAY_W}:{OVERLAY_H}[ovl];"
             f"[vid][ovl]overlay=0:{OVERLAY_Y}[out]",
-            "-map", "[out]", "-t", DURATION, "-vsync", "0",
+            "-map", "[out]", "-t", DURATION, "-fps_mode", "passthrough",
             f"{frames_dir}/f_%04d.png",
         ], "2/5 burn-overlay -> frames")
 

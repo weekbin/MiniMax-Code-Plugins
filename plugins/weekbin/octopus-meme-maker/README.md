@@ -8,7 +8,7 @@ Generate Smooth Squishmallow-style pink-octopus office-worker GIF memes from a s
 Make me a new octopus worker meme: 摆烂躺平 (lying flat on the desk, one eye half-closed, the other fully closed, the tip of one tentacle holding a coffee cup). The character must match the existing reference samples in reference/sample_01..06.png. Save the result to <scene-dir>/ and follow the 4-stage pipeline in skills/octopus-meme-maker/SKILL.md.
 ```
 
-Expected result: `<scene-dir>/base.png` (2048×2048 base) → `<scene-dir>/video.mp4` (1080p 6s 24fps) → `<scene-dir>/final.gif` (720×720 ≤ 6.4 MB) → `<scene-dir>/final-mini.gif` (480×480 ≤ 1.7 MB).
+Expected result: `<scene-dir>/base.png` (2048×2048 base) → `<scene-dir>/video.mp4` (1080p 6s 24fps, 141 frames) → `<scene-dir>/final.gif` (720×720, 141 frames) → `<scene-dir>/final-mini.gif` (480×480, 141 frames).
 
 ## What's in this Plugin
 
@@ -57,15 +57,27 @@ Expected result: `<scene-dir>/base.png` (2048×2048 base) → `<scene-dir>/video
 
 ## Verification
 
-Run from this Plugin's root directory:
+This is a self-contained run: it uses the sample video bundled in `reference/videos/`, so no scene has to exist first. Run from this Plugin's root directory.
 
 ```bash
-python3 scripts/make_text_overlay.py "再熬一会" /tmp/octopus_test_overlay.png
-python3 scripts/make_preview_strip.py /path/to/some/video.mp4 /tmp/octopus_test_strip.png
-python3 scripts/make_gif.py /path/to/some/scene-dir "再熬一会"
+mkdir -p /tmp/octopus_selftest
+cp reference/videos/breakdown-h3.mp4 /tmp/octopus_selftest/video.mp4
+
+python3 scripts/make_text_overlay.py "再熬一会" /tmp/octopus_overlay.png
+python3 scripts/make_preview_strip.py /tmp/octopus_selftest/video.mp4 /tmp/octopus_preview.png
+python3 scripts/make_gif.py /tmp/octopus_selftest "再熬一会"
 ```
 
-All three scripts must exit 0 and produce the expected output file.
+Expected:
+
+| Output | Check |
+|---|---|
+| `/tmp/octopus_overlay.png` | 1080×220 RGBA |
+| `/tmp/octopus_preview.png` | 2400×530 RGB (5 frames + label band) |
+| `/tmp/octopus_selftest/final.gif` | `720,720,141` from `ffprobe` |
+| `/tmp/octopus_selftest/final-mini.gif` | `480,480,141` from `ffprobe` |
+
+All three scripts must exit 0. `make_gif.py` warns on stderr when the source video is not square; the bundled sample is 768×768, so that note is expected here and the render still succeeds.
 
 ## Packaging and submission
 

@@ -10,7 +10,7 @@
 结果存到 <scene-dir>/，按 skills/octopus-meme-maker/SKILL.md 里的 4 阶段流水线执行。
 ```
 
-预期产物：`<scene-dir>/base.png`（2048×2048 底图）→ `<scene-dir>/video.mp4`（1080p 6 秒 24fps）→ `<scene-dir>/final.gif`（720×720，≤ 6.4 MB）→ `<scene-dir>/final-mini.gif`（480×480，≤ 1.7 MB）。
+预期产物：`<scene-dir>/base.png`（2048×2048 底图）→ `<scene-dir>/video.mp4`（1080p 6 秒 24fps，141 帧）→ `<scene-dir>/final.gif`（720×720，141 帧）→ `<scene-dir>/final-mini.gif`（480×480，141 帧）。
 
 ## 包内有什么
 

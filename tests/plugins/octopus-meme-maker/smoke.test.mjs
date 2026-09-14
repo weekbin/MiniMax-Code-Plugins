@@ -9,8 +9,9 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync, statSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync, statSync, readdirSync, writeFileSync, mkdtempSync, rmSync, unlinkSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 
 const REPO = process.cwd();
@@ -197,6 +198,34 @@ test('descriptions are plain text, not markdown', () => {
   }
 });
 
+test('documented GIF guidance matches the reference data, not a hard cap', () => {
+  // The 23 reference scenes produce final.gif 2.8-15.8 MB and final-mini.gif
+  // 0.8-5.3 MB, and base.png 1.5-4.5 MB. An earlier revision capped these at
+  // 6.4 MB / 1.7 MB / 2 MB, which flagged most of the author's own accepted
+  // scenes as failures. Guard against reintroducing a byte-size cap.
+  const skill = readText(SKILL);
+  const readme = readText(README);
+  for (const [label, text] of [['SKILL.md', skill], ['README.md', readme]]) {
+    for (const stale of ['≤ 6.4 MB', '≤ 1.7 MB', '> 7 MB', '≥ 2 MB', '≥ 3 MB', '4-7 MB']) {
+      assert.equal(text.includes(stale), false, `${label} still asserts a stale size threshold: "${stale}"`);
+    }
+  }
+});
+
+test('SKILL.md exit conditions are dimension-based', () => {
+  const skill = readText(SKILL);
+  for (const probe of ['2048×2048', '720,720,141', '480,480,141']) {
+    assert.ok(skill.includes(probe), `SKILL.md exit criteria must check ${probe}`);
+  }
+});
+
+test('README documents a runnable self-test that uses the bundled sample video', () => {
+  const text = readText(README);
+  assert.match(text, /reference\/videos\/breakdown-h3\.mp4/, 'must use the bundled sample so the self-test needs no scene');
+  assert.match(text, /1080×220/, 'must state the expected overlay size');
+  assert.match(text, /2400×530/, 'must state the expected preview size');
+});
+
 test('plugin.json description carries the host-tool requirement', () => {
   const m = readJson(PLUGIN_JSON);
   assert.match(m.description, /image_synthesize/, 'description must name the image_synthesize host tool');
@@ -297,6 +326,59 @@ test('scripts/ Python files parse as valid syntax', () => {
     if (r.error && r.error.code === 'ENOENT') return; // python3 not installed; tolerate
     assert.equal(r.status, 0, `scripts/${f} does not parse: ${r.stderr}`);
   }
+});
+
+// ---------------------------------------------------------------------------
+// 7b. Real execution, not just parsing. Both tests skip themselves when the
+//     interpreter or the optional dependency is unavailable, so the repository
+//     CI (Node on Ubuntu, no Pillow guaranteed) stays green.
+// ---------------------------------------------------------------------------
+
+/** true / false when python3 exists, null when it does not. */
+function pythonHasModule(mod) {
+  const r = spawnSync('python3', ['-c', `import ${mod}`], { encoding: 'utf8' });
+  if (r.error && r.error.code === 'ENOENT') return null;
+  return r.status === 0;
+}
+
+test('make_text_overlay.py actually renders a transparent 1080x220 RGBA canvas', () => {
+  const hasPillow = pythonHasModule('PIL');
+  if (hasPillow !== true) return; // no python3, or no Pillow
+
+  const out = join(mkdtempSync(join(tmpdir(), 'octopus-overlay-')), 'overlay.png');
+  const r = spawnSync(
+    'python3',
+    [join(SCRIPTS_DIR, 'make_text_overlay.py'), '再熬一会', out],
+    { encoding: 'utf8' },
+  );
+  assert.equal(r.status, 0, `overlay render failed: ${r.stderr}`);
+  assert.ok(existsSync(out), 'overlay file was not written');
+
+  const buf = readFileSync(out);
+  assert.equal(buf.readUInt32BE(16), 1080, 'overlay width');
+  assert.equal(buf.readUInt32BE(20), 220, 'overlay height');
+  assert.equal(buf[25], 6, 'overlay must be RGBA (PNG colour type 6), so the text is transparent-backed');
+  rmSync(out, { force: true });
+});
+
+test('make_preview_strip.py refuses a non-empty --workdir instead of deleting it', () => {
+  // Regression guard: an earlier revision ran `shutil.rmtree` on whatever
+  // --workdir pointed at, which silently deleted caller data.
+  if (pythonHasModule('os') !== true) return; // python3 not installed
+
+  const dir = mkdtempSync(join(tmpdir(), 'octopus-workdir-'));
+  const keeper = join(dir, 'KEEP.txt');
+  writeFileSync(keeper, 'this file must survive');
+
+  const r = spawnSync(
+    'python3',
+    [join(SCRIPTS_DIR, 'make_preview_strip.py'), 'no-such-video.mp4', join(dir, 'out.png'), '--workdir', dir],
+    { encoding: 'utf8' },
+  );
+  assert.notEqual(r.status, 0, 'a non-empty --workdir must be refused');
+  assert.match(r.stderr, /is not empty/, `expected a refusal message, got: ${r.stderr}`);
+  assert.ok(existsSync(keeper), 'the caller-supplied directory must not be touched');
+  rmSync(dir, { recursive: true, force: true });
 });
 
 // ---------------------------------------------------------------------------

@@ -19,8 +19,8 @@ When the user reports a problem, find the matching row, read the root cause, app
 |---|---|---|
 | `gen_videos` returns "input file path outside workspace" | `image_synthesize` saved the base to an absolute path outside the host's workspace | Copy the base to the host's workspace-relative path before calling `gen_videos` |
 | `make_gif.py` hangs on ffmpeg filter_complex | Single ffmpeg invocation with too many filters | The shipped script already splits into 3 ffmpeg runs (overlay, palettegen, paletteuse); do not collapse them into one |
-| `final.gif` > 7 MB despite a simple scene | Background contains gradient / motion blur / many distinct colors | Lower `paletteuse=dither=bayer:bayer_scale` from 5 to 4; reduce fps from 24 to 20 in the script args |
-| `final-mini.gif` > 1.7 MB | Scale 480×480 but the source palette is still 720×720's | Re-run `make_gif.py` which builds the mini from a separately extracted 480×480 palette; do not downscale an already-encoded GIF |
+| `final.gif` exceeds 16 MB | Background contains gradient / motion blur / many distinct colors | Lower `paletteuse=dither=bayer:bayer_scale` from 5 to 4; reduce fps from 24 to 20 in the script args |
+| `final-mini.gif` is unexpectedly large (5 MB+) | High-frequency detail survives the 480×480 downscale, so the mini palette still needs many colors | Reduce fps from 24 to 20, or accept it — the reference scenes range 0.8–5.3 MB, so a large mini is not by itself a defect |
 | Text overflows the canvas | Font size 220 with 4-character caption | Use `--size 130` for 4-character captions; 220 fits only 2-character captions at 1080 wide |
 
 ## Feedback signals (translate user reports into action)

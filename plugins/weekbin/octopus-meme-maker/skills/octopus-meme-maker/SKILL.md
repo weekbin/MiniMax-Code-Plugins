@@ -19,12 +19,14 @@ Read `reference.md` (anatomy + prompt template) and `issues.md` (ban-list + fail
 
 ### 1.1 Copy the reference frames
 
-```bash
-mkdir -p <scene-dir>/{iterations,frames-check}
-cp "${PLUGIN_ROOT}/reference/sample_0{1..6}.png" <host-image-synthesize-input-dir>/
+Shell blocks in this file are POSIX shell: macOS, Linux, or Git Bash on Windows.
+
+```shell
+mkdir -p <scene-dir>/iterations <scene-dir>/frames-check
+cp "${PLUGIN_ROOT}"/reference/sample_*.png <host-image-synthesize-input-dir>/
 ```
 
-Exit condition: `ls "${PLUGIN_ROOT}/reference/sample_0{1..6}.png"` returns 6 paths; `<scene-dir>/iterations/` and `<scene-dir>/frames-check/` exist.
+Exit condition: `ls "${PLUGIN_ROOT}"/reference/sample_*.png` lists 6 files; `<scene-dir>/iterations/` and `<scene-dir>/frames-check/` exist.
 
 ## 2. Stage 1 — base pose (image_synthesize, 2K 1:1)
 
@@ -39,7 +41,7 @@ A cute pink octopus mascot plush toy character in <SCENE_POSE>.
 Style: Squishmallow / Pop Mart 3D render, NOT furry, NOT stitched plush.
 ```
 
-Exit condition: `<scene-dir>/base.png` exists, ≥ 2 MB, and the user has typed "确认" / "OK" / "可以".
+Exit condition: `<scene-dir>/base.png` is a 2048×2048 PNG and the user has typed "确认" / "OK" / "可以".
 
 ## 3. Stage 2 — 6s video (gen_videos, 1080p 24fps)
 
@@ -54,16 +56,16 @@ fps          = 24
 size         = 1080x1080
 ```
 
-Exit condition: `<scene-dir>/video.mp4` exists, `ffprobe -show_streams video.mp4` reports `width=1080 height=1080 (or 1920) nb_frames=141` and `duration≈5.87`.
+Exit condition: `<scene-dir>/video.mp4` exists and `ffprobe -show_streams video.mp4` reports `width=1080 height=1080` at `r_frame_rate=24/1` with `nb_frames=141`.
 
 ## 4. Stage 3 — preview strip (sanity check, not the deliverable)
 
 ### 4.1 Generate the strip
 
-```bash
+```shell
 python3 "${PLUGIN_ROOT}/scripts/make_preview_strip.py" <scene-dir>/video.mp4 \
   <scene-dir>/frames-check/preview.png \
-  --labels "t=0s,<pose>,t=1.8s,<pose>,t=3.0s,<pose>,t=4.2s,<pose>,t=5.5s,<pose>"
+  --labels "t=0.0s,<pose>,t=1.8s,<pose>,t=3.0s,<pose>,t=4.2s,<pose>,t=5.8s,<pose>"
 ```
 
 Exit condition: `frames-check/preview.png` exists, 5 frames wide, and the user confirms the animation reads as expected.
@@ -72,13 +74,15 @@ Exit condition: `frames-check/preview.png` exists, 5 frames wide, and the user c
 
 ### 5.1 Compose both GIFs
 
-```bash
+```shell
 python3 "${PLUGIN_ROOT}/scripts/make_gif.py" <scene-dir> "<caption>"
 ```
 
-The script produces both `<scene-dir>/final.gif` (720×720, ≤ 6.4 MB target) and `<scene-dir>/final-mini.gif` (480×480, ≤ 1.7 MB target). Both scripts resolve their own location, so the command works from any working directory.
+The script writes both `<scene-dir>/final.gif` (720×720) and `<scene-dir>/final-mini.gif` (480×480). Both scripts resolve their own location, so the command works from any working directory.
 
-Exit condition: both files exist, the captions read correctly, and `du -h` reports sizes within the targets above. If `final.gif` > 7 MB, the scene is too visually complex; see § Failure Recovery.
+File size tracks scene complexity, not a fixed budget. Across the 23 reference scenes the main GIF lands between 2.8 MB and 15.8 MB (median 7.2 MB), and the mini GIF between 0.8 MB and 5.3 MB (median 1.6 MB). Report both sizes to the user as information; treat the ranges as a sanity band rather than a cap.
+
+Exit condition: both files exist, `ffprobe -select_streams v:0 -show_entries stream=width,height,nb_frames` reports `720,720,141` for `final.gif` and `480,480,141` for `final-mini.gif`, and the caption reads correctly. If `final.gif` exceeds 16 MB, apply the reduction levers in § Failure Recovery.
 
 ## 6. Examples
 
@@ -86,7 +90,7 @@ Exit condition: both files exist, the captions read correctly, and `du -h` repor
 
 - Caption: "摆烂躺平"
 - Pose: sprawled on the desk, one eye half-closed, one tentacle holding a coffee cup
-- Expected: base.png ≥ 3 MB, final.gif 4-7 MB, final-mini.gif 1.0-1.7 MB.
+- Expected: `base.png` 2048×2048; `final.gif` ≈ 6 MB; `final-mini.gif` ≈ 1.6 MB.
 
 ### 6.2 假装很忙 (pretending to be busy, no caption)
 
@@ -98,7 +102,7 @@ Exit condition: both files exist, the captions read correctly, and `du -h` repor
 
 - Caption: "期待 m3pro"
 - Pose: tentacles cupping the cheeks, eyes wide
-- Expected: base.png ≥ 3 MB, final.gif ≤ 4.5 MB (simpler scene, no motion blur).
+- Expected: `base.png` 2048×2048; `final.gif` ≈ 4 MB; `final-mini.gif` ≈ 1.0 MB.
 
 ## 7. Failure Recovery
 
@@ -110,18 +114,18 @@ Re-read `issues.md` § Ban-list. Sweep the prompt for the matching word, replace
 
 The host tool only accepts paths inside the host's workspace. Copy `<scene-dir>/base.png` to `<host-workspace>/<scene-dir>/base.png` first, then pass the workspace-relative path. Do not pass an absolute path.
 
-### 7.3 Stage 4 final.gif > 7 MB
+### 7.3 Stage 4 final.gif exceeds 16 MB
 
-The scene is visually complex (motion blur, gradient, many distinct colors). Lower `PALETTE_DITHER` from `bayer:bayer_scale=5` to `bayer:bayer_scale=4` in `"${PLUGIN_ROOT}/scripts/make_gif.py"`, or reduce `FPS` from 24 to 20. Re-run stage 4; do not regenerate base or video.
+The scene carries heavy motion blur, a wide gradient, or many distinct colours. Lower `PALETTE_DITHER` from `bayer:bayer_scale=5` to `bayer:bayer_scale=4` in `"${PLUGIN_ROOT}/scripts/make_gif.py"`, or reduce `FPS` from 24 to 20. Re-run stage 4; do not regenerate base or video.
 
 ## 8. Quick Reference
 
 | Stage | Tool | Output | Exit criterion |
 |---|---|---|---|
-| 1. base pose | `image_synthesize` | `<scene-dir>/base.png` | ≥ 2 MB, user-confirmed |
-| 2. video | `gen_videos` | `<scene-dir>/video.mp4` | 141 frames @ 24fps |
+| 1. base pose | `image_synthesize` | `<scene-dir>/base.png` | 2048×2048 PNG, user-confirmed |
+| 2. video | `gen_videos` | `<scene-dir>/video.mp4` | 1080×1080, 141 frames @ 24fps |
 | 3. preview | `make_preview_strip.py` | `frames-check/preview.png` | 5 frames wide |
-| 4. GIF | `make_gif.py` | `final.gif` + `final-mini.gif` | sizes within targets |
+| 4. GIF | `make_gif.py` | `final.gif` + `final-mini.gif` | 720,720,141 and 480,480,141 |
 
 For character anatomy, prompt template, and reference frames, see `reference.md`. For known failure modes and feedback-signal translations, see `issues.md`.
 
