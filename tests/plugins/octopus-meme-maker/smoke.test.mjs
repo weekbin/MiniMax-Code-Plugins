@@ -249,14 +249,61 @@ test('negative: README missing "What this Plugin does NOT do" is detectable', ()
   assert.equal(stripped.includes('What this Plugin does NOT do'), false);
 });
 
+// ---------------------------------------------------------------------------
+// 7b. Runtime robustness: script invocations must anchor to ${PLUGIN_ROOT}
+//     (repo convention, cf. plugins/antianqi/tool-map). A bare `scripts/...`
+//     breaks whenever the agent's CWD is not the Plugin root.
+// ---------------------------------------------------------------------------
+
+test('SKILL.md anchors every runnable script invocation to ${PLUGIN_ROOT}', () => {
+  const text = readText(SKILL);
+  const invocations = text.match(/python3 [^\n]*scripts\/make_[a-z_]+\.py/g) ?? [];
+  assert.ok(invocations.length >= 2, `expected >= 2 script invocations, found ${invocations.length}`);
+  for (const inv of invocations) {
+    assert.ok(
+      inv.includes('${PLUGIN_ROOT}/scripts/'),
+      `un-anchored script invocation: ${inv}`,
+    );
+  }
+});
+
+test('SKILL.md documents what ${PLUGIN_ROOT} is', () => {
+  const text = readText(SKILL);
+  assert.match(text, /\$\{PLUGIN_ROOT\}` is the environment variable/, 'must explain PLUGIN_ROOT');
+});
+
+// ---------------------------------------------------------------------------
+// 7c. Marketplace description states value, not a package inventory.
+//     Guide: "description 说明能解决什么问题，不写内部技术实现".
+// ---------------------------------------------------------------------------
+
+test('Marketplace description states user value, not a file inventory', () => {
+  const m = readJson(MARKETPLACE_JSON);
+  assert.ok(m.description.length <= 300, `marketplace description should stay short (got ${m.description.length})`);
+  for (const inventoryWord of ['Ships ', 'ships ', 'This package contains', 'Bundles ']) {
+    assert.equal(
+      m.description.includes(inventoryWord),
+      false,
+      `marketplace description must not inventory package contents: "${inventoryWord}"`,
+    );
+  }
+});
+
+test('Marketplace author is a plain name (no URL, no angle brackets)', () => {
+  const m = readJson(MARKETPLACE_JSON);
+  assert.equal(/[<>]/.test(m.author), false, `author must not embed a URL/angle brackets: ${m.author}`);
+  assert.equal(/https?:\/\//.test(m.author), false, `author must not embed a URL: ${m.author}`);
+});
+
 test('all plugin files are free of host-literal paths', () => {
   // Sweep every published file in the plugin (not just SKILL.md and the
   // Marketplace JSON) so future regressions do not slip through.
   const FORBIDDEN = [
     /\/Users\//,
-    /~\/minimax\//,
-    /~\/Works\//,
-    /~\.minimax\//,
+    /\/home\/[A-Za-z0-9._-]+\//,
+    // Any literal `~/<path>` is a maintainer-local path. `${PLUGIN_ROOT}` is
+    // the only sanctioned anchor, so a bare `~/` is always a violation.
+    /~\/[A-Za-z0-9._-]/,
     /\$\{HOME\}/,
     /\$\{USERPROFILE\}/,
     /\$\{HOST_/,

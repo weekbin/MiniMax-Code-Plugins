@@ -3,8 +3,8 @@
   "name": "octopus-meme-maker",
   "displayName": "Octopus Meme Maker",
   "version": "0.1.0",
-  "description": "Generate Smooth Squishmallow-style pink-octopus office-worker GIF memes from a scene description. Ships 6 character reference frames, 2 illustrative H3 animation samples, 3 base pose samples, and 3 cross-platform Python scripts that assemble the final 720x720 + 480x480 GIF.",
-  "author": "weekbin <https://github.com/weekbin>",
+  "description": "Generate Smooth Squishmallow-style pink-octopus office-worker GIF memes from a scene description. Turns a scene idea into a 720x720 looping GIF plus a 480x480 mini-GIF for chat apps.",
+  "author": "weekbin",
   "icon": "icon.png",
   "category": "Other",
   "exampleQueries": [

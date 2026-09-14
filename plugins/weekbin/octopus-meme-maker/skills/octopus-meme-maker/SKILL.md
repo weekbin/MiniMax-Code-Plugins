@@ -15,16 +15,18 @@ Generate one 720×720 looping GIF + one 480×480 mini-GIF per scene. Read this e
 
 ## 1. Pre-flight
 
+`${PLUGIN_ROOT}` is the environment variable MiniMax Code sets to this Plugin's root directory. Every command in this file is anchored to it, so the commands work from any working directory.
+
 Read `reference.md` (anatomy + prompt template) and `issues.md` (ban-list + failure modes) before stage 1.
 
 ### 1.1 Copy the reference frames
 
 ```bash
 mkdir -p <scene-dir>/{iterations,frames-check}
-cp reference/sample_0{1..6}.png <host-image-synthesize-input-dir>/
+cp "${PLUGIN_ROOT}/reference/sample_0{1..6}.png" <host-image-synthesize-input-dir>/
 ```
 
-Exit condition: `ls reference/sample_0{1..6}.png` returns 6 paths; `<scene-dir>/iterations/` and `<scene-dir>/frames-check/` exist.
+Exit condition: `ls "${PLUGIN_ROOT}/reference/sample_0{1..6}.png"` returns 6 paths; `<scene-dir>/iterations/` and `<scene-dir>/frames-check/` exist.
 
 ## 2. Stage 1 — base pose (image_synthesize, 2K 1:1)
 
@@ -61,7 +63,7 @@ Exit condition: `<scene-dir>/video.mp4` exists, `ffprobe -show_streams video.mp4
 ### 4.1 Generate the strip
 
 ```bash
-python3 scripts/make_preview_strip.py <scene-dir>/video.mp4 \
+python3 "${PLUGIN_ROOT}/scripts/make_preview_strip.py" <scene-dir>/video.mp4 \
   <scene-dir>/frames-check/preview.png \
   --labels "t=0s,<pose>,t=1.8s,<pose>,t=3.0s,<pose>,t=4.2s,<pose>,t=5.5s,<pose>"
 ```
@@ -73,10 +75,10 @@ Exit condition: `frames-check/preview.png` exists, 5 frames wide, and the user c
 ### 5.1 Compose both GIFs
 
 ```bash
-python3 scripts/make_gif.py <scene-dir> "<caption>"
+python3 "${PLUGIN_ROOT}/scripts/make_gif.py" <scene-dir> "<caption>"
 ```
 
-The script produces both `<scene-dir>/final.gif` (720×720, ≤ 6.4 MB target) and `<scene-dir>/final-mini.gif` (480×480, ≤ 1.7 MB target). Run from the Plugin root.
+The script produces both `<scene-dir>/final.gif` (720×720, ≤ 6.4 MB target) and `<scene-dir>/final-mini.gif` (480×480, ≤ 1.7 MB target). Both scripts resolve their own location, so the command works from any working directory.
 
 Exit condition: both files exist, the captions read correctly, and `du -h` reports sizes within the targets above. If `final.gif` > 7 MB, the scene is too visually complex; see § Failure Recovery.
 
@@ -92,7 +94,7 @@ Exit condition: both files exist, the captions read correctly, and `du -h` repor
 
 - Caption: (none)
 - Pose: phone in one tentacle, eyes down, neutral mouth
-- Stage 4 command: `python3 scripts/make_gif.py <scene-dir> ""` — the overlay is empty, only the video frames survive.
+- Stage 4 command: `python3 "${PLUGIN_ROOT}/scripts/make_gif.py" <scene-dir> ""` — the overlay is empty, only the video frames survive.
 
 ### 6.3 期待 m3pro (waiting for m3pro)
 
@@ -112,7 +114,7 @@ The host tool only accepts paths inside the host's workspace. Copy `<scene-dir>/
 
 ### 7.3 Stage 4 final.gif > 7 MB
 
-The scene is visually complex (motion blur, gradient, many distinct colors). Lower `PALETTE_DITHER` from `bayer:bayer_scale=5` to `bayer:bayer_scale=4` in `scripts/make_gif.py`, or reduce `FPS` from 24 to 20. Re-run stage 4; do not regenerate base or video.
+The scene is visually complex (motion blur, gradient, many distinct colors). Lower `PALETTE_DITHER` from `bayer:bayer_scale=5` to `bayer:bayer_scale=4` in `"${PLUGIN_ROOT}/scripts/make_gif.py"`, or reduce `FPS` from 24 to 20. Re-run stage 4; do not regenerate base or video.
 
 ## 8. Quick Reference
 

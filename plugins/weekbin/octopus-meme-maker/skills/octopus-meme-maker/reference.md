@@ -67,11 +67,11 @@ Style: high-quality 3D character render, vibrant coral-pink plush-toy texture (S
 | `breakdown-h3.mp4` | 478 KB | 我裂开了 | Both hands on the head, eyes spiraling |
 | `treat-milk-tea-h3.mp4` | 631 KB | 请大家喝奶茶 | All 8 tentacles holding a colorful cup |
 
-The maintainer's full H3 collection lives in `~/Documents/cute/app/public/assets/octopus/_h3-source/` (9 videos covering the existing scene set). This Plugin only ships 2 to keep the package small — pick whichever scene the user is making, extract its first frame, and feed it to stage 1 as one of the `image_synthesize` `input_file_paths`.
+This Plugin ships 2 sample videos to keep the package small. They are illustrations of the animation feel, not a required input. Generate the H3 video for your own scene when you reach stage 2.
 
-### When to use the h3 video as the base input
+### When to use an h3 video as the base input
 
-When the user already has an h3 video for the scene they want (either from this Plugin's `reference/videos/` or from the maintainer's full collection), pass that video to `image_synthesize` as a `first_frame_image` source: extract the first frame with `ffmpeg -i <path-to-h3>.mp4 -vframes 1 /tmp/<scene>-first.png`, then pass `/tmp/<scene>-first.png` plus the 6 `sample_0*.png` as `input_file_paths`. This locks the character and the scene composition, then stage 1 of the pipeline only needs to vary the pose / expression — not the whole layout.
+When an H3 video for the target scene already exists (this Plugin's `reference/videos/`, or one you generated), pass it to `image_synthesize` as a `first_frame_image` source: extract the first frame with `ffmpeg -i <path-to-h3>.mp4 -vframes 1 /tmp/<scene>-first.png`, then pass `/tmp/<scene>-first.png` plus the 6 `sample_0*.png` as `input_file_paths`. This locks the character and the scene composition, then stage 1 of the pipeline only needs to vary the pose / expression — not the whole layout.
 
 ## Default settings
 

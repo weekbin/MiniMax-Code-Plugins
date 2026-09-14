@@ -11,4 +11,4 @@ This directory holds `base.png` samples that the maintainer has successfully ext
 | `10-toilet-slacking-base.png` | image_synthesize (no matching H3 source) | yes — locks toilet tiles + phone + open-mouth smile |
 | `11-touch-fish-base.png` | image_synthesize (seeded with maintainer's external H3 first frame) | yes — locks desk + salmon + side-glance |
 
-When adding a new base, follow the `<scene-number>-<scene-name>-base.png` convention. The matching H3 source video (if any) lives in the maintainer's external collection at `~/Documents/cute/app/public/assets/octopus/_h3-source/`; this Plugin only ships 2 illustrative H3 videos in `reference/videos/` (`breakdown-h3.mp4`, `treat-milk-tea-h3.mp4`).
+When adding a new base, follow the `<scene-number>-<scene-name>-base.png` convention. The matching H3 source video is not required and is not part of this package; this Plugin only ships 2 illustrative H3 videos in `reference/videos/` (`breakdown-h3.mp4`, `treat-milk-tea-h3.mp4`).

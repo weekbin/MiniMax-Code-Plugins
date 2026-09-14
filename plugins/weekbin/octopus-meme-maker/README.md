@@ -57,7 +57,7 @@ Expected result: `<scene-dir>/base.png` (2048×2048 base) → `<scene-dir>/video
 
 ## Verification
 
-Run from the Plugin root:
+Run from this Plugin's root directory:
 
 ```bash
 python3 scripts/make_text_overlay.py "再熬一会" /tmp/octopus_test_overlay.png
@@ -66,6 +66,15 @@ python3 scripts/make_gif.py /path/to/some/scene-dir "再熬一会"
 ```
 
 All three scripts must exit 0 and produce the expected output file.
+
+## Packaging and submission
+
+This directory is both a community-registry Plugin and a MiniMax Marketplace package:
+
+- `plugin.json` — the community-registry manifest (`$schema: https://agent-plugins.org/schemas/1.0.0/plugin.schema.json`).
+- `.minimax-plugin/plugin.json` — the Marketplace entry point. A Marketplace ZIP or GitHub subdirectory submission must have this file directly at its root.
+
+For a Marketplace submission, point the source at this directory (`plugins/weekbin/octopus-meme-maker`). The registry-only `plugin.json` and the `examples/` directory are not referenced by the Marketplace manifest.
 
 ## License
 
