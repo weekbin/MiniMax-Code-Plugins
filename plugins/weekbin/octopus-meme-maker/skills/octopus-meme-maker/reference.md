@@ -1,6 +1,22 @@
-# Character Reference
+# Character & Style Reference
 
-Use this file to keep the character consistent across scenes. Read it before every `image_synthesize` call in stage 1.
+Use this file to keep the character consistent across scenes. Read it before
+every `image_synthesize` call in stage 1.
+
+## What the bundled reference folders actually are
+
+This Plugin ships two folders that work together:
+
+| Folder | What it actually contains | Role in the pipeline |
+|---|---|---|
+| `examples/<scene>-base.png` | Three complete 3D Squishmallow-style base images produced by `image_synthesize` for prior scenes (stay-late / toilet-slacking / touch-fish). | **The character + style reference.** Pass all three as `input_file_paths` for every new scene; the prompt overrides the scene composition but inherits the Squishmallow style, anatomy, and rendering vibe. |
+| `reference/videos/*.mp4` | Two illustrative H3-generated videos (breakdown, treat-milk-tea) showing the animation feel this Plugin targets. | **Animation-feel reference.** Optional; pass the first frame to `image_synthesize` if you want to lock both the character AND the scene composition from a known-good H3 source (see § h3 Source Videos below). |
+
+> **Removed in 0.2.0:** the old `reference/sample_0[1-6].png` and
+> `reference/overview.png` files were 6 frame extractions from an unrelated
+> "在改了" GIF (a flat-shaded 2D cartoon, not the Squishmallow character this
+> skill produces). They were misleading the model toward the wrong style and
+> have been deleted from the repository. Do not reintroduce them.
 
 ## Anatomy (must match the reference frames exactly)
 
@@ -14,22 +30,26 @@ Use this file to keep the character consistent across scenes. Read it before eve
 ## Style
 
 - Smooth Squishmallow / Pop Mart 3D render, vibrant coral-pink plush-toy texture, NOT furry, NOT stitched plush.
-- Soft warm lighting. Office setting: desk + lamp + monitor + 1 keyboard (background may vary by scene).
-- Cute, not sinister. The whole character reads as a friendly office worker.
+- Soft warm lighting. Background varies by scene (office desk for work scenes, restroom for toilet scenes, BBQ grill for grill scenes, etc.).
+- Cute, not sinister. The whole character reads as a friendly office worker / meme character.
 
 ## Reference images
 
-The 6 frames below are the ground truth. Pass all 6 to `image_synthesize` as `input_file_paths` every time you generate a base pose. One reference is not enough; the model needs the full set to lock the anatomy.
+**Always pass the three `examples/*.png` files** as `input_file_paths` to
+`image_synthesize` for every new scene. They lock the
+Squishmallow style, the 8 tentacles, the eye anatomy, and the head bumps.
+The prompt supplies the new scene composition; the references supply the
+visual style.
 
 | File | What it shows |
 |---|---|
-| `reference/sample_01.png` | Front-on office, neutral face |
-| `reference/sample_02.png` | Coffee mug, half-lidded eyes |
-| `reference/sample_03.png` | Phone-in-tentacle, looking down |
-| `reference/sample_04.png` | Smug horizontal smirk (NOT upturned) |
-| `reference/sample_05.png` | Sprawled on desk, sleepy |
-| `reference/sample_06.png` | Back-view, 8 tentacles visible |
-| `reference/overview.png` | 6-up contact sheet for quick visual scan |
+| `examples/02-stay-late-base.png` | Half-lidded eyes, octopus at desk with coffee + monitor |
+| `examples/10-toilet-slacking-base.png` | Open-mouth smile, big sparkly eyes, octopus on toilet reading phone |
+| `examples/11-touch-fish-base.png` | Side-glance, octopus at desk with salmon |
+
+If you also have a relevant H3 source video (see § h3 Source Videos below),
+pass its first frame as an additional `input_file_path` to lock the scene
+composition too.
 
 ## Prompt template (paste into image_synthesize)
 
@@ -71,7 +91,7 @@ This Plugin ships 2 sample videos to keep the package small. They are illustrati
 
 ### When to use an h3 video as the base input
 
-When an H3 video for the target scene already exists (this Plugin's `reference/videos/`, or one you generated), pass it to `image_synthesize` as a `first_frame_image` source: extract the first frame with `ffmpeg -i <path-to-h3>.mp4 -vframes 1 /tmp/<scene>-first.png`, then pass `/tmp/<scene>-first.png` plus the 6 `sample_0*.png` as `input_file_paths`. This locks the character and the scene composition, then stage 1 of the pipeline only needs to vary the pose / expression — not the whole layout.
+When an H3 video for the target scene already exists (this Plugin's `reference/videos/`, or one you generated), pass it to `image_synthesize` as a `first_frame_image` source: extract the first frame with `ffmpeg -i <path-to-h3>.mp4 -vframes 1 /tmp/<scene>-first.png`, then pass `/tmp/<scene>-first.png` plus the **3 `examples/*.png`** as `input_file_paths`. This locks the Squishmallow style and the scene composition, then stage 1 of the pipeline only needs to vary the pose / expression — not the whole layout.
 
 ## Default settings
 

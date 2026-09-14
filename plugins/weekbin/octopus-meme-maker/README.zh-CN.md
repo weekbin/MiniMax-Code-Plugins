@@ -6,8 +6,8 @@
 
 ```text
 给我做一个新的章鱼打工人表情包：摆烂躺平（趴在桌上，一只眼睛半闭，另一只全闭，一条触手尖端着一杯咖啡）。
-角色必须和 reference/sample_01..06.png 里的参考帧一致。
-结果存到 <scene-dir>/，按 skills/octopus-meme-maker/SKILL.md 里的 4 阶段流水线执行。
+角色必须和 examples/*.png 里的 3D Squishmallow 风格 base 图一致。
+结果存到 <scene-dir>/，按 skills/octopus-meme-maker/SKILL.md 里的 4 阶段流水线执行（6 张候选拼图 → 用户挑选 → base.png）。
 ```
 
 预期产物：`<scene-dir>/base.png`（2048×2048 底图）→ `<scene-dir>/video.mp4`（1080p 6 秒 24fps，141 帧）→ `<scene-dir>/final.gif`（720×720，141 帧）→ `<scene-dir>/final-mini.gif`（480×480，141 帧）。
@@ -20,10 +20,8 @@
 - `scripts/make_text_overlay.py` — 渲染透明中文文字叠加层（Pillow，跨平台字体探测）
 - `scripts/make_preview_strip.py` — 从 6 秒视频抽 5 个关键帧拼成预览条
 - `scripts/make_gif.py` — 由视频 + 叠加层组装 720×720 `final.gif` 与 480×480 `final-mini.gif`（调用 ffmpeg）
-- `reference/sample_01..06.png` — 角色基准帧（6 张）
-- `reference/overview.png` — 6 图拼版速览
+- `examples/` — 3 张底图样片，**就是真正的角色 / 风格参考**。每次新建场景都必须把这 3 张全部作为 `input_file_paths` 传给 `image_synthesize`，用来锁住 Squishmallow 风格、解剖和渲染氛围；场景构图由 prompt 覆盖：`02-stay-late-base.png`、`10-toilet-slacking-base.png`、`11-touch-fish-base.png`
 - `reference/videos/` — 2 个 H3 源视频样片（768×768、24fps、6.58 秒、h264+aac）：`breakdown-h3.mp4`（我裂开了）、`treat-milk-tea-h3.mp4`（请大家喝奶茶）
-- `examples/` — 3 张底图样片，可直接作为 `image_synthesize` 的 `input_file_paths` 锁住角色与构图：`02-stay-late-base.png`、`10-toilet-slacking-base.png`、`11-touch-fish-base.png`
 - `icon.png` — 插件图标（512×512 PNG）
 
 ## 依赖

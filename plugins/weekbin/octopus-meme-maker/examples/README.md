@@ -2,7 +2,7 @@
 
 This directory holds `base.png` samples that the maintainer has successfully extracted. They serve two purposes:
 
-1. **抽卡的基础图** — pass them as `input_file_paths` to `image_synthesize` together with `reference/sample_0*.png` to lock the character anatomy and the scene layout, then vary only the pose / expression.
+1. **抽卡的基础图** — pass them as `input_file_paths` to `image_synthesize` to lock the Squishmallow style, the character anatomy (8 stubby pink tentacles, head bumps, large white-circle eyes with black round pupils), and the soft 3D render vibe. The prompt overrides the scene composition for the new scene. **All three should be passed together** for every new base pose; do not cherry-pick one.
 2. **Reference for the scene table** — the file naming matches the maintainer's external scene table, e.g. `<works>/octopus-worker-meme/<scene-number>-<scene-name>/`, so consumers can cross-reference.
 
 | File | Source | Use as `image_synthesize` input_file_path? |
