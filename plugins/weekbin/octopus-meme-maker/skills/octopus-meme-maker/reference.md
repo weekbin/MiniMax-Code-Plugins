@@ -21,15 +21,17 @@ This Plugin ships two folders that work together:
 ## Anatomy (must match the reference frames exactly)
 
 - **Body color** — uniform coral-pink everywhere on the head. No second tone, no shading patches, no ears in a different color.
+- **Body surface** — smooth Squishmallow / Pop Mart vinyl plush-toy texture with soft diffuse lighting. **Not** flocked, **not** fuzzy, **not** felt, **not** furry, **not** woven, **not** cloth / fabric. The model often drifts toward "flocked velvet" when the scene is "well-done" or "charred" — reject any output whose body shows a fabric / flocking texture. Cross-check: it should look like a polished plastic toy, not like a stuffed animal.
 - **Eyes** — two large white circles drawn directly on the pink face. Inside each white circle: a black round pupil taking up roughly half the white circle, with a small white highlight dot on the pupil.
 - **Upper eyelids** — one short thin black arc above each white circle, horizontal, covering the top 30% of the white. The two arcs are independent (a strip of pink forehead sits between them). Never tilt the outer corners up.
-- **Mouth** — small horizontal squiggle or omega-frown, slightly open. No teeth, no tongue.
-- **Head bumps** — two small soft ear-like bumps on top of the head. They are part of the body, not protruding.
+- **Mouth** — small horizontal squiggle or omega-frown, slightly open. No teeth, no tongue, no visible inner mouth.
+- **Head bumps** — **two** small soft ear-like bumps on top of the head. Both bumps MUST be visible in the final image — never let pose (e.g. lying on back, head tucked), angle (e.g. side profile with one bump occluded), props, smoke, steam, water droplets, or framing crop hide them. The skill's standard pose is a 3/4 front view where both bumps read clearly. If the pose you need would hide a bump, change the pose or the camera angle.
 - **Tentacles** — 8 short stubby tentacles around the bottom.
 
 ## Style
 
-- Smooth Squishmallow / Pop Mart 3D render, vibrant coral-pink plush-toy texture, NOT furry, NOT stitched plush.
+- Smooth Squishmallow / Pop Mart 3D render, vibrant coral-pink plush-toy surface with a soft vinyl sheen. NOT furry, NOT stitched plush, NOT flocked velvet, NOT felt, NOT fabric weave, NOT cloth.
+- Render quality: high-resolution, crisp details, consistent surface texture across the whole body. Reject any output that looks blurry, fuzzy, or has inconsistent texture zones (e.g. smooth head but flocked tentacles).
 - Soft warm lighting. Background varies by scene (office desk for work scenes, restroom for toilet scenes, BBQ grill for grill scenes, etc.).
 - Cute, not sinister. The whole character reads as a friendly office worker / meme character.
 
@@ -55,7 +57,7 @@ composition too.
 
 ```text
 A cute pink octopus mascot plush toy character in [SCENE_POSE].
-Round coral-pink head with TWO small soft ear-like bumps on top.
+Round coral-pink head with TWO clearly visible small soft ear-like bumps on top of the head — BOTH bumps must be visible and unobscured in the final image (no pose / angle / smoke / props / framing crop may hide them).
 8 stubby pink tentacles total.
 
 [Concrete action / expression / prop description for this scene]
@@ -69,13 +71,19 @@ CRITICAL EYE ANATOMY (must match the reference exactly):
 - Both arcs are the same length and mirror each other.
 - Plenty of WHITE EYEBALL VISIBLE around the black pupil and under the eyelid.
 
-MOUTH: small horizontal squiggly line or omega-frown, slightly open. No teeth, no tongue.
+MOUTH: small horizontal squiggly line or omega-frown, slightly open. No teeth, no tongue, no visible inner mouth.
 
 EXPRESSION: [scene-specific emotion], cute, not sinister.
 
 [Pose / background / KEEP / NO list per scene]
 
-Style: high-quality 3D character render, vibrant coral-pink plush-toy texture (Squishmallow / Pop Mart), soft warm lighting, [scene background]. The character is the same pink octopus mascot from the reference images.
+SURFACE (highest priority after anatomy):
+- The character body must have a smooth Squishmallow / Pop Mart plush-toy vinyl surface with a soft sheen.
+- DO NOT render the body as flocked velvet, fuzzy fabric, felt, fur, woven cloth, or stitched plush.
+- Texture must be consistent across the entire body — no smooth/fuzzy zones.
+- Crisp high-resolution render, no soft blur.
+
+Style: high-quality 3D character render (NOT 2D cartoon, NOT pixel art, NOT clay), vibrant coral-pink Squishmallow plush-toy vinyl surface, soft warm lighting, [scene background]. The character is the same pink octopus mascot from the reference images.
 ```
 
 ## h3 Source Videos

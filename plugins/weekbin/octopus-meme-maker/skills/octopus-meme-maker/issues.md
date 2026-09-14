@@ -11,7 +11,10 @@ When the user reports a problem, find the matching row, read the root cause, app
 | Visible teeth or tongue | Prompt contains "show teeth" or "tongue" | Add explicit "NEVER show teeth or tongue" |
 | Eyebrows drawn as a single black bar | Prompt contains "eyebrow" (misread as one thick bar) | Replace with the per-eye upper-eyelid arc description |
 | Mouth tilts upward into a grin | Prompt or model defaulted to a smile | Add "Mouth opens HORIZONTALLY, never angles upward" |
-| Head bumps missing | Prompt did not mention them | Add "TWO small soft ear-like bumps on top" to the anatomy block |
+| Head bumps absent (model rendered zero bumps) | Prompt did not mention them | Add "TWO small soft ear-like bumps on top" to the anatomy block |
+| Head bumps HIDDEN by pose / angle / smoke / framing (model rendered them, but the camera angle, a tucked pose, dense smoke, or a tight crop hides one or both bumps) | Pose or composition overrules the bumps; this is the more common failure mode of the two | (1) Move the bumps mention to the very top of the prompt, (2) add "BOTH bumps must be visible and unobscured in the final image — do not let pose / angle / smoke / framing hide them", (3) when the scene requires a tight pose (e.g. octopus on its back, head tucked under tentacles), change the pose or the camera angle so both bumps read |
+| Body surface looks flocked / fuzzy / felt / furry / woven / cloth instead of smooth Squishmallow vinyl | Model drifts toward "well-done plush" or "charred plush" and adds a fabric texture; common when the scene is BBQ / fire / hot / cozy | (1) Add the SURFACE block from `reference.md` § Prompt template verbatim, (2) call out the failure mode explicitly: "DO NOT render the body as flocked velvet, fuzzy fabric, felt, fur, woven cloth, or stitched plush", (3) add "Texture must be consistent across the entire body — no smooth/fuzzy zones", (4) re-check ALL 6 candidates in the contact sheet, not just one |
+| One candidate in the batch looks sharper than the others (texture / lighting / crispness drift across the 6) | Inconsistent prompt application across parallel requests | Reject the off-style candidates and re-roll ONLY those indices with the SURFACE block added at the top of the prompt, not the bottom |
 
 ## Pipeline failures
 
@@ -29,6 +32,8 @@ When the user reports a problem, find the matching row, read the root cause, app
 |---|---|
 | "眼睛是白色的嘛" or "眼睛画错了" | Re-read `reference.md` § Anatomy; re-paste the full eye block; re-run stage 1 |
 | "邪恶" or "太丑了" | Sweep the prompt for any ban-list word; replace with horizontal / cute / not-sinister |
+| "质感不对" / "fuzzy" / "flocked" / "像毛绒玩具" / "像布料" | Add the SURFACE block from `reference.md` § Prompt template verbatim; reject any candidate whose body looks like fabric; re-roll with the SURFACE block at the TOP of the prompt |
+| "耳朵没了" / "缺耳朵" / "头上没凸起" | First check whether the bumps are HIDDEN (camera angle / pose / framing) rather than absent — if so, change the pose or the camera angle per the "Head bumps HIDDEN" ban-list row; if truly absent, add the bumps line at the very top of the prompt |
 | "切掉了一部分" or "图片被裁了" | Stop cropping the video for text. Use the transparent overlay path (stage 4) |
 | "文字后面有白底" | The script's overlay is transparent by default; check that the canvas is RGBA and `(0,0,0,0)` |
 | "视频太短 / 太快" | Check `ffprobe` `nb_frames` and `duration`; the target is 141 frames at 24fps = 5.87s |

@@ -190,13 +190,22 @@ Exit condition: both files exist, `ffprobe -select_streams v:0 -show_entries str
 ### 7.1 Stage 1 contact-sheet round needs a re-roll
 
 If the user issues an all-bad signal ("全部不行" / "再抽" / "继续抽卡") or
-specific feedback ("嘴不行" / "表情不够慵懒"):
+specific feedback ("嘴不行" / "表情不够慵懒" / "质感不对" / "缺耳朵"):
 
 1. Re-read `issues.md` § Ban-list and § Feedback signals. Map the feedback
-   to one or more concrete prompt deltas — e.g. "mouth too dark" → drop
-   any word that could be misread as a lip color; "想要更慵懒" → push the
-   eyelid-arc coverage from "top 30%" to "top 50%"; "再焦一点" → raise
-   grill-mark count from 3-4 to 5-6 stripes.
+   to one or more concrete prompt deltas — e.g.:
+   - "mouth too dark" → drop any word that could be misread as a lip color;
+   - "想要更慵懒" → push the eyelid-arc coverage from "top 30%" to "top 50%";
+   - "再焦一点" → raise grill-mark count from 3-4 to 5-6 stripes;
+   - **"质感不对" / "fuzzy" / "flocked" / "像毛绒玩具"** → add the SURFACE
+     block from `reference.md` § Prompt template at the TOP of the prompt;
+     call out the failure mode explicitly; re-check ALL 6 candidates not
+     just the ones the user flagged (texture drift tends to cluster in
+     the same batch);
+   - **"缺耳朵" / "头上没凸起"** → first check whether the bumps are
+     HIDDEN by pose / angle / smoke (the more common failure) rather than
+     absent; if hidden, change the pose or the camera angle; if truly
+     absent, add the bumps line at the very top of the prompt.
 2. Increment N → N+1. Generate a new batch of 6 candidates with the
    refined prompt. **Do not** delete the previous round's files; they are
    evidence and let the user compare.
