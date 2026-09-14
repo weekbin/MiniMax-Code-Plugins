@@ -81,7 +81,36 @@ For a Marketplace submission, point the source at this directory (`plugins/weekb
 
 `icon.png` is referenced by the Marketplace manifest's `icon` field (512×512 PNG, square, transparent background).
 
-The client renders a plugin's icon from the `icon_url` the desktop service returns for that plugin — it does not read an `icon.png` from the installed plugin directory. A plugin installed locally from the community registry therefore shows the client's default icon; the bundled `icon.png` starts appearing only **after the package is published to the Marketplace**, when the intake pipeline extracts it and the catalog begins serving it.
+The runtime resolves a plugin's icon from the MiniMax manifest (`.minimax-plugin/plugin.json`) — that is the only manifest format with an `icon` field. The Agent Plugins V1 manifest (`plugin.json`) has no icon field at all.
+
+**The two manifest formats cannot both be active in one directory.** The runtime's reader prefers a valid Agent Plugins V1 root `plugin.json`:
+
+```ts
+if (await pluginPathExists(root, 'plugin.json', 'file')) {
+  const agentPlugin = await tryReadAgentPluginPackage(rootPath);
+  if (agentPlugin) return agentPlugin;   // root plugin.json wins
+}
+if (manifests.hasMiniMax) return readMiniMaxPluginPackage(rootPath, { source: 'LOCAL_MINIMAX' });
+```
+
+So in this repository layout, the root `plugin.json` wins and the MiniMax manifest — `icon`, `category`, `displayName`, `exampleQueries` — is never read. A locally installed copy therefore shows the runtime's default icon.
+
+This directory serves two channels with different requirements:
+
+| Channel | Needs | Icon |
+|---|---|---|
+| Community registry (this repo) | root `plugin.json` | not supported by the Agent Plugins format |
+| Local install / Marketplace package | `.minimax-plugin/plugin.json`, **no root `plugin.json`** | shown |
+
+To build a local-install / Marketplace package, copy this directory and drop the root manifest:
+
+```bash
+rsync -a --exclude '/plugin.json' \
+  plugins/weekbin/octopus-meme-maker/ \
+  <local-package-dir>/
+```
+
+Then install from `<local-package-dir>`. The `--exclude` is anchored (`/plugin.json`), so `.minimax-plugin/plugin.json` is kept.
 
 ### Localization
 
