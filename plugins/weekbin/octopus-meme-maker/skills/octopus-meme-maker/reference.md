@@ -10,13 +10,7 @@ This Plugin ships two folders that work together:
 | Folder | What it actually contains | Role in the pipeline |
 |---|---|---|
 | `examples/<scene>-base.png` | Three complete 3D Squishmallow-style base images produced by `image_synthesize` for prior scenes (stay-late / toilet-slacking / touch-fish). | **The character + style reference.** Pass all three as `input_file_paths` for every new scene; the prompt overrides the scene composition but inherits the Squishmallow style, anatomy, and rendering vibe. |
-| `reference/videos/*.mp4` | Two illustrative H3-generated videos (breakdown, treat-milk-tea) showing the animation feel this Plugin targets. | **Animation-feel reference.** Optional; pass the first frame to `image_synthesize` if you want to lock both the character AND the scene composition from a known-good H3 source (see § h3 Source Videos below). |
-
-> **Removed in 0.2.0:** the old `reference/sample_0[1-6].png` and
-> `reference/overview.png` files were 6 frame extractions from an unrelated
-> "在改了" GIF (a flat-shaded 2D cartoon, not the Squishmallow character this
-> skill produces). They were misleading the model toward the wrong style and
-> have been deleted from the repository. Do not reintroduce them.
+| `reference/videos/*.mp4` | Two illustrative H3-generated videos (breakdown, treat-milk-tea) showing the animation feel this Plugin targets. | **Animation-feel reference.** Optional; see § h3 Source Videos below. |
 
 ## Character — what the Squishmallow octopus ACTUALLY looks like
 
@@ -96,8 +90,8 @@ visual style.
 | `examples/11-touch-fish-base.png` | Side-glance, octopus at desk with salmon |
 
 If you also have a relevant H3 source video (see § h3 Source Videos below),
-pass its first frame as an additional `input_file_path` to lock the scene
-composition too.
+extract its first frame into the session workspace and pass it as a fourth
+`input_file_path` to lock the scene composition too.
 
 ## Prompt template (paste into image_synthesize)
 
@@ -158,12 +152,20 @@ This Plugin ships 2 sample videos to keep the package small. They are illustrati
 
 ### When to use an h3 video as the base input
 
-When an H3 video for the target scene already exists (this Plugin's `reference/videos/`, or one you generated), pass it to `image_synthesize` as a `first_frame_image` source: extract the first frame with `ffmpeg -i <path-to-h3>.mp4 -vframes 1 /tmp/<scene>-first.png`, then pass `/tmp/<scene>-first.png` plus the **3 `examples/*.png`** as `input_file_paths`. This locks the Squishmallow style and the scene composition, then stage 1 of the pipeline only needs to vary the pose / expression — not the whole layout.
+When an H3 video for the target scene already exists (this Plugin's
+`reference/videos/`, or one you generated), extract its first frame **into the
+session workspace** and pass that frame as a fourth `input_file_path` — for
+example, write it to `<scene-dir>/iterations/h3-first.png` and pass
+`input_file_paths = [the 3 examples/*.png, "<scene-dir>/iterations/h3-first.png"]`.
+The host accepts at most 4 reference images and rejects paths outside the
+session workspace, so a frame left in `/tmp` cannot be used. This locks the
+Squishmallow style and the scene composition, so stage 1 only needs to vary the
+pose / expression — not the whole layout.
 
 ## Default settings
 
-- Resolution: 2048×2048 (2K 1:1)
-- Aspect ratio: 1:1
+- `resolution`: `2K`, `aspect_ratio`: `1:1` → 2048×2048 PNG
+- `input_file_paths`: the 3 `examples/*.png` files (the host accepts at most 4)
 - Negative prompt: anything that triggers the `issues.md` ban-list (smirk,
   evil, teeth, tongue, eyebrow, tilted eyelids, missing head bumps,
   bear-ear bumps, chibi / anime proportions, fuzzy / flocked body,

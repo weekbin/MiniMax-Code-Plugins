@@ -15,8 +15,9 @@ Expected result: `<scene-dir>/base.png` (2048×2048 base) → `<scene-dir>/video
 - `skills/octopus-meme-maker/SKILL.md` — the 4-stage pipeline + ban-list + exit conditions
 - `skills/octopus-meme-maker/reference.md` — character anatomy, style rules, prompt template, reference image list
 - `skills/octopus-meme-maker/issues.md` — known failure modes and feedback signals
+- `scripts/make_contact_sheet.py` — compose the 6-candidate contact sheet stage 1 hands to the user (Pillow)
 - `scripts/make_text_overlay.py` — render transparent Chinese text overlay (Pillow, cross-platform font picker)
-- `scripts/make_preview_strip.py` — extract 5 key frames from a 6s video and stitch a preview strip
+- `scripts/make_preview_strip.py` — extract 5 key frames from the video and stitch a preview strip (ffmpeg + Pillow)
 - `scripts/make_gif.py` — compose 720×720 final.gif + 480×480 final-mini.gif from video + overlay (ffmpeg subprocess)
 - `examples/` — 3 base.png samples that the maintainer has successfully extracted. **This is the character / style reference.** Pass all three as `input_file_paths` to `image_synthesize` for every new scene to lock the Squishmallow style, anatomy, and rendering vibe; the prompt overrides the scene composition: `02-stay-late-base.png`, `10-toilet-slacking-base.png`, `11-touch-fish-base.png`
 - `reference/videos/` — 2 h3 source videos (768×768, 24 fps, 6.58 s, h264+aac) picked as illustrative animation samples: `breakdown-h3.mp4` (我裂开了) and `treat-milk-tea-h3.mp4` (请大家喝奶茶)
@@ -43,9 +44,9 @@ Expected result: `<scene-dir>/base.png` (2048×2048 base) → `<scene-dir>/video
 
 ## Supported platforms
 
-- macOS 13+ (verified by the original author on macOS)
-- Linux (Ubuntu 22.04+, Debian 12+; ffmpeg + Python + Pillow only)
-- Windows 10/11 with PowerShell or Git Bash; the pipeline is pure Python + ffmpeg subprocess calls
+- **macOS 13+** — verified by the maintainer (Python 3.14, Pillow 12.3, ffmpeg 8.1.2).
+- **Linux** — expected to work and not yet verified on a Linux host. The scripts are pure Python + Pillow + ffmpeg with no OS-specific branches, and the font picker covers `wqy-microhei` / `noto-cjk`.
+- **Windows 10/11** — expected to work and not yet verified on a Windows host. The scripts use `subprocess.run` with argument lists (no shell, so no quoting or injection surface), and the font picker covers `C:\Windows\Fonts\msyh.ttc`.
 
 ## Data and network
 

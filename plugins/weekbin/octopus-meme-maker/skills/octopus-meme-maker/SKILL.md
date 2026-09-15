@@ -22,10 +22,8 @@ Read `reference.md` (anatomy + prompt template) and `issues.md` (ban-list + fail
 Shell blocks in this file are POSIX shell: macOS, Linux, or Git Bash on Windows.
 
 The character / style reference is the **3 `examples/*.png` files** (3D
-Squishmallow-style bases from prior scenes). Do **NOT** copy `sample_*.png`
-— those are 6 frames of a different (2D flat-shaded) "在改了" GIF and will
-pull the model toward the wrong style. See `reference.md` for the full
-rationale.
+Squishmallow-style bases from prior scenes). `reference.md` § Reference images
+explains why a finished base pose, and not a video frame, is the right anchor.
 
 ```shell
 mkdir -p <scene-dir>/iterations <scene-dir>/frames-check
@@ -44,9 +42,10 @@ non-contact-sheet round is treated as an unauthorised shortcut.
 ### 2.1 Generate 6 candidates in one batch
 
 Submit one `image_synthesize` call with **6 parallel requests** in the
-`requests` array (NOT 6 separate calls). All 6 share the same prompt and the
-same 6 reference frames; the model produces 6 distinct candidates in one
-round-trip.
+`requests` array (NOT 6 separate calls). The tool accepts up to 10 requests.
+All 6 share the same prompt and the same `input_file_paths` — the 3
+`examples/*.png` files, since the tool accepts at most 4 reference images per
+request. The model returns 6 distinct candidates in one round-trip.
 
 Save successful outputs to `<scene-dir>/iterations/vN-{1..6}-base.jpg`,
 where `N` is the round number starting at 1. Reject any candidate that
@@ -140,18 +139,31 @@ loop has no upper bound on rounds — keep re-rolling until the user picks.
 Only an explicit user signal ("选了 / OK / 继续 / 放弃 / 放松 prompt") ends
 the loop; nothing else counts.
 
-## 3. Stage 2 — 6s video (gen_videos, 1080p 24fps)
+## 3. Stage 2 — video (gen_videos)
 
-Call `gen_videos` with `<scene-dir>/base.png` as `first_frame_image` and a 6-second prompt that restates the stage 1 prompt's style block. Copy the output to `<scene-dir>/video.mp4` inside the host's workspace (host tool requires a workspace-relative path; absolute paths fail).
+Call `gen_videos` once with a single request in the `requests` array (the tool
+accepts up to 5).
 
 ### 3.1 gen_videos parameters
 
-```text
-video_prompt = "<stage 1 style block> + <6-second motion description>"
-duration     = 6s
-fps          = 24
-size         = 1080x1080
-```
+| Field | Value |
+|---|---|
+| `prompt` | the stage 1 style block + this scene's motion description |
+| `output_file_path` | `<scene-dir>/video.mp4` — required |
+| `input_image_path` | `<scene-dir>/base.png` — the base pose the user picked |
+| `reference_type` | `first_frame` |
+| `duration` | `6` |
+| `resolution` | `1080P` |
+
+Every path passed to a host tool must be **workspace-relative**. The host
+rejects absolute paths and any path outside the session workspace, system temp
+directories among them. `output_file_path` is where the host writes the mp4 —
+there is no separate copy step.
+
+`fps` is not a `gen_videos` parameter. The host picks the frame rate and
+returns 24 fps for these clips, which is what the stage 4 scripts expect.
+Generation is asynchronous and can take several minutes; the file appears at
+`output_file_path` only after the job succeeds.
 
 Exit condition: `<scene-dir>/video.mp4` exists and `ffprobe -show_streams video.mp4` reports `width=1080 height=1080` at `r_frame_rate=24/1` with `nb_frames=141`.
 
@@ -241,10 +253,11 @@ specific feedback ("嘴不行" / "表情不够慵懒" / "质感不对" / "缺耳
      call out the failure mode explicitly; re-check ALL 6 candidates not
      just the ones the user flagged (texture drift tends to cluster in
      the same batch);
-   - **"缺耳朵" / "头上没凸起"** → first check whether the bumps are
-     HIDDEN by pose / angle / smoke (the more common failure) rather than
-     absent; if hidden, change the pose or the camera angle; if truly
-     absent, add the bumps line at the very top of the prompt.
+   - **"缺耳朵" / "头上没凸起"** → count the candidates that clearly show the
+     nubs. If **≥ 1 of 6** shows them, they are HIDDEN by pose / angle / smoke
+     (the common case): change the pose or the camera angle. If **0 of 6**
+     shows them, they are genuinely absent: add the bumps line at the very top
+     of the prompt.
 2. Increment N → N+1. Generate a new batch of 6 candidates with the
    refined prompt. **Do not** delete the previous round's files; they are
    evidence and let the user compare.
@@ -254,9 +267,14 @@ If `N` reaches 4 without a user pick, escalate: surface the best candidate
 from rounds 1-3 in a final contact sheet and ask the user to either pick
 the best of the rest, relax the prompt scope, or abandon the scene.
 
-### 7.2 Stage 2 gen_videos returns "input file path outside workspace"
+### 7.2 Stage 2 gen_videos rejects the path
 
-The host tool only accepts paths inside the host's workspace. Copy `<scene-dir>/base.png` to `<host-workspace>/<scene-dir>/base.png` first, then pass the workspace-relative path. Do not pass an absolute path.
+The host rejects absolute paths and any path outside the session workspace,
+system temp directories among them. Keep both `output_file_path` and
+`input_image_path` workspace-relative, e.g. `<scene-dir>/video.mp4` and
+`<scene-dir>/base.png` relative to the session workspace root. If `base.png`
+was generated outside the workspace, move it inside first, then re-submit with
+the relative path.
 
 ### 7.3 Stage 4 final.gif exceeds 16 MB
 
@@ -267,8 +285,7 @@ The scene carries heavy motion blur, a wide gradient, or many distinct colours. 
 | Stage | Tool | Output | Exit criterion |
 |---|---|---|---|
 | 1. base pose (loop) | `image_synthesize` + `make_contact_sheet.py` | `<scene-dir>/base.png` | 2048×2048 PNG, user-picked from a 6-image contact sheet; loop N → N+1 indefinitely until user picks |
-| 2. video | `gen_videos` | `<scene-dir>/video.mp4` | 1080×1080, 141 frames @ 24fps |
-| 3. preview | `make_preview_strip.py` | `frames-check/preview.png` | 5 frames wide |
+| 2. video | `gen_videos` | `<scene-dir>/video.mp4` | 1080×1080, 141 frames @ 24fps || 3. preview | `make_preview_strip.py` | `frames-check/preview.png` | 5 frames wide |
 | 4. GIF | `make_gif.py` | `final.gif` + `final-mini.gif` | 720,720,141 and 480,480,141 |
 
 For character anatomy, prompt template, and reference frames, see `reference.md`. For known failure modes and feedback-signal translations, see `issues.md`.

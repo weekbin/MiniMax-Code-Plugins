@@ -11,7 +11,8 @@ Six images are arranged in a 3-cols x 2-rows grid; each cell is downscaled to
 so the user can answer "pick 3" / "选第 2 张" without ambiguity. The grid line
 between cells is a 4 px black rule for visual separation. The script accepts
 .jpg / .jpeg / .png files of any resolution; very large sources are downscaled
-to fit before being composited, so the output PNG is at most ~1500x1000 px.
+to fit before being composited. With the default 3 columns the sheet is
+1460x974 px; wider --cols values produce a proportionally wider sheet.
 
 Exit 0: <output> exists, six labelled cells visible.
 Exit 1: wrong number of inputs (must be exactly 6), a source image is unreadable,

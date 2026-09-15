@@ -294,14 +294,7 @@ test('SKILL.md: no UTF-8 BOM, no host-literal paths, no placeholder TODOs', () =
 // 6. Reference and example assets
 // ---------------------------------------------------------------------------
 
-test('reference/ has 6 sample_0*.png + overview.png + 2 h3 videos', () => {
-  for (const f of [
-    'sample_01.png', 'sample_02.png', 'sample_03.png',
-    'sample_04.png', 'sample_05.png', 'sample_06.png',
-    'overview.png',
-  ]) {
-    assert.ok(existsSync(join(REF_DIR, f)), `missing reference/${f}`);
-  }
+test('reference/ carries the 2 h3 sample videos', () => {
   for (const f of ['breakdown-h3.mp4', 'treat-milk-tea-h3.mp4']) {
     assert.ok(existsSync(join(REF_DIR, 'videos', f)), `missing reference/videos/${f}`);
   }
@@ -310,6 +303,125 @@ test('reference/ has 6 sample_0*.png + overview.png + 2 h3 videos', () => {
 test('examples/ has 3 base.png samples', () => {
   for (const f of ['02-stay-late-base.png', '10-toilet-slacking-base.png', '11-touch-fish-base.png']) {
     assert.ok(existsSync(join(EX_DIR, f)), `missing examples/${f}`);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 6b. Host-tool contract vocabulary.
+//
+// These values are not our invention: they were read out of the shipped
+// `@minimax-ai/code` tool schemas (`chunks/chunk-*.js`, mcode 0.4.6). The
+// reviewer's standing rule (PR #33) is that a package may not document host
+// behaviour as executable guidance unless it matches a published contract, so
+// the docs are pinned to the schema here. A doc that drifts back to an
+// invented parameter fails this test.
+// ---------------------------------------------------------------------------
+
+/** Verified against the mcode 0.4.6 tool schemas. */
+const GEN_VIDEOS_FIELDS = [
+  'output_file_path',  // required, workspace-relative
+  'input_image_path',  // optional reference image
+  'reference_type',    // optional: first_frame (default) | last_frame
+  'duration',          // optional: 6 (default) | 10
+  'resolution',        // optional: 768P (default) | 1080P
+];
+
+test('SKILL.md documents gen_videos using only real schema fields', () => {
+  const skill = readText(SKILL);
+  for (const field of GEN_VIDEOS_FIELDS) {
+    assert.ok(skill.includes(field), `SKILL.md must document the real gen_videos field ${field}`);
+  }
+  // Fields that do not exist in the schema. `fps` and `size` were previously
+  // documented as gen_videos parameters, which the schema does not declare.
+  assert.equal(
+    /^\s*fps\s*=/m.test(skill),
+    false,
+    'gen_videos has no `fps` parameter; do not present it as one',
+  );
+  assert.equal(
+    /^\s*size\s*=/m.test(skill),
+    false,
+    'gen_videos has no `size` parameter; the schema field is `resolution` ("768P" | "1080P")',
+  );
+  assert.equal(
+    /first_frame_image/.test(skill),
+    false,
+    '`first_frame_image` is not a gen_videos field; the pair is `input_image_path` + `reference_type: "first_frame"`',
+  );
+});
+
+test('no document names first_frame_image as a host field', () => {
+  for (const f of ['SKILL.md', 'reference.md', 'issues.md']) {
+    const text = readText(join(join(PLUGIN, 'skills', 'octopus-meme-maker'), f));
+    assert.equal(
+      /first_frame_image/.test(text),
+      false,
+      `${f} must not present \`first_frame_image\` as a host field`,
+    );
+  }
+});
+
+test('docs respect the host limits on reference images and request batches', () => {
+  const skill = readText(SKILL);
+  const ref = readText(join(join(PLUGIN, 'skills', 'octopus-meme-maker'), 'reference.md'));
+  // image_synthesize: input_file_paths max 4, requests max 10.
+  // gen_videos: requests max 5.
+  for (const [label, text] of [['SKILL.md', skill], ['reference.md', ref]]) {
+    assert.equal(
+      /same 6 reference frames|6 reference frames/.test(text),
+      false,
+      `${label} claims 6 reference frames; the host accepts at most 4`,
+    );
+    assert.ok(
+      /at most 4|max 4/.test(text),
+      `${label} must state the host's 4-reference-image limit`,
+    );
+  }
+});
+
+test('docs do not route host-tool inputs through /tmp', () => {
+  // The host rejects "Paths outside the session workspace (e.g. /tmp ...)".
+  // A doc that tells the agent to extract a frame into /tmp and pass it as an
+  // `input_file_path` describes a run that cannot succeed.
+  const ref = readText(join(join(PLUGIN, 'skills', 'octopus-meme-maker'), 'reference.md'));
+  assert.equal(
+    /\/tmp\/[^\s`)]*\.png[^\n]*input_file_path/.test(ref),
+    false,
+    'reference.md must not hand a /tmp path to a host tool as input',
+  );
+});
+
+test('no document references assets that are no longer shipped', () => {
+  for (const f of ['SKILL.md', 'reference.md', 'issues.md']) {
+    const text = readText(join(join(PLUGIN, 'skills', 'octopus-meme-maker'), f));
+    for (const gone of ['sample_0', 'sample_*', 'overview.png', 'Removed in']) {
+      assert.equal(
+        text.includes(gone),
+        false,
+        `${f} still references removed content: "${gone}"`,
+      );
+    }
+  }
+});
+
+test('manifest versions agree with the SKILL.md metadata version', () => {
+  const registry = readJson(PLUGIN_JSON).version;
+  const marketplace = readJson(MARKETPLACE_JSON).version;
+  const skill = readText(SKILL);
+  const meta = skill.match(/^metadata:\n((?:\s+.+\n?)+)/m);
+  assert.ok(meta, 'SKILL.md metadata block required');
+  const skillVersion = meta[1].match(/version:\s*([\w.-]+)/);
+  assert.ok(skillVersion, 'SKILL.md metadata.version required');
+  assert.equal(registry, marketplace, `plugin.json (${registry}) vs .minimax-plugin/plugin.json (${marketplace})`);
+  assert.equal(registry, skillVersion[1], `manifests (${registry}) vs SKILL.md metadata (${skillVersion[1]})`);
+});
+
+test('host tools are called with argument lists, never a shell', () => {
+  // subprocess.run(cmd, ...) with a list has no shell-quoting surface; a
+  // `shell=True` or a string command would introduce one.
+  for (const f of ['make_gif.py', 'make_preview_strip.py', 'make_contact_sheet.py']) {
+    const text = readText(join(SCRIPTS_DIR, f));
+    assert.equal(/shell\s*=\s*True/.test(text), false, `${f} must not pass shell=True`);
   }
 });
 
