@@ -72,8 +72,8 @@ python3 "${PLUGIN_ROOT}/scripts/make_contact_sheet.py" \
 
 The script lays the 6 candidates in a 3-cols × 2-rows grid with a bold
 number badge (1-6) on each cell so the user can answer "3" / "选 2" /
-"第 5 张" without ambiguity. Default cell size is 480×480; total sheet is
-~1500×1000 px.
+"第 5 张" without ambiguity. Default cell size is 480×480; the sheet is
+1460×974 px.
 
 Exit condition: `<scene-dir>/iterations/vN-contact-sheet.png` exists and
 shows 6 distinct numbered cells.

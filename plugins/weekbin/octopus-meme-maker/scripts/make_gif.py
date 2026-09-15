@@ -16,6 +16,7 @@ Exit 1: video.mp4 missing, ffmpeg missing, or any step fails.
 """
 import argparse
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -23,6 +24,8 @@ import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 TEXT_OVERLAY_SCRIPT = os.path.join(HERE, "make_text_overlay.py")
+
+MIN_FFMPEG_MAJOR = 5  # -fps_mode replaced -vsync in ffmpeg 5.0
 
 DURATION = "5.87"        # seconds kept from the source video (141 frames @ 24fps)
 OUTPUT_W = 720           # main GIF width
@@ -36,6 +39,28 @@ FPS = 24
 PALETTE_DITHER = "bayer:bayer_scale=5"
 
 
+def fail(message):
+    print(f"ERROR: {message}", file=sys.stderr)
+    sys.exit(1)
+
+
+def resolve_output(scene_dir, name, label):
+    """Resolve an output file name inside scene_dir, refusing escapes.
+
+    `--output-name` reads as a bare file name, so it must not be able to leave
+    the scene directory: no absolute paths, no `..`, and no symlink that
+    resolves outside.
+    """
+    if not name or os.path.isabs(name) or name.startswith(("\\", "/")):
+        fail(f"{label} must be a bare file name, not an absolute path: {name!r}")
+    if os.sep in name or (os.altsep and os.altsep in name):
+        fail(f"{label} must not contain a path separator: {name!r}")
+    resolved = os.path.realpath(os.path.join(scene_dir, name))
+    if os.path.dirname(resolved) != scene_dir:
+        fail(f"{label} escapes the scene directory: {name!r}")
+    return resolved
+
+
 def run(cmd, label):
     print(f"[{label}] {' '.join(cmd)}")
     result = subprocess.run(cmd, capture_output=True, text=True)
@@ -46,9 +71,16 @@ def run(cmd, label):
 
 
 def require_ffmpeg():
-    if shutil.which("ffmpeg") is None:
-        print("ERROR: ffmpeg not found on PATH. Install ffmpeg 4.4+ first.", file=sys.stderr)
-        sys.exit(1)
+    exe = shutil.which("ffmpeg")
+    if exe is None:
+        fail(f"ffmpeg not found on PATH. Install ffmpeg {MIN_FFMPEG_MAJOR}.0+ first.")
+    probe = subprocess.run([exe, "-version"], capture_output=True, text=True)
+    match = re.search(r"ffmpeg version n?(\d+)\.", probe.stdout or "")
+    if match and int(match.group(1)) < MIN_FFMPEG_MAJOR:
+        fail(
+            f"ffmpeg {match.group(1)}.x found, but this script uses -fps_mode, which "
+            f"requires ffmpeg {MIN_FFMPEG_MAJOR}.0+ (released 2022)."
+        )
 
 
 def require_text_overlay_script():
@@ -97,14 +129,18 @@ def main():
     p.add_argument("--mini-name", default="final-mini.gif", help="Mini GIF name (default: final-mini.gif)")
     args = p.parse_args()
 
-    scene_dir = os.path.abspath(args.scene_dir)
+    scene_dir = os.path.realpath(os.path.abspath(args.scene_dir))
+
+    # Argument validation first: a bad flag must fail before any I/O.
+    output = resolve_output(scene_dir, args.output_name, "--output-name")
+    mini = resolve_output(scene_dir, args.mini_name, "--mini-name")
+
     video = os.path.join(scene_dir, "video.mp4")
     if not os.path.exists(video):
-        print(f"ERROR: {video} not found. Run stage 2 (gen_videos) first.", file=sys.stderr)
-        sys.exit(1)
+        fail(f"{video} not found. Run stage 2 (gen_videos) first.")
 
-    require_ffmpeg()
     require_text_overlay_script()
+    require_ffmpeg()
     warn_if_not_square(video)
 
     workdir = tempfile.mkdtemp(prefix="octopus_gif_")
@@ -115,9 +151,6 @@ def main():
     mini_frames_dir = os.path.join(workdir, "mini_frames")
     os.makedirs(mini_frames_dir, exist_ok=True)
     mini_palette = os.path.join(workdir, "mini_palette.png")
-
-    output = os.path.join(scene_dir, args.output_name)
-    mini = os.path.join(scene_dir, args.mini_name)
 
     try:
         # 1. text overlay

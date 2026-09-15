@@ -51,12 +51,12 @@ the model.
 
 | Symptom | Root cause | Fix |
 |---|---|---|
-| `gen_videos` returns "input file path outside workspace" | `image_synthesize` saved the base to an absolute path outside the host's workspace | Copy the base to the host's workspace-relative path before, then pass the workspace-relative path. Do not pass an absolute path |
-| `make_gif.py` hangs on ffmpeg filter_complex | Single ffmpeg invocation with too many filters | The shipped script already splits into 3 ffmpeg runs (overlay, palettegen, paletteuse); do not collapse them into one |
+| `gen_videos` rejects the path | The host rejects absolute paths and any path outside the session workspace, system temp directories included | Keep `output_file_path` and `input_image_path` workspace-relative. If `base.png` was generated outside the workspace, move it inside first |
+| `make_gif.py` hangs on ffmpeg filter_complex | Single ffmpeg invocation with too many filters | The shipped script already splits the work into separate ffmpeg runs (overlay, palettegen, paletteuse); do not collapse them into one |
 | `final.gif` exceeds 16 MB | Background contains gradient / motion blur / many distinct colors | Lower `PALETTE_DITHER` from `bayer:bayer_scale=5` to `bayer:bayer_scale=4` in `"${PLUGIN_ROOT}/scripts/make_gif.py"`, or reduce `FPS` from 24 to 20. Re-run stage 4; do not regenerate base or video |
 | `final-mini.gif` is unexpectedly large (5 MB+) | High-frequency detail survives the 480×480 downscale, so the mini palette still needs many colors | Reduce fps from 24 to 20, or accept it — the reference scenes range 0.8–5.3 MB, so a large mini is not by itself a defect |
-| Text overflows the canvas | Font size 220 with 4-character caption | Use `--size 130` for 4-character captions; 220 fits only 2-character captions at 1080 wide |
-| `gen_videos` task stays "running" for >30 minutes (H3) | Network blip / queued worker | Re-poll with `matrix_query_video_generation` once a minute; only treat as failed after 45 min idle |
+| Caption is longer than 8 characters | The 1080-wide overlay canvas only fits about 8 CJK glyphs at the maximum size 130 | `make_text_overlay.py` auto-shrinks the font until the caption fits and prints the size it used (`text=<w>x<h>`); check that line. Pass `--no-fit` only if you want the overflow reported as an error instead |
+| `gen_videos` task stays "running" for a long time (H3) | The host is async and queued workers can take many minutes | Re-poll with `query_video_generation` about once a minute; the file appears at `output_file_path` only after the job succeeds |
 
 ## Feedback signals (translate user reports into action)
 

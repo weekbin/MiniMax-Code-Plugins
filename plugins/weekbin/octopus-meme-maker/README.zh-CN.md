@@ -29,7 +29,7 @@
 - `minMcodeVersion`：`0.2.0`（流水线用到 `image_synthesize` 与 `gen_videos` 两个宿主工具，二者在 0.2.0 起稳定）
 - Python 3.10+
 - `pip install Pillow`
-- `ffmpeg` 4.4+，且在 `PATH` 上（用 `ffmpeg -version` 验证）
+- `ffmpeg` 5.0+，且在 `PATH` 上（用 `ffmpeg -version` 验证）。脚本使用 `-fps_mode`，该参数在 ffmpeg 5.0 取代了 `-vsync`；`make_gif.py` 会预先检查主版本号，版本过低时给出明确报错。
 - 系统中需安装一个中文字体用于文字叠加。脚本会按下列顺序自动挑选第一个存在的：
   - macOS：`/System/Library/Fonts/STHeiti Medium.ttc`、`/System/Library/Fonts/PingFang.ttc`
   - Linux：`/usr/share/fonts/truetype/wqy/wqy-microhei.ttc`、`/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc`

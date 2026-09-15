@@ -9,7 +9,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync, statSync, readdirSync, writeFileSync, mkdtempSync, rmSync, unlinkSync } from 'node:fs';
+import { readFileSync, existsSync, statSync, readdirSync, writeFileSync, mkdtempSync, mkdirSync, rmSync, unlinkSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
@@ -423,6 +423,107 @@ test('host tools are called with argument lists, never a shell', () => {
     const text = readText(join(SCRIPTS_DIR, f));
     assert.equal(/shell\s*=\s*True/.test(text), false, `${f} must not pass shell=True`);
   }
+});
+
+test('only real host tool names appear in the docs', () => {
+  // Read out of the shipped `@minimax-ai/code` schemas (mcode 0.4.6).
+  const REAL_TOOLS = new Set([
+    'image_synthesize', 'images_understand', 'images_search_and_download',
+    'image_reverse_search', 'gen_videos', 'submit_video_generation',
+    'query_video_generation', 'batch_text_to_video', 'batch_image_to_video',
+    'videos_understand',
+  ]);
+  // Only judge tokens shaped like a host tool call. Field names such as
+  // `input_image_path` share vocabulary with tool names but are not tools.
+  const TOOL_SUFFIXES = [
+    '_synthesize', '_understand', '_generation', '_reverse_search',
+    '_search_and_download', '_to_video', '_videos',
+  ];
+  const SKILL_DIR = join(PLUGIN, 'skills', 'octopus-meme-maker');
+  for (const f of ['SKILL.md', 'reference.md', 'issues.md']) {
+    const text = readText(join(SKILL_DIR, f));
+    for (const m of text.matchAll(/`([a-z][a-z0-9_]{3,40})`/g)) {
+      const token = m[1];
+      if (!TOOL_SUFFIXES.some((suffix) => token.endsWith(suffix))) continue;
+      assert.ok(
+        REAL_TOOLS.has(token),
+        `${f} names \`${token}\`, which is not in the shipped host tool schema`,
+      );
+    }
+  }
+});
+
+test('docs do not claim an ffmpeg version the scripts cannot run on', () => {
+  // The scripts pass `-fps_mode`, which exists from ffmpeg 5.0.
+  const targets = [
+    ['README.md', README],
+    ['README.zh-CN.md', join(PLUGIN, 'README.zh-CN.md')],
+    ['make_preview_strip.py', join(SCRIPTS_DIR, 'make_preview_strip.py')],
+  ];
+  for (const [label, path] of targets) {
+    const text = readText(path);
+    assert.equal(/ffmpeg\s*4\.4/.test(text), false, `${label} still advertises ffmpeg 4.4`);
+    assert.ok(/ffmpeg\s*5\.0|\{MIN_FFMPEG_MAJOR\}/.test(text), `${label} must state the ffmpeg 5.0 floor`);
+  }
+});
+
+test('make_gif.py documents its output flags as bare file names', () => {
+  const text = readText(join(SCRIPTS_DIR, 'make_gif.py'));
+  assert.match(text, /bare file name/, 'must document the bare-name constraint');
+  assert.match(text, /def resolve_output/, 'must contain the containment helper');
+});
+
+// ---------------------------------------------------------------------------
+// 6c. Behavioural guards for the two defects found by the edge-case sweep.
+// ---------------------------------------------------------------------------
+
+test('make_gif.py refuses an --output-name that escapes the scene directory', () => {
+  // Regression guard: `--output-name ../../x.gif` used to be joined onto the
+  // scene dir and written outside it.
+  if (pythonHasModule('os') !== true) return; // python3 not installed
+
+  const base = mkdtempSync(join(tmpdir(), 'octopus-escape-'));
+  const scene = join(base, 'scene');
+  mkdirSync(scene, { recursive: true });
+
+  for (const bad of ['../../escaped.gif', '/tmp/escaped.gif', 'sub/nested.gif']) {
+    const r = spawnSync(
+      'python3',
+      [join(SCRIPTS_DIR, 'make_gif.py'), scene, 'caption', '--output-name', bad],
+      { encoding: 'utf8' },
+    );
+    assert.notEqual(r.status, 0, `--output-name ${bad} must be refused`);
+    assert.match(r.stderr, /bare file name|path separator|escapes the scene directory/);
+  }
+  assert.equal(existsSync(join(base, 'escaped.gif')), false, 'nothing may be written outside the scene dir');
+  rmSync(base, { recursive: true, force: true });
+});
+
+test('make_text_overlay.py shrinks a long caption instead of clipping it', () => {
+  if (pythonHasModule('PIL') !== true) return; // python3 or Pillow missing
+
+  const dir = mkdtempSync(join(tmpdir(), 'octopus-fit-'));
+  const long = join(dir, 'long.png');
+  const r = spawnSync(
+    'python3',
+    [join(SCRIPTS_DIR, 'make_text_overlay.py'), '字'.repeat(14), long],
+    { encoding: 'utf8' },
+  );
+  assert.equal(r.status, 0, `overlay render failed: ${r.stderr}`);
+  assert.match(r.stdout, /size=\d+/, 'must report the size it used');
+
+  // The rendered glyphs must sit fully inside the 1080-wide canvas.
+  const probe = spawnSync('python3', ['-c', [
+    'from PIL import Image; import sys',
+    `im = Image.open(${JSON.stringify(long)})`,
+    'box = im.getbbox()',
+    'print(box[0], box[2], im.size[0])',
+  ].join('\n')], { encoding: 'utf8' });
+  assert.equal(probe.status, 0, probe.stderr);
+  const [x0, x1, w] = probe.stdout.trim().split(/\s+/).map(Number);
+  assert.ok(x0 > 0, `caption touches the left edge (x0=${x0}) — it was clipped`);
+  assert.ok(x1 < w, `caption touches the right edge (x1=${x1}, width=${w}) — it was clipped`);
+  rmSync(dir, { recursive: true, force: true });
 });
 
 // ---------------------------------------------------------------------------

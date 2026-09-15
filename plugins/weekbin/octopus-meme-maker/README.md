@@ -27,7 +27,7 @@ Expected result: `<scene-dir>/base.png` (2048×2048 base) → `<scene-dir>/video
 - A MiniMax Code build that provides the `image_synthesize` and `gen_videos` host tools (those are host capabilities, not part of this Plugin; verified on mcode 0.4.6). Stage 1 and stage 2 of the pipeline call them directly.
 - Python 3.10+
 - `pip install Pillow`
-- `ffmpeg` 4.4+ on `PATH` (verify with `ffmpeg -version`)
+- `ffmpeg` 5.0+ on `PATH` (verify with `ffmpeg -version`). The scripts pass `-fps_mode`, which replaced `-vsync` in ffmpeg 5.0; `make_gif.py` checks the major version up front and fails with a clear message on an older build.
 - A CJK font installed on the system for the text overlay. The script auto-picks the first match from this list:
   - macOS: `/System/Library/Fonts/STHeiti Medium.ttc`, `/System/Library/Fonts/PingFang.ttc`
   - Linux: `/usr/share/fonts/truetype/wqy/wqy-microhei.ttc`, `/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc`

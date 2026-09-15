@@ -132,7 +132,8 @@ def main():
 
     # 2. Environment and input checks.
     if shutil.which("ffmpeg") is None:
-        print("ERROR: ffmpeg not found on PATH. Install ffmpeg 4.4+ first.", file=sys.stderr)
+        print("ERROR: ffmpeg not found on PATH. Install ffmpeg 5.0+ first "
+              "(-fps_mode replaced -vsync in 5.0).", file=sys.stderr)
         sys.exit(1)
 
     font_path = args.font or pick_chinese_font()
