@@ -18,6 +18,7 @@ const REPO = process.cwd();
 const PLUGIN = join(REPO, 'plugins', 'weekbin', 'octopus-meme-maker');
 const PLUGIN_JSON = join(PLUGIN, 'plugin.json');
 const MARKETPLACE_JSON = join(PLUGIN, '.minimax-plugin', 'plugin.json');
+const CLAUDE_JSON = join(PLUGIN, '.claude-plugin', 'plugin.json');
 const README = join(PLUGIN, 'README.md');
 const LICENSE = join(PLUGIN, 'LICENSE');
 const ICON = join(PLUGIN, 'icon.png');
@@ -405,15 +406,49 @@ test('no document references assets that are no longer shipped', () => {
 });
 
 test('manifest versions agree with the SKILL.md metadata version', () => {
-  const registry = readJson(PLUGIN_JSON).version;
-  const marketplace = readJson(MARKETPLACE_JSON).version;
+  const versions = {
+    'plugin.json': readJson(PLUGIN_JSON).version,
+    '.minimax-plugin/plugin.json': readJson(MARKETPLACE_JSON).version,
+    '.claude-plugin/plugin.json': readJson(CLAUDE_JSON).version,
+  };
   const skill = readText(SKILL);
   const meta = skill.match(/^metadata:\n((?:\s+.+\n?)+)/m);
   assert.ok(meta, 'SKILL.md metadata block required');
   const skillVersion = meta[1].match(/version:\s*([\w.-]+)/);
   assert.ok(skillVersion, 'SKILL.md metadata.version required');
-  assert.equal(registry, marketplace, `plugin.json (${registry}) vs .minimax-plugin/plugin.json (${marketplace})`);
-  assert.equal(registry, skillVersion[1], `manifests (${registry}) vs SKILL.md metadata (${skillVersion[1]})`);
+  versions['SKILL.md metadata'] = skillVersion[1];
+  const unique = [...new Set(Object.values(versions))];
+  assert.equal(
+    unique.length,
+    1,
+    `every declaration must agree, got ${JSON.stringify(versions, null, 2)}`,
+  );
+});
+
+test('.claude-plugin manifest follows the mcode 0.4.0+ layout', () => {
+  // Read out of the shipped mcode 0.4.6 reader: the Claude Code compatible
+  // manifest lives at .claude-plugin/plugin.json, its `skills` paths resolve
+  // against the Plugin root, and `icon` is a supported field there.
+  const m = readJson(CLAUDE_JSON);
+  assert.equal(m.name, 'octopus-meme-maker');
+  assert.match(m.name, /^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'name must be lowercase hyphenated');
+  assert.ok(m.version && m.license, 'version and license are expected');
+  assert.ok(m.author && m.author.name, 'author.name is the community disclosure requirement');
+
+  const skills = Array.isArray(m.skills) ? m.skills : [m.skills];
+  assert.ok(skills.length >= 1, 'the layout requires at least one Skill');
+  for (const rel of skills) {
+    assert.match(rel, /^\.\//, `skills path must be root-relative with ./ — got ${rel}`);
+    assert.ok(
+      existsSync(join(PLUGIN, rel.replace(/^\.\//, ''))),
+      `skills path does not resolve from the Plugin root: ${rel}`,
+    );
+  }
+
+  if (m.icon) {
+    assert.ok(existsSync(join(PLUGIN, m.icon)), `icon path does not resolve: ${m.icon}`);
+    assert.match(m.icon, /\.(?:png|jpe?g|webp)$/i, 'the reader only accepts these icon extensions');
+  }
 });
 
 test('host tools are called with argument lists, never a shell', () => {

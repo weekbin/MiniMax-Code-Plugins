@@ -85,21 +85,17 @@ All three scripts must exit 0. `make_gif.py` warns on stderr when the source vid
 
 ## Packaging and submission
 
-This directory is both a community-registry Plugin and a MiniMax Marketplace package:
+This directory carries the manifests for three runtime layouts. Each is read by a different reader, and the upstream repository documents the first two as valid choices for a submission.
 
-- `plugin.json` — the community-registry manifest (`$schema: https://agent-plugins.org/schemas/1.0.0/plugin.schema.json`).
-- `.minimax-plugin/plugin.json` — the Marketplace entry point. A Marketplace ZIP or GitHub subdirectory submission must have this file directly at its root.
-- `README.zh-CN.md` — Chinese translation of this file.
+| Manifest | Reader | Purpose |
+|---|---|---|
+| `plugin.json` (top level) | portable Agent Plugins 1.0 | The cross-runtime baseline. `scripts/validate.mjs` checks this layout by default, and mcode 0.3.x and 0.4.0+ both read it. |
+| `.claude-plugin/plugin.json` | Claude Code compatible plugin | The preferred form for mcode 0.4.0+. Read as `manifestKind: CLAUDE_CODE`. |
+| `.minimax-plugin/plugin.json` | MiniMax manifest | The Marketplace submission entry point and the desktop app's richer manifest (icon, category, displayName, exampleQueries). |
 
-For a Marketplace submission, point the source at this directory (`plugins/weekbin/octopus-meme-maker`). The registry-only `plugin.json` and the `examples/` directory are not referenced by the Marketplace manifest.
+`icon.png` is referenced by the Claude Code compatible manifest (`icon`) and by the MiniMax manifest (`icon`).
 
-### About the icon
-
-`icon.png` is referenced by the Marketplace manifest's `icon` field (512×512 PNG, square, transparent background).
-
-The runtime resolves a plugin's icon from the MiniMax manifest (`.minimax-plugin/plugin.json`) — that is the only manifest format with an `icon` field. The Agent Plugins V1 manifest (`plugin.json`) has no icon field at all.
-
-**The two manifest formats cannot both be active in one directory.** The runtime's reader prefers a valid Agent Plugins V1 root `plugin.json`:
+The two manifest formats are not interchangeable and cannot both be *active* in one directory. A valid portable root `plugin.json` wins over `.minimax-plugin/plugin.json`:
 
 ```ts
 if (await pluginPathExists(root, 'plugin.json', 'file')) {
@@ -109,16 +105,9 @@ if (await pluginPathExists(root, 'plugin.json', 'file')) {
 if (manifests.hasMiniMax) return readMiniMaxPluginPackage(rootPath, { source: 'LOCAL_MINIMAX' });
 ```
 
-So in this repository layout, the root `plugin.json` wins and the MiniMax manifest — `icon`, `category`, `displayName`, `exampleQueries` — is never read. A locally installed copy therefore shows the runtime's default icon.
+So when both files are present, the MiniMax manifest — `icon`, `category`, `displayName`, `exampleQueries` — is not read, and a locally installed copy shows the runtime's default icon. The Claude Code compatible manifest is a separate reader and is not affected by that precedence.
 
-This directory serves two channels with different requirements:
-
-| Channel | Needs | Icon |
-|---|---|---|
-| Community registry (this repo) | root `plugin.json` | not supported by the Agent Plugins format |
-| Local install / Marketplace package | `.minimax-plugin/plugin.json`, **no root `plugin.json`** | shown |
-
-To build a local-install / Marketplace package, copy this directory and drop the root manifest:
+For a Marketplace submission, point the source at this directory (`plugins/weekbin/octopus-meme-maker`) and build the ZIP from a copy with the portable manifest removed:
 
 ```bash
 rsync -a --exclude '/plugin.json' \
@@ -126,7 +115,7 @@ rsync -a --exclude '/plugin.json' \
   <local-package-dir>/
 ```
 
-Then install from `<local-package-dir>`. The `--exclude` is anchored (`/plugin.json`), so `.minimax-plugin/plugin.json` is kept.
+The `--exclude` is anchored (`/plugin.json`), so the nested manifests are kept.
 
 ### Localization
 
