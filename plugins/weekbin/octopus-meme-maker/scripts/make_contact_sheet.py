@@ -28,6 +28,7 @@ import sys
 from PIL import Image, ImageDraw
 
 import _fonts
+import _platform
 
 CELL_SIZE = 480
 COLS = 3
@@ -55,6 +56,7 @@ def fit_into_square(img, size):
 
 
 def main():
+    _platform.setup_console()
     p = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )

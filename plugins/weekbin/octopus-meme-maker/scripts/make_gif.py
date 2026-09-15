@@ -22,6 +22,8 @@ import subprocess
 import sys
 import tempfile
 
+import _platform
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 TEXT_OVERLAY_SCRIPT = os.path.join(HERE, "make_text_overlay.py")
 
@@ -53,17 +55,20 @@ def resolve_output(scene_dir, name, label):
     """
     if not name or os.path.isabs(name) or name.startswith(("\\", "/")):
         fail(f"{label} must be a bare file name, not an absolute path: {name!r}")
-    if os.sep in name or (os.altsep and os.altsep in name):
+    if os.sep in name or (os.altsep and os.altsep in name) or "/" in name or "\\" in name:
         fail(f"{label} must not contain a path separator: {name!r}")
+    reserved = _platform.windows_reserved_reason(name)
+    if reserved:
+        fail(f"{label} {name!r} would fail on Windows: {reserved}")
     resolved = os.path.realpath(os.path.join(scene_dir, name))
-    if os.path.dirname(resolved) != scene_dir:
+    if not _platform.same_dir(os.path.dirname(resolved), scene_dir):
         fail(f"{label} escapes the scene directory: {name!r}")
     return resolved
 
 
 def run(cmd, label):
     print(f"[{label}] {' '.join(cmd)}")
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True, **_platform.SUBPROCESS_TEXT)
     if result.returncode != 0:
         print(f"ERROR during {label}:\n{result.stderr}", file=sys.stderr)
         sys.exit(1)
@@ -74,7 +79,7 @@ def require_ffmpeg():
     exe = shutil.which("ffmpeg")
     if exe is None:
         fail(f"ffmpeg not found on PATH. Install ffmpeg {MIN_FFMPEG_MAJOR}.0+ first.")
-    probe = subprocess.run([exe, "-version"], capture_output=True, text=True)
+    probe = subprocess.run([exe, "-version"], capture_output=True, **_platform.SUBPROCESS_TEXT)
     match = re.search(r"ffmpeg version n?(\d+)\.", probe.stdout or "")
     if match and int(match.group(1)) < MIN_FFMPEG_MAJOR:
         fail(
@@ -95,7 +100,7 @@ def warn_if_not_square(video):
         ["ffprobe", "-v", "error", "-select_streams", "v:0",
          "-show_entries", "stream=width,height",
          "-of", "csv=p=0:s=x", video],
-        capture_output=True, text=True,
+        capture_output=True, **_platform.SUBPROCESS_TEXT,
     )
     if probe.returncode != 0:
         return  # rendering will surface the real error
@@ -122,6 +127,7 @@ def warn_if_not_square(video):
 
 
 def main():
+    _platform.setup_console()
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("scene_dir", help="Scene directory containing video.mp4")
     p.add_argument("caption", help="Chinese caption rendered onto the GIF")
@@ -166,14 +172,14 @@ def main():
             f"[1:v]scale={OVERLAY_W}:{OVERLAY_H}[ovl];"
             f"[vid][ovl]overlay=0:{OVERLAY_Y}[out]",
             "-map", "[out]", "-t", DURATION, "-fps_mode", "passthrough",
-            f"{frames_dir}/f_%04d.png",
+            os.path.join(frames_dir, "f_%04d.png"),
         ], "2/5 burn-overlay -> frames")
 
         # 3. palettegen @ 720x720
         run([
             "ffmpeg", "-y",
             "-framerate", str(FPS),
-            "-i", f"{frames_dir}/f_%04d.png",
+            "-i", os.path.join(frames_dir, "f_%04d.png"),
             "-vf", "palettegen=stats_mode=diff",
             palette,
         ], "3/5 palettegen")
@@ -182,7 +188,7 @@ def main():
         run([
             "ffmpeg", "-y",
             "-framerate", str(FPS),
-            "-i", f"{frames_dir}/f_%04d.png",
+            "-i", os.path.join(frames_dir, "f_%04d.png"),
             "-i", palette,
             "-lavfi", f"paletteuse=dither={PALETTE_DITHER}",
             output,
@@ -192,15 +198,15 @@ def main():
         run([
             "ffmpeg", "-y",
             "-framerate", str(FPS),
-            "-i", f"{frames_dir}/f_%04d.png",
+            "-i", os.path.join(frames_dir, "f_%04d.png"),
             "-vf", f"scale={MINI_W}:{MINI_H}",
-            f"{mini_frames_dir}/f_%04d.png",
+            os.path.join(mini_frames_dir, "f_%04d.png"),
         ], "5a/5 downscale -> mini frames")
 
         run([
             "ffmpeg", "-y",
             "-framerate", str(FPS),
-            "-i", f"{mini_frames_dir}/f_%04d.png",
+            "-i", os.path.join(mini_frames_dir, "f_%04d.png"),
             "-vf", "palettegen=stats_mode=diff",
             mini_palette,
         ], "5b/5 mini palettegen")
@@ -208,7 +214,7 @@ def main():
         run([
             "ffmpeg", "-y",
             "-framerate", str(FPS),
-            "-i", f"{mini_frames_dir}/f_%04d.png",
+            "-i", os.path.join(mini_frames_dir, "f_%04d.png"),
             "-i", mini_palette,
             "-lavfi", f"paletteuse=dither={PALETTE_DITHER}",
             mini,

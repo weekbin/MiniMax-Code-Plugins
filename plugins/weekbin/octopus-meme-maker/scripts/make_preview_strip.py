@@ -23,6 +23,7 @@ import tempfile
 from PIL import Image, ImageDraw
 
 import _fonts
+import _platform
 
 SAMPLE_FRACTIONS = (0.0, 0.30, 0.50, 0.70, 1.0)
 FRAME_WIDTH = 480
@@ -43,7 +44,7 @@ def probe_video(video):
         ["ffprobe", "-v", "error", "-select_streams", "v:0",
          "-show_entries", "stream=nb_frames,r_frame_rate",
          "-of", "csv=p=0", video],
-        capture_output=True, text=True,
+        capture_output=True, **_platform.SUBPROCESS_TEXT,
     )
     if out.returncode != 0:
         raise RuntimeError(f"ffprobe failed on {video}:\n{out.stderr}")
@@ -80,6 +81,7 @@ def sample_indices(frames):
 
 
 def main():
+    _platform.setup_console()
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("video", help="Input video (any square 24fps clip; 1080x1080 5.87s or 768x768 6.58s both work)")
     p.add_argument("output", help="Output preview.png path")
@@ -151,7 +153,7 @@ def main():
             os.path.join(workdir, "f_%d.png"),
         ]
         print(f"Extracting 5 key frames at {[f'{i / fps:.2f}s' for i in indices]}...")
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, **_platform.SUBPROCESS_TEXT)
         if result.returncode != 0:
             print(f"ERROR: ffmpeg failed:\n{result.stderr}", file=sys.stderr)
             sys.exit(1)

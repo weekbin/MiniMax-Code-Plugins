@@ -57,6 +57,10 @@ Expected result: `<scene-dir>/base.png` (2048×2048 base) → `<scene-dir>/video
 
 ## Verification
 
+Shell blocks in this README are POSIX shell (macOS, Linux, or Git Bash on Windows). On Windows without Git Bash, run the same `python3 …` lines from PowerShell or `cmd`; only `mkdir -p` and `cp` need replacing (for example `New-Item -ItemType Directory -Force`, `Copy-Item`).
+
+Every script pins its own stdout/stderr to UTF-8 and replaces characters the console cannot encode, so a Chinese caption prints on a cp1252 (English Windows) or cp936 console instead of raising `UnicodeEncodeError`. Subprocess output is decoded as UTF-8 with replacement rather than with the locale encoding.
+
 This is a self-contained run: it uses the sample video bundled in `reference/videos/`, so no scene has to exist first. Run from this Plugin's root directory.
 
 ```bash

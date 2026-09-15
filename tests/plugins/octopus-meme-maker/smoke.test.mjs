@@ -425,8 +425,99 @@ test('host tools are called with argument lists, never a shell', () => {
   }
 });
 
-test('the CJK font candidate list lives in exactly one module', () => {
-  // Four scripts used to carry their own copy of the same 10-path list plus a
+// ---------------------------------------------------------------------------
+// 7d. Cross-platform posture (macOS / Linux / Windows).
+//
+// The scripts run on three platforms whose consoles, path separators and
+// reserved file names all differ. These checks pin the behaviours that differ.
+// ---------------------------------------------------------------------------
+
+const PY_SCRIPTS = ['make_gif.py', 'make_text_overlay.py', 'make_preview_strip.py', 'make_contact_sheet.py'];
+
+test('platform helpers live in one module and every script uses it', () => {
+  const helpers = join(SCRIPTS_DIR, '_platform.py');
+  assert.ok(existsSync(helpers), 'missing scripts/_platform.py');
+  for (const f of PY_SCRIPTS) {
+    const text = readText(join(SCRIPTS_DIR, f));
+    assert.match(text, /setup_console\(\)/, `${f} must call _platform.setup_console()`);
+  }
+});
+
+test('no script decodes subprocess output with the locale encoding', () => {
+  // text=True uses the console code page; a UTF-8 emitting tool then yields
+  // mojibake or a decode error. SUBPROCESS_TEXT pins UTF-8 + replacement.
+  for (const f of PY_SCRIPTS) {
+    const text = readText(join(SCRIPTS_DIR, f));
+    assert.equal(
+      /subprocess\.run\([^)]*text\s*=\s*True/.test(text),
+      false,
+      `${f} must pass _platform.SUBPROCESS_TEXT instead of text=True`,
+    );
+  }
+});
+
+test('no script builds a filesystem path by interpolating a slash', () => {
+  // `f"{dir}/name"` hardcodes POSIX separators. os.path.join is correct on all
+  // three platforms.
+  for (const f of PY_SCRIPTS) {
+    const text = readText(join(SCRIPTS_DIR, f));
+    assert.equal(
+      /f"\{[A-Za-z_][A-Za-z0-9_]*\}\//.test(text),
+      false,
+      `${f} interpolates a POSIX separator into a path; use os.path.join`,
+    );
+  }
+});
+
+test('a Chinese caption renders even when the console cannot encode it', () => {
+  // Reproduces the English-Windows console (cp1252) and the strict-ASCII case.
+  // Before the fix the success message itself raised UnicodeEncodeError.
+  if (pythonHasModule('PIL') !== true) return;
+
+  const dir = mkdtempSync(join(tmpdir(), 'octopus-console-'));
+  for (const enc of ['ascii', 'cp1252']) {
+    const out = join(dir, `overlay-${enc}.png`);
+    const r = spawnSync(
+      'python3',
+      [join(SCRIPTS_DIR, 'make_text_overlay.py'), '再熬一会', out],
+      { encoding: 'utf8', env: { ...process.env, PYTHONIOENCODING: enc } },
+    );
+    assert.equal(r.status, 0, `overlay failed under PYTHONIOENCODING=${enc}: ${r.stderr}`);
+    assert.ok(existsSync(out), `no output under PYTHONIOENCODING=${enc}`);
+  }
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('make_gif.py refuses output names that cannot work on Windows', () => {
+  // Checked on every platform so a name that works on macOS cannot silently
+  // fail on a Windows user's machine.
+  const text = readText(join(SCRIPTS_DIR, 'make_gif.py'));
+  assert.match(text, /windows_reserved_reason/, 'must consult the reserved-name helper');
+
+  if (pythonHasModule('os') !== true) return;
+  const base = mkdtempSync(join(tmpdir(), 'octopus-name-'));
+  const scene = join(base, 'scene');
+  mkdirSync(scene, { recursive: true });
+  for (const bad of ['CON.gif', 'NUL', 'aux.png', 'bad:name.gif']) {
+    const r = spawnSync(
+      'python3',
+      [join(SCRIPTS_DIR, 'make_gif.py'), scene, 'caption', '--output-name', bad],
+      { encoding: 'utf8' },
+    );
+    assert.notEqual(r.status, 0, `--output-name ${bad} must be refused`);
+    assert.match(r.stderr, /would fail on Windows/, `expected a Windows-specific reason for ${bad}`);
+  }
+  rmSync(base, { recursive: true, force: true });
+});
+
+test('path containment is compared with the platform normalisation', () => {
+  // Windows is case-insensitive and accepts both separators, so a raw string
+  // comparison of dirname(resolved) against the scene dir is wrong there.
+  const text = readText(join(SCRIPTS_DIR, 'make_gif.py'));
+  assert.match(text, /_platform\.same_dir/, 'must use the platform-aware comparison');
+});
+
+test('the CJK font candidate list lives in exactly one module', () => {  // Four scripts used to carry their own copy of the same 10-path list plus a
   // picker. They now import scripts/_fonts.py; a fifth copy added later would
   // drift. Assert the literals only appear in the shared module.
   const fontModule = join(SCRIPTS_DIR, '_fonts.py');

@@ -25,6 +25,7 @@ import sys
 from PIL import Image, ImageDraw
 
 import _fonts
+import _platform
 
 TEXT_COLOR = (24, 24, 24)
 STROKE_COLOR = (255, 255, 255)
@@ -51,6 +52,7 @@ def measure(draw, text, font, stroke):
 
 
 def main():
+    _platform.setup_console()
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("text", help="Chinese text to render")
     p.add_argument("output", help="Output PNG path")
