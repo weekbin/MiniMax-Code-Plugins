@@ -18,22 +18,68 @@ This Plugin ships two folders that work together:
 > skill produces). They were misleading the model toward the wrong style and
 > have been deleted from the repository. Do not reintroduce them.
 
-## Anatomy (must match the reference frames exactly)
+## Character — what the Squishmallow octopus ACTUALLY looks like
 
-- **Body color** — uniform coral-pink everywhere on the head. No second tone, no shading patches, no ears in a different color.
-- **Body surface** — smooth Squishmallow / Pop Mart vinyl plush-toy texture with soft diffuse lighting. **Not** flocked, **not** fuzzy, **not** felt, **not** furry, **not** woven, **not** cloth / fabric. The model often drifts toward "flocked velvet" when the scene is "well-done" or "charred" — reject any output whose body shows a fabric / flocking texture. Cross-check: it should look like a polished plastic toy, not like a stuffed animal.
-- **Eyes** — two large white circles drawn directly on the pink face. Inside each white circle: a black round pupil taking up roughly half the white circle, with a small white highlight dot on the pupil.
-- **Upper eyelids** — one short thin black arc above each white circle, horizontal, covering the top 30% of the white. The two arcs are independent (a strip of pink forehead sits between them). Never tilt the outer corners up.
-- **Mouth** — small horizontal squiggle or omega-frown, slightly open. No teeth, no tongue, no visible inner mouth.
-- **Head bumps** — **two** small soft ear-like bumps on top of the head. Both bumps MUST be visible in the final image — never let pose (e.g. lying on back, head tucked), angle (e.g. side profile with one bump occluded), props, smoke, steam, water droplets, or framing crop hide them. The skill's standard pose is a 3/4 front view where both bumps read clearly. If the pose you need would hide a bump, change the pose or the camera angle.
-- **Tentacles** — 8 short stubby tentacles around the bottom.
+The character is a **3D Squishmallow / Pop Mart plush toy**. The shape below is
+what `image_synthesize` produces when left to its own devices with a clean
+prompt — `examples/02-stay-late-base.png` and the user-picked v1-5 of the
+"烤焦了" scene are the visual ground truth.
+
+- **Head** — a ROUND coral-pink dome, slightly egg-shaped (a touch taller than
+  wide). NOT a sphere, NOT a teardrop, NOT a stretched oval.
+- **Two soft head bumps** — present on the upper-LEFT and upper-RIGHT of the
+  head silhouette. They are SOFT ROUNDED little nubs that **emerge from the
+  head**, NOT separate ears glued on top. The bumps are part of the head's
+  outline, not protruding significantly. There is a clear FLAT or gently
+  domed pink area between them — about 20-30% of the head width.
+- **Eyes** — TWO MEDIUM-sized WHITE CIRCLES drawn directly on the pink face.
+  Each eye is roughly 15-18% of the head WIDTH (NOT oversized, NOT chibi /
+  anime scale). Positioned in the LOWER-MIDDLE of the head (centers around
+  55-65% down from the top).
+- **Pupil** — a BLACK ROUND shape filling about 70% of the white eyeball, with
+  a small WHITE HIGHLIGHT DOT (typically upper-left of the pupil) that gives
+  the eye life.
+- **Upper eyelid arc** — a SHORT THIN BLACK ARC sitting just above each
+  white eyeball, HORIZONTAL, covering roughly the top 30% of the white
+  circle in a neutral state. Never tilts up at the outer corners.
+- **Mouth** — a SMALL HORIZONTAL squiggly line or omega-frown, slightly open.
+  Located just BELOW the eye line (about 75% down from the top of the head).
+  Subtle, not exaggerated.
+- **Tentacles** — 8 short stubby pink tentacles around the body, slightly
+  curved.
+- **Body** — uniform coral-pink, NO second tone, NO shading patches, NO
+  accessory ears / hair / clothes.
+- **Surface** — smooth Squishmallow / Pop Mart plush-toy vinyl sheen. NOT
+  flocked velvet, NOT fuzzy fabric, NOT felt, NOT fur, NOT woven cloth,
+  NOT stitched plush.
+
+### Critical anatomy rules
+
+- **Bumps MUST stay integrated into the head silhouette.** If you describe them
+  as "ears" or emphasize them as separate features, the model produces
+  mouse-ear / bear-ear shapes. Use the soft-nub framing.
+- **Eyes MUST stay medium-sized.** If you write "LARGE WHITE CIRCLES" or
+  specify exact eye proportions, the model drifts toward chibi / anime scale.
+  Just say "medium-sized white circles" and trust the reference images to
+  set the scale.
+- **No markings / singes / textures on the head or face.** Tentacle singes
+  are OK on the underside of outer tentacles. Marks on the head turn into
+  X's, tally lines, frown marks, or patch artifacts.
+- **No "EXACT" numeric ratios** in the prompt. The model over-applies numeric
+  ratios (e.g. "each bump 18-22% of head width") and produces distorted
+  cartoon geometry. Describe the SHAPE, not the NUMBER.
 
 ## Style
 
-- Smooth Squishmallow / Pop Mart 3D render, vibrant coral-pink plush-toy surface with a soft vinyl sheen. NOT furry, NOT stitched plush, NOT flocked velvet, NOT felt, NOT fabric weave, NOT cloth.
-- Render quality: high-resolution, crisp details, consistent surface texture across the whole body. Reject any output that looks blurry, fuzzy, or has inconsistent texture zones (e.g. smooth head but flocked tentacles).
-- Soft warm lighting. Background varies by scene (office desk for work scenes, restroom for toilet scenes, BBQ grill for grill scenes, etc.).
-- Cute, not sinister. The whole character reads as a friendly office worker / meme character.
+- Smooth Squishmallow / Pop Mart 3D render, vibrant coral-pink plush-toy
+  surface with a soft vinyl sheen.
+- Render quality: high-resolution, crisp details, consistent surface texture
+  across the whole body. Reject any output that looks blurry, fuzzy, or has
+  inconsistent texture zones (e.g. smooth head but flocked tentacles).
+- Soft warm lighting. Background varies by scene (office desk for work scenes,
+  restroom for toilet scenes, BBQ grill for grill scenes, etc.).
+- Cute, not sinister. The whole character reads as a friendly office worker /
+  meme character.
 
 ## Reference images
 
@@ -57,33 +103,46 @@ composition too.
 
 ```text
 A cute pink octopus mascot plush toy character in [SCENE_POSE].
-Round coral-pink head with TWO clearly visible small soft ear-like bumps on top of the head — BOTH bumps must be visible and unobscured in the final image (no pose / angle / smoke / props / framing crop may hide them).
-8 stubby pink tentacles total.
+Round coral-pink head with TWO small soft rounded nubs integrated into the
+upper-left and upper-right of the head silhouette. There is a flat pink area
+between the two nubs (about 25% of the head width). 8 stubby pink tentacles.
 
 [Concrete action / expression / prop description for this scene]
 
 CRITICAL EYE ANATOMY (must match the reference exactly):
 - The whole head and face is the SAME coral-pink plush body color.
-- The eyes are LARGE WHITE CIRCLES drawn DIRECTLY on the pink face.
-- Inside each white eyeball there is a BLACK ROUND PUPIL taking up about HALF of the white eyeball, with a small white highlight dot on the pupil.
-- A SHORT THIN BLACK UPPER EYELID ARC sits just above each individual white eyeball, covering roughly the top 30% of the white circle.
-- The eyelid arc is HORIZONTAL — never tilts upward at the outer corners (NEVER smirk, NEVER evil).
+- The eyes are MEDIUM-sized white circles drawn directly on the pink face.
+- Inside each white eyeball there is a BLACK ROUND PUPIL that fills about
+  70% of the white, with a small WHITE HIGHLIGHT DOT on the upper-left of
+  the pupil.
+- A SHORT THIN BLACK UPPER EYELID ARC sits just above each individual white
+  eyeball, covering roughly the top 30% of the white circle.
+- The eyelid arc is HORIZONTAL — never tilts upward at the outer corners
+  (NEVER smirk, NEVER evil).
 - Both arcs are the same length and mirror each other.
-- Plenty of WHITE EYEBALL VISIBLE around the black pupil and under the eyelid.
+- Plenty of WHITE EYEBALL VISIBLE around the black pupil and under the
+  eyelid.
 
-MOUTH: small horizontal squiggly line or omega-frown, slightly open. No teeth, no tongue, no visible inner mouth.
+MOUTH: small horizontal squiggly line or omega-frown, slightly open, just
+below the eye line. No teeth, no tongue, no visible inner mouth.
 
 EXPRESSION: [scene-specific emotion], cute, not sinister.
 
 [Pose / background / KEEP / NO list per scene]
 
 SURFACE (highest priority after anatomy):
-- The character body must have a smooth Squishmallow / Pop Mart plush-toy vinyl surface with a soft sheen.
-- DO NOT render the body as flocked velvet, fuzzy fabric, felt, fur, woven cloth, or stitched plush.
-- Texture must be consistent across the entire body — no smooth/fuzzy zones.
+- The character body must have a smooth Squishmallow / Pop Mart plush-toy
+  vinyl surface with a soft sheen.
+- DO NOT render the body as flocked velvet, fuzzy fabric, felt, fur, woven
+  cloth, or stitched plush.
+- Texture must be consistent across the entire body — no smooth/fuzzy
+  zones.
 - Crisp high-resolution render, no soft blur.
 
-Style: high-quality 3D character render (NOT 2D cartoon, NOT pixel art, NOT clay), vibrant coral-pink Squishmallow plush-toy vinyl surface, soft warm lighting, [scene background]. The character is the same pink octopus mascot from the reference images.
+Style: high-quality 3D character render (NOT 2D cartoon, NOT pixel art, NOT
+clay), vibrant coral-pink Squishmallow plush-toy vinyl surface, soft warm
+lighting, [scene background]. The character is the same pink octopus mascot
+from the reference images.
 ```
 
 ## h3 Source Videos
@@ -105,4 +164,7 @@ When an H3 video for the target scene already exists (this Plugin's `reference/v
 
 - Resolution: 2048×2048 (2K 1:1)
 - Aspect ratio: 1:1
-- Negative prompt: anything that triggers the `issues.md` ban-list (smirk, evil, teeth, tongue, eyebrow, tilted eyelids, missing head bumps)
+- Negative prompt: anything that triggers the `issues.md` ban-list (smirk,
+  evil, teeth, tongue, eyebrow, tilted eyelids, missing head bumps,
+  bear-ear bumps, chibi / anime proportions, fuzzy / flocked body,
+  head markings)
