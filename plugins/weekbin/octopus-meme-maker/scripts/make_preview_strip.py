@@ -20,7 +20,9 @@ import subprocess
 import sys
 import tempfile
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
+
+import _fonts
 
 SAMPLE_FRACTIONS = (0.0, 0.30, 0.50, 0.70, 1.0)
 FRAME_WIDTH = 480
@@ -29,27 +31,8 @@ LABEL_BG = "white"
 LABEL_FG = "black"
 LABEL_FONT_SIZE = 24
 
-FONT_CANDIDATES = [
-    # macOS
-    "/System/Library/Fonts/STHeiti Medium.ttc",
-    "/System/Library/Fonts/PingFang.ttc",
-    "/System/Library/Fonts/Hiragino Sans GB.ttc",
-    # Linux
-    "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
-    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-    "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-    # Windows
-    r"C:\Windows\Fonts\msyh.ttc",
-    r"C:\Windows\Fonts\msyhbd.ttc",
-    r"C:\Windows\Fonts\simhei.ttf",
-]
 
 
-def pick_chinese_font():
-    for path in FONT_CANDIDATES:
-        if os.path.exists(path):
-            return path
-    return None
 
 
 def probe_video(video):
@@ -136,13 +119,10 @@ def main():
               "(-fps_mode replaced -vsync in 5.0).", file=sys.stderr)
         sys.exit(1)
 
-    font_path = args.font or pick_chinese_font()
-    if not font_path:
-        print(
-            "ERROR: no CJK font found. Install one of: wqy-microhei / noto-cjk (Linux), "
-            "STHeiti (macOS), msyh (Windows); or pass --font <path>.",
-            file=sys.stderr,
-        )
+    try:
+        font_path = _fonts.resolve_font_path(args.font)
+    except _fonts.FontUnavailable as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
         sys.exit(1)
 
     if not os.path.isfile(args.video):
@@ -184,7 +164,7 @@ def main():
         imgs = [Image.open(os.path.join(workdir, f)) for f in frame_files]
         w, h = imgs[0].size
         strip = Image.new("RGB", (w * 5, h + LABEL_BAND_H), LABEL_BG)
-        font = ImageFont.truetype(font_path, LABEL_FONT_SIZE)
+        font = _fonts.load_font(font_path, LABEL_FONT_SIZE)
         draw = ImageDraw.Draw(strip)
         for i, im in enumerate(imgs):
             strip.paste(im, (i * w, 0))

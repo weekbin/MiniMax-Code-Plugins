@@ -15,6 +15,7 @@ Expected result: `<scene-dir>/base.png` (2048×2048 base) → `<scene-dir>/video
 - `skills/octopus-meme-maker/SKILL.md` — the 4-stage pipeline + ban-list + exit conditions
 - `skills/octopus-meme-maker/reference.md` — character anatomy, style rules, prompt template, reference image list
 - `skills/octopus-meme-maker/issues.md` — known failure modes and feedback signals
+- `scripts/_fonts.py` — shared CJK font discovery and loading for the four scripts (not a CLI entry point)
 - `scripts/make_contact_sheet.py` — compose the 6-candidate contact sheet stage 1 hands to the user (Pillow)
 - `scripts/make_text_overlay.py` — render transparent Chinese text overlay (Pillow, cross-platform font picker)
 - `scripts/make_preview_strip.py` — extract 5 key frames from the video and stitch a preview strip (ffmpeg + Pillow)
@@ -44,9 +45,9 @@ Expected result: `<scene-dir>/base.png` (2048×2048 base) → `<scene-dir>/video
 
 ## Supported platforms
 
-- **macOS 13+** — verified by the maintainer (Python 3.14, Pillow 12.3, ffmpeg 8.1.2).
-- **Linux** — expected to work and not yet verified on a Linux host. The scripts are pure Python + Pillow + ffmpeg with no OS-specific branches, and the font picker covers `wqy-microhei` / `noto-cjk`.
-- **Windows 10/11** — expected to work and not yet verified on a Windows host. The scripts use `subprocess.run` with argument lists (no shell, so no quoting or injection surface), and the font picker covers `C:\Windows\Fonts\msyh.ttc`.
+- **macOS 13+** — verified. Python 3.14.7, Pillow 12.3.0, ffmpeg 8.1.2, STHeiti font.
+- **Linux** — verified on Ubuntu 24.04.4. Python 3.12.3, Pillow 10.2.0, ffmpeg 6.1.1, Noto Sans CJK. All four scripts produced the same artifact geometry as the macOS run: 1080×220 overlay, 2400×530 preview, 1460×974 contact sheet, `720,720,141` and `480,480,141` GIFs, and a 14-character caption auto-fitting at size 88.
+- **Windows 10/11** — not verified on a Windows host. The scripts use `subprocess.run` with argument lists (no shell, so no quoting or injection surface), and the font picker falls back to `C:\Windows\Fonts\msyh.ttc`.
 
 ## Data and network
 

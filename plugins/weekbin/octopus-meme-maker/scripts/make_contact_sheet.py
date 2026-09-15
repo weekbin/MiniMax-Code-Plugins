@@ -25,7 +25,9 @@ import argparse
 import os
 import sys
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
+
+import _fonts
 
 CELL_SIZE = 480
 COLS = 3
@@ -35,27 +37,8 @@ LABEL_FONT_SIZE = 72
 LABEL_BG = (255, 255, 255, 200)
 LABEL_FG = (0, 0, 0, 255)
 
-FONT_CANDIDATES = [
-    # macOS
-    "/System/Library/Fonts/STHeiti Medium.ttc",
-    "/System/Library/Fonts/PingFang.ttc",
-    "/System/Library/Fonts/Hiragino Sans GB.ttc",
-    # Linux
-    "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
-    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-    "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-    # Windows
-    r"C:\Windows\Fonts\msyh.ttc",
-    r"C:\Windows\Fonts\msyhbd.ttc",
-    r"C:\Windows\Fonts\simhei.ttf",
-]
 
 
-def pick_font():
-    for path in FONT_CANDIDATES:
-        if os.path.exists(path):
-            return path
-    return None
 
 
 def fit_into_square(img, size):
@@ -103,13 +86,10 @@ def main():
         print(f"ERROR: --cols must be 1..6, got {args.cols}.", file=sys.stderr)
         sys.exit(1)
 
-    font_path = args.font or pick_font()
-    if not font_path:
-        print(
-            "ERROR: no font found. Install one of: wqy-microhei / noto-cjk (Linux), "
-            "STHeiti (macOS), msyh (Windows); or pass --font <path>.",
-            file=sys.stderr,
-        )
+    try:
+        font_path = _fonts.resolve_font_path(args.font)
+    except _fonts.FontUnavailable as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
         sys.exit(1)
 
     cells = []
@@ -129,7 +109,7 @@ def main():
     sheet_h = rows * CELL_SIZE + (rows - 1) * PADDING + 2 * RULE
     sheet = Image.new("RGB", (sheet_w, sheet_h), (0, 0, 0))
     draw = ImageDraw.Draw(sheet)
-    font = ImageFont.truetype(font_path, LABEL_FONT_SIZE)
+    font = _fonts.load_font(font_path, LABEL_FONT_SIZE)
 
     for i, (cell, label) in enumerate(zip(cells, labels)):
         row = i // cols

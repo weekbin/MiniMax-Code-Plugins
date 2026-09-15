@@ -425,6 +425,46 @@ test('host tools are called with argument lists, never a shell', () => {
   }
 });
 
+test('the CJK font candidate list lives in exactly one module', () => {
+  // Four scripts used to carry their own copy of the same 10-path list plus a
+  // picker. They now import scripts/_fonts.py; a fifth copy added later would
+  // drift. Assert the literals only appear in the shared module.
+  const fontModule = join(SCRIPTS_DIR, '_fonts.py');
+  assert.ok(existsSync(fontModule), 'missing scripts/_fonts.py');
+  const shared = readText(fontModule);
+  assert.match(shared, /FONT_CANDIDATES/, 'the shared module must own FONT_CANDIDATES');
+
+  for (const f of ['make_gif.py', 'make_text_overlay.py', 'make_preview_strip.py', 'make_contact_sheet.py']) {
+    const text = readText(join(SCRIPTS_DIR, f));
+    assert.equal(
+      /FONT_CANDIDATES\s*=/.test(text),
+      false,
+      `${f} must not redefine FONT_CANDIDATES; import it from _fonts.py`,
+    );
+    assert.equal(
+      /\/System\/Library\/Fonts\//.test(text),
+      false,
+      `${f} must not hardcode a font path; _fonts.py owns the candidate list`,
+    );
+  }
+});
+
+test('font loading failures are reported, never raised as a traceback', () => {
+  const shared = readText(join(SCRIPTS_DIR, '_fonts.py'));
+  assert.match(shared, /except Exception/, 'load_font must catch Pillow load failures');
+  assert.match(shared, /FontUnavailable/, 'must expose a typed error for callers');
+  for (const f of ['make_text_overlay.py', 'make_preview_strip.py', 'make_contact_sheet.py']) {
+    const text = readText(join(SCRIPTS_DIR, f));
+    assert.match(text, /FontUnavailable/, `${f} must handle FontUnavailable explicitly`);
+  }
+});
+
+test('the README records the platform verification evidence', () => {
+  const text = readText(README);
+  assert.match(text, /Ubuntu 24\.04/, 'must name the verified Linux distribution');
+  assert.match(text, /verified on Ubuntu/, 'must state the Linux run as verified, not expected');
+});
+
 test('only real host tool names appear in the docs', () => {
   // Read out of the shipped `@minimax-ai/code` schemas (mcode 0.4.6).
   const REAL_TOOLS = new Set([

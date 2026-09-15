@@ -22,7 +22,9 @@ import argparse
 import os
 import sys
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
+
+import _fonts
 
 TEXT_COLOR = (24, 24, 24)
 STROKE_COLOR = (255, 255, 255)
@@ -33,28 +35,14 @@ MIN_SIZE = 24
 SIZE_STEP = 2
 DEFAULT_STROKE = 10
 
-FONT_CANDIDATES = [
-    # macOS
-    "/System/Library/Fonts/STHeiti Medium.ttc",
-    "/System/Library/Fonts/PingFang.ttc",
-    "/System/Library/Fonts/Hiragino Sans GB.ttc",
-    # Linux
-    "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
-    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-    "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-    # Windows
-    r"C:\Windows\Fonts\msyh.ttc",
-    r"C:\Windows\Fonts\msyhbd.ttc",
-    r"C:\Windows\Fonts\simhei.ttf",
-]
+
+def fail(message):
+    print(f"ERROR: {message}", file=sys.stderr)
+    sys.exit(1)
 
 
-def pick_chinese_font():
-    """Return the first existing path from FONT_CANDIDATES, or None."""
-    for path in FONT_CANDIDATES:
-        if os.path.exists(path):
-            return path
-    return None
+
+
 
 
 def measure(draw, text, font, stroke):
@@ -76,14 +64,10 @@ def main():
                    help="Keep the requested --size even if the text overflows the canvas")
     args = p.parse_args()
 
-    font_path = args.font or pick_chinese_font()
-    if not font_path:
-        print(
-            "ERROR: no CJK font found. Install one of: wqy-microhei / noto-cjk (Linux), "
-            "STHeiti (macOS), msyh (Windows); or pass --font <path>.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+    try:
+        font_path = _fonts.resolve_font_path(args.font)
+    except _fonts.FontUnavailable as exc:
+        fail(str(exc))
 
     overlay = Image.new("RGBA", (args.width, args.height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)
@@ -91,12 +75,12 @@ def main():
     # A caption longer than the canvas would be clipped silently, so shrink the
     # font until it fits. --size is therefore a maximum, not a fixed value.
     size = max(MIN_SIZE, args.size)
-    font = ImageFont.truetype(font_path, size)
+    font = _fonts.load_font(font_path, size)
     bbox, text_w, text_h = measure(draw, args.text, font, args.stroke)
     if not args.no_fit:
         while (text_w > args.width or text_h > args.height) and size > MIN_SIZE:
             size = max(MIN_SIZE, size - SIZE_STEP)
-            font = ImageFont.truetype(font_path, size)
+            font = _fonts.load_font(font_path, size)
             bbox, text_w, text_h = measure(draw, args.text, font, args.stroke)
 
     if text_w > args.width or text_h > args.height:
