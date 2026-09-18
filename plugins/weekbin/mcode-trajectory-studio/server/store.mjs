@@ -216,6 +216,27 @@ export class Store {
     return { ...summary, children };
   }
 
+  /**
+   * Agent names actually present in this install, with session counts.
+   *
+   * Sub-agent presets are per-machine, so the sidebar filter is built from the data
+   * rather than from a fixed list of names.
+   */
+  listAgents() {
+    if (!this.db || !this.has('sessions', 'agent_name')) return [];
+    try {
+      return this.db.prepare(`
+        SELECT agent_name AS name, COUNT(*) AS count
+        FROM local_runtime_sessions
+        WHERE agent_name IS NOT NULL AND agent_name <> ''
+        GROUP BY agent_name
+        ORDER BY count DESC, name ASC
+      `).all().map((row) => ({ name: row.name, count: num(row.count) ?? 0 }));
+    } catch {
+      return [];
+    }
+  }
+
   /* ------------------------------------------------------------ identity -- */
 
   /**
@@ -577,6 +598,39 @@ export class Store {
       };
     } finally {
       await handle.close();
+    }
+  }
+
+  /**
+   * Per-turn totals folded once on the server.
+   *
+   * The stream pages its rows, so a turn header cannot be summed from the rows that
+   * happen to be loaded — it has to come from the whole session. Doing it here also
+   * removes the client-side regrouping that used to run on every render.
+   */
+  getTurnSummaries(sessionId) {
+    if (!this.db) return [];
+    try {
+      return this.db.prepare(`
+        SELECT
+          json_extract(data_json, '$.turn_id') AS turn_id,
+          COUNT(*) AS count,
+          SUM(COALESCE(json_extract(data_json, '$.usage.request_duration_ms'), 0)) AS llm_ms,
+          SUM(COALESCE(json_extract(data_json, '$.usage.output_tokens'), 0)) AS output_tokens,
+          MIN(created_at_ms) AS first_ms
+        FROM local_runtime_message_rows
+        WHERE session_id = ?
+        GROUP BY turn_id
+        ORDER BY first_ms ASC
+      `).all(sessionId).map((row) => ({
+        turnId: row.turn_id ?? null,
+        count: num(row.count) ?? 0,
+        llmMs: num(row.llm_ms) ?? 0,
+        outputTokens: num(row.output_tokens) ?? 0,
+      }));
+    } catch (error) {
+      this.warnings.push(`turn_summary_failed:${error.message}`);
+      return [];
     }
   }
 

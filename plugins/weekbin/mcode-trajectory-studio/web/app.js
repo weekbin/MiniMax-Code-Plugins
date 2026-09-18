@@ -15,14 +15,18 @@
  */
 
 const API_HEADER = { 'x-trajectory-client': '1' };
-const MAX_RENDERED_ROWS = 1200;
 const MAX_LANE_ROWS = 8;
 const LANE_ROW_PX = 17;
+/** Stream rows rendered per batch. The rest load as the reader scrolls. */
+const STREAM_PAGE = 150;
+const MAX_STREAM_ROWS = 4000;
+const MAX_BARS = 320;
 
 const state = {
   sessions: [],
   sessionId: null,
   events: [],
+  turns: new Map(),
   tasks: [],
   agent: null,
   detailLevel: 'full',
@@ -37,6 +41,12 @@ const state = {
   collapsed: readCollapsed(),
   expanded: readExpanded(),
   tab: 'summary',
+  // Stream is cached and paged: rows are rebuilt only when the session's events
+  // change, and only STREAM_PAGE of them enter the DOM at a time.
+  streamRows: null,
+  filteredRows: null,
+  renderedRows: 0,
+  loadingMore: false,
 };
 
 const el = (id) => document.getElementById(id);
@@ -216,21 +226,30 @@ const ICONS = {
   caretDown: 'M3.8 6.5 8 10.2l4.2-3.7',
 };
 
+/** Icons are built once and cloned; rebuilding ~120 SVGs per sidebar render was measurable. */
+const ICON_TEMPLATES = new Map();
+
 function icon(name, className = 'ic') {
-  const NS = 'http://www.w3.org/2000/svg';
-  const svg = document.createElementNS(NS, 'svg');
-  svg.setAttribute('viewBox', '0 0 16 16');
-  svg.setAttribute('aria-hidden', 'true');
-  svg.setAttribute('class', className);
-  const path = document.createElementNS(NS, 'path');
-  path.setAttribute('d', ICONS[name] ?? '');
-  path.setAttribute('fill', 'none');
-  path.setAttribute('stroke', 'currentColor');
-  path.setAttribute('stroke-width', '1.6');
-  path.setAttribute('stroke-linecap', 'round');
-  path.setAttribute('stroke-linejoin', 'round');
-  svg.append(path);
-  return svg;
+  const key = `${name}|${className}`;
+  let template = ICON_TEMPLATES.get(key);
+  if (!template) {
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 16 16');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('class', className);
+    const path = document.createElementNS(NS, 'path');
+    path.setAttribute('d', ICONS[name] ?? '');
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', 'currentColor');
+    path.setAttribute('stroke-width', '1.6');
+    path.setAttribute('stroke-linecap', 'round');
+    path.setAttribute('stroke-linejoin', 'round');
+    svg.append(path);
+    template = svg;
+    ICON_TEMPLATES.set(key, template);
+  }
+  return template.cloneNode(true);
 }
 
 /* ---------------------------------------------------------------- sidebar */
@@ -351,39 +370,46 @@ function renderSessions() {
   }
 }
 
+/** Keep the highlighted row on screen — a correct highlight you cannot see is no help. */
+function scrollSelectedIntoView() {
+  const node = el('session-groups').querySelector('.session-item[aria-current="true"]');
+  node?.scrollIntoView({ block: 'nearest' });
+}
+
 /**
- * One sidebar row. Deliberately minimal: a caret when the session has sub-agents,
- * and the title. Everything else lives in the tooltip and the detail header, so the
- * list stays scannable instead of carrying five badges per row.
+ * One sidebar row.
+ *
+ * The whole row toggles expansion, not just the caret — a caret-sized target is
+ * needlessly fussy. Clicking a collapsed parent selects it and opens it; clicking an
+ * already-selected open parent closes it, so the same gesture never hides the row
+ * you are reading.
  */
 function renderSessionItem(session, depth, childrenOf) {
   const children = childrenOf.get(session.sessionId) ?? [];
   const expanded = state.expanded.has(session.sessionId);
+  const isSelected = session.sessionId === state.sessionId;
 
   const item = document.createElement('button');
   item.type = 'button';
-  item.className = `session-item${session.parentSessionId ? ' is-sub' : ''}`;
-  item.style.paddingLeft = `${6 + depth * 14}px`;
-  if (session.sessionId === state.sessionId) item.setAttribute('aria-current', 'true');
+  item.className = `session-item${session.parentSessionId ? ' is-sub' : ''}${children.length ? ' has-children' : ''}`;
+  // Indent grows 12px per level and stops growing past level 4, so a deep fan-out
+  // does not push titles off the panel.
+  item.style.paddingLeft = `${6 + Math.min(depth, 4) * 12}px`;
+  item.style.setProperty('--d', String(Math.min(depth, 4)));
+  if (isSelected) item.setAttribute('aria-current', 'true');
   item.title = [
     session.title || '(无标题)',
     `${session.agent ?? '?'} · ${session.sessionKind ?? ''}`,
     session.branch ? `分支 ${session.branch}` : null,
     session.workspaceDir,
     session.parentSessionId ? `父会话 ${session.parentSessionId}` : null,
+    children.length ? `${children.length} 个子代理` : null,
     `更新于 ${fmtAge(session.updatedAtMs)}`,
+    children.length ? '点击行展开 / 收起' : null,
   ].filter(Boolean).join('\n');
 
   if (children.length) {
-    const caret = icon(expanded ? 'caretDown' : 'caretRight', 'ic s-caret');
-    caret.addEventListener('click', (event) => {
-      event.stopPropagation();
-      if (state.expanded.has(session.sessionId)) state.expanded.delete(session.sessionId);
-      else state.expanded.add(session.sessionId);
-      writeExpanded();
-      renderSessions();
-    });
-    item.append(caret);
+    item.append(icon(expanded ? 'caretDown' : 'caretRight', 'ic s-caret'));
   } else {
     item.append(textNode('span', 's-caret-space'));
   }
@@ -392,7 +418,23 @@ function renderSessionItem(session, depth, childrenOf) {
   item.append(textNode('span', 's-title', session.title || '(无标题)'));
   if (children.length) item.append(textNode('span', 's-child-count', String(children.length)));
 
-  item.addEventListener('click', () => selectSession(session.sessionId));
+  item.addEventListener('click', () => {
+    const wasSelected = session.sessionId === state.sessionId;
+    if (children.length) {
+      if (expanded && wasSelected) {
+        state.expanded.delete(session.sessionId);
+        writeExpanded();
+        renderSessions();
+        return;
+      }
+      if (!expanded) {
+        state.expanded.add(session.sessionId);
+        writeExpanded();
+      }
+    }
+    selectSession(session.sessionId);
+  });
+
   const li = document.createElement('li');
   li.append(item);
   return li;
@@ -773,6 +815,14 @@ function toolFailed(call) {
   return call.ok === false || call.taskStatus === 'failed';
 }
 
+/** Everything a row can be matched against, as one lowercase string. */
+function rowHaystack(row) {
+  const parts = row.kind === 'tool'
+    ? [row.call.name, row.call.description, row.call.args, row.call.result, row.call.agentName]
+    : [row.event.content, row.event.thinking, row.event.originType, row.event.turnId, row.event.source];
+  return parts.filter((part) => typeof part === 'string' && part).join(' ').toLowerCase();
+}
+
 function rowMatchesFilter(row) {
   switch (state.rowFilter) {
     case 'human': return row.kind === 'message' && row.event.role === 'user' && row.event.inputKind === 'human';
@@ -783,65 +833,99 @@ function rowMatchesFilter(row) {
   }
 }
 
-function rowMatchesText(row) {
-  if (!state.textQuery) return true;
+/** Filter over the cached rows. Rebuilding the DOM is what was slow, not matching. */
+function applyFilters() {
+  const rows = state.streamRows ?? (state.streamRows = buildStream(state.events));
   const needle = state.textQuery.toLowerCase();
-  const haystack = row.kind === 'tool'
-    ? [row.call.name, row.call.description, row.call.args, row.call.result].filter(Boolean).join(' ')
-    : [row.event.content, row.event.thinking, row.event.originType, row.event.turnId].filter(Boolean).join(' ');
-  return String(haystack).toLowerCase().includes(needle);
+  state.filteredRows = rows.filter((row) => {
+    if (!rowMatchesFilter(row)) return false;
+    if (state.turnQuery && !String(row.event.turnId ?? '').includes(state.turnQuery)) return false;
+    if (needle && !rowHaystack(row).includes(needle)) return false;
+    return true;
+  });
+  state.renderedRows = 0;
+  state.lastTurn = undefined;
+}
+
+function turnHeader(turnId) {
+  const summary = turnId ? state.turns.get(turnId) : null;
+  const head = textNode('div', 'turn-head');
+  head.append(textNode('span', 'th-id', turnId ? String(turnId) : '(无轮次)'));
+  if (summary) head.append(textNode('span', '', `${summary.count} 条`));
+  const agg = textNode('div', 'th-agg');
+  if (summary) {
+    agg.append(textNode('span', '', `LLM ${fmtMs(summary.llmMs)}`));
+    agg.append(textNode('span', '', `out ${fmtTokens(summary.outputTokens)} tok`));
+  }
+  head.append(agg);
+  return head;
+}
+
+/** Append the next batch of rows. Rows already in the DOM are never rebuilt. */
+function appendStreamRows(reset = false) {
+  const host = el('stream');
+  const rows = state.filteredRows ?? [];
+  if (reset) {
+    host.textContent = '';
+    state.renderedRows = 0;
+    state.lastTurn = undefined;
+  }
+  const total = Math.min(rows.length, MAX_STREAM_ROWS);
+  const end = Math.min(total, state.renderedRows + STREAM_PAGE);
+  if (state.renderedRows >= end) return false;
+
+  const fragment = document.createDocumentFragment();
+  for (let index = state.renderedRows; index < end; index += 1) {
+    const row = rows[index];
+    const turnId = row.event.turnId ?? null;
+    if (turnId !== state.lastTurn) {
+      state.lastTurn = turnId;
+      fragment.append(turnHeader(turnId));
+    }
+    fragment.append(row.kind === 'tool' ? renderToolRow(row) : renderMessageRow(row));
+  }
+  // The sentinel is replaced on every append so it stays last.
+  el('stream-more')?.remove();
+  host.append(fragment);
+  state.renderedRows = end;
+
+  if (end < total) {
+    const more = textNode('button', 'stream-more', `加载更多（已显示 ${end} / ${total} 行）`);
+    more.id = 'stream-more';
+    more.type = 'button';
+    more.addEventListener('click', () => appendStreamRows());
+    host.append(more);
+  } else if (rows.length > MAX_STREAM_ROWS) {
+    host.append(textNode('p', 'muted small stream-end',
+      `仅渲染前 ${MAX_STREAM_ROWS} 行。请用筛选缩小范围。`));
+  } else {
+    host.append(textNode('p', 'muted small stream-end', `已显示全部 ${total} 行`));
+  }
+  return true;
 }
 
 function renderStream() {
-  const host = el('stream');
-  host.textContent = '';
-  const all = buildStream(state.events);
-  const rows = all.filter((row) => rowMatchesFilter(row) && rowMatchesText(row)
-    && (!state.turnQuery || String(row.event.turnId ?? '').includes(state.turnQuery)));
+  applyFilters();
+  appendStreamRows(true);
+  updateStreamCount();
+}
 
-  el('record-count').textContent = rows.length === all.length
-    ? `${all.length} 行`
-    : `${rows.length} / ${all.length} 行`;
-
-  if (rows.length === 0) {
-    host.append(textNode('p', 'muted small', '没有匹配的条目。'));
-    return;
-  }
-
-  let currentTurn = null;
-  for (const row of rows.slice(0, MAX_RENDERED_ROWS)) {
-    if (row.event.turnId !== currentTurn) {
-      currentTurn = row.event.turnId;
-      const turnEvents = state.events.filter((item) => item.turnId === currentTurn);
-      const turnMs = turnEvents.reduce((sum, item) => sum + (item.requestDurationMs ?? 0), 0);
-      const turnTokens = turnEvents.reduce((sum, item) => sum + (item.usage?.outputTokens ?? 0), 0);
-      const head = textNode('div', 'turn-head');
-      head.append(textNode('span', 'th-id', currentTurn ? String(currentTurn) : '(无轮次)'));
-      head.append(textNode('span', '', `${turnEvents.length} 条`));
-      const agg = textNode('div', 'th-agg');
-      agg.append(textNode('span', '', `LLM ${fmtMs(turnMs)}`));
-      agg.append(textNode('span', '', `out ${fmtTokens(turnTokens)} tok`));
-      head.append(agg);
-      host.append(head);
-    }
-    host.append(row.kind === 'tool' ? renderToolRow(row) : renderMessageRow(row));
-  }
-
-  if (rows.length > MAX_RENDERED_ROWS) {
-    host.append(textNode('p', 'muted small', `仅渲染前 ${MAX_RENDERED_ROWS} 行。请用筛选缩小范围。`));
-  }
+function updateStreamCount() {
+  const all = state.streamRows?.length ?? 0;
+  const shown = state.filteredRows?.length ?? 0;
+  const label = el('record-count');
+  if (label) label.textContent = shown === all ? `${all} 行` : `${shown} / ${all} 行`;
 }
 
 function markSelected(node, isTool, position) {
   const selected = state.selected;
-  if (!selected || selected.eventIndex !== undefined) {
-    if (!selected) return;
-    if (node.dataset.eventIndex === String(selected.eventIndex) && !isTool) node.setAttribute('aria-selected', 'true');
+  if (!selected) return;
+  if (node.dataset.eventIndex !== String(selected.eventIndex)) return;
+  if (isTool) {
+    if (node.dataset.position === String(position)) node.setAttribute('aria-selected', 'true');
     return;
   }
-  if (node.dataset.eventIndex === String(selected.eventIndex) && node.dataset.position === String(position)) {
-    node.setAttribute('aria-selected', 'true');
-  }
+  if (selected.kind === 'message') node.setAttribute('aria-selected', 'true');
 }
 
 function renderMessageRow(row) {
@@ -975,7 +1059,7 @@ function selectedPayload() {
 
 function openInspector(selection) {
   state.selected = selection;
-  renderStream();
+  refreshSelectionHighlight();
   el('inspector').setAttribute('data-open', 'true');
   document.body.dataset.inspector = 'true';
   renderInspector();
@@ -985,7 +1069,21 @@ function closeInspector() {
   el('inspector').setAttribute('data-open', 'false');
   document.body.dataset.inspector = 'false';
   state.selected = null;
-  renderStream();
+  refreshSelectionHighlight();
+}
+
+/** Toggle the selected styling in place instead of re-rendering the whole stream. */
+function refreshSelectionHighlight() {
+  for (const node of el('stream').querySelectorAll('.srow[aria-selected]')) node.removeAttribute('aria-selected');
+  const selected = state.selected;
+  if (!selected) return;
+  for (const node of el('stream').querySelectorAll(`[data-event-index="${CSS.escape(String(selected.eventIndex))}"]`)) {
+    if (selected.kind === 'tool') {
+      if (node.dataset.position === String(selected.position)) node.setAttribute('aria-selected', 'true');
+    } else if (node.classList.contains('srow-message')) {
+      node.setAttribute('aria-selected', 'true');
+    }
+  }
 }
 
 function focusToolCall(toolCallId) {
@@ -1268,9 +1366,22 @@ async function loadOverview() {
   }
   state.sessionId = payload.session.sessionId;
   state.tasks = payload.tasks ?? [];
+  state.turns = new Map((payload.turns ?? []).map((turn) => [turn.turnId, turn]));
+
+  // The header and the sidebar highlight must agree with what is on screen, so the
+  // selected session is force-included in the list even when the fetch limit, the
+  // search box or an agent filter would have excluded it.
+  if (!state.sessions.some((session) => session.sessionId === state.sessionId)) {
+    const raw = await api(`/api/sessions?limit=1&id=${encodeURIComponent(state.sessionId)}`).catch(() => null);
+    const extra = raw?.sessions?.find((session) => session.sessionId === state.sessionId);
+    if (extra) state.sessions.unshift(extra);
+  }
+
   renderStats(payload.stats);
   renderCapability(payload.agent);
+  revealAncestors(state.sessionId);
   renderSessions();
+  scrollSelectedIntoView();
   await refreshEvents();
 }
 
@@ -1278,12 +1389,45 @@ async function refreshEvents() {
   const detail = state.detailLevel === 'full' ? '&detailLevel=full' : '';
   const payload = await api(`/api/events?id=${encodeURIComponent(state.sessionId)}&limit=1000${detail}`);
   state.events = payload.events ?? [];
+  state.streamRows = null;          // rebuilt lazily from the new events
+  state.filteredRows = null;
   renderOverview(state.events, state.tasks);
   renderStream();
   if (state.selected) renderInspector();
   if (payload.source === 'jsonl') {
     banner('该会话未进入 SQLite 投影，已回退到 messages.jsonl。计时与任务关联可能缺失。');
   }
+}
+
+/** Options come from the data: sub-agent presets differ per install. */
+async function loadAgents() {
+  const select = el('agent-select');
+  try {
+    const payload = await api('/api/agents');
+    const current = select.value;
+    select.textContent = '';
+    const all = document.createElement('option');
+    all.value = '';
+    all.textContent = '全部';
+    select.append(all);
+    for (const agent of payload.agents ?? []) {
+      const option = document.createElement('option');
+      option.value = agent.name;
+      option.textContent = `${agent.name} (${agent.count})`;
+      select.append(option);
+    }
+    select.value = current;
+  } catch {
+    /* the filter stays at 全部 */
+  }
+}
+
+function debounce(fn, wait = 140) {
+  let timer = null;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), wait);
+  };
 }
 
 /* ------------------------------------------------------------------- wire */
@@ -1311,6 +1455,11 @@ function wire() {
     }
   });
 
+  el('agent-select').addEventListener('change', (event) => {
+    state.agentFilter = event.target.value;
+    renderSessions();
+  });
+
   el('collapse-all').addEventListener('click', () => {
     const keys = [...new Set(visibleSessions().map((session) => session.groupKey ?? `path:${session.workspaceDir ?? ''}`))];
     const allCollapsed = keys.length > 0 && keys.every((key) => state.collapsed.has(key));
@@ -1319,16 +1468,6 @@ function wire() {
       else state.collapsed.add(key);
     }
     writeCollapsed();
-    renderSessions();
-  });
-
-  el('session-filters').addEventListener('click', (event) => {
-    const button = event.target.closest('.chip[data-agent]');
-    if (!button) return;
-    for (const chip of el('session-filters').querySelectorAll('.chip[data-agent]')) {
-      chip.classList.toggle('is-on', chip === button);
-    }
-    state.agentFilter = button.dataset.agent ?? '';
     renderSessions();
   });
 
@@ -1342,21 +1481,50 @@ function wire() {
     renderStream();
   });
 
-  el('turn-jump').addEventListener('input', (event) => {
-    state.turnQuery = event.target.value.trim();
-    renderStream();
+  // Loading the next batch as the reader approaches the bottom keeps the initial
+  // paint small without hiding anything.
+  el('stream').addEventListener('scroll', () => {
+    const host = el('stream');
+    if (state.loadingMore) return;
+    if (host.scrollTop + host.clientHeight < host.scrollHeight - 320) return;
+    if ((state.renderedRows ?? 0) >= (state.filteredRows?.length ?? 0)) return;
+    state.loadingMore = true;
+    requestAnimationFrame(() => {
+      appendStreamRows();
+      updateStreamCount();
+      state.loadingMore = false;
+    });
   });
 
+  const debouncedFilters = debounce(() => {
+    renderStream();
+  });
+  el('turn-jump').addEventListener('input', (event) => {
+    state.turnQuery = event.target.value.trim();
+    debouncedFilters();
+  });
   el('text-filter').addEventListener('input', (event) => {
     state.textQuery = event.target.value.trim();
-    renderStream();
+    debouncedFilters();
   });
 
   el('failure-jump').addEventListener('click', () => {
     const button = el('stream').parentElement.querySelector('.chip[data-filter="failed"]');
-    if (button) button.click();
+    if (button && !button.classList.contains('is-on')) button.click();
     const first = el('stream').querySelector('.srow-tool.is-fail');
-    if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (first) {
+      first.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } else {
+      // The first failure may sit beyond the rendered batch; load until it appears.
+      let guard = 0;
+      while (guard < 40 && !el('stream').querySelector('.srow-tool.is-fail')
+        && (state.renderedRows ?? 0) < (state.filteredRows?.length ?? 0)) {
+        appendStreamRows();
+        guard += 1;
+      }
+      el('stream').querySelector('.srow-tool.is-fail')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      updateStreamCount();
+    }
   });
 
   el('ins-tabs').addEventListener('click', (event) => {
@@ -1396,6 +1564,7 @@ async function boot() {
       : 'SQLite 不可用 · 回退 JSONL';
     if (!meta.sqliteAvailable) banner('SQLite 投影不可读，已回退到 messages.jsonl，计时字段会缺失。');
     for (const warning of meta.warnings ?? []) banner(warning);
+    await loadAgents();
     await loadSessions();
     const first = state.sessionId ?? state.sessions[0]?.sessionId;
     if (first) await selectSession(first);

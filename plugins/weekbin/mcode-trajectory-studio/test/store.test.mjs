@@ -523,6 +523,45 @@ test('annotateWorkspaces labels every session with its group', async (t) => {
   }
 });
 
+test('turn summaries are folded server-side for the whole session', async (t) => {
+  const dataDir = await makeDataDir();
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const store = openStore({ dataDir });
+  t.after(() => store.close());
+
+  const turns = store.getTurnSummaries('sess-a');
+  assert.deepEqual(turns.map((turn) => turn.turnId), ['turn-1', 'turn-2', 'turn-3', 'turn-4']);
+  const first = turns[0];
+  assert.equal(first.count, 2, 'a user row and an assistant row');
+  assert.equal(first.llmMs, 1500, 'only the assistant row carries a request duration');
+  assert.equal(first.outputTokens, 50);
+  assert.equal(turns[1].llmMs, 500);
+});
+
+test('agent options are read from the data, not hard-coded', async (t) => {
+  const dataDir = await makeDataDir();
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const store = openStore({ dataDir });
+  t.after(() => store.close());
+
+  const agents = store.listAgents();
+  assert.deepEqual(agents, [{ name: 'mavis', count: 2 }, { name: 'explore', count: 1 }],
+    'distinct agents with session counts, most frequent first');
+});
+
+test('a single session can be looked up by id for the highlight', async (t) => {
+  const dataDir = await makeDataDir();
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const store = openStore({ dataDir });
+  t.after(() => store.close());
+
+  const session = store.getSession('sess-b');
+  assert.equal(session.sessionId, 'sess-b');
+  const annotated = await store.annotateWorkspaces([session]);
+  assert.equal(annotated.length, 1);
+  assert.ok(annotated[0].groupKey);
+});
+
 /* ------------------------------------------------------------- redaction -- */
 
 test('redactText removes credentials and bounds length', () => {

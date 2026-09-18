@@ -217,15 +217,27 @@ async function api(store, homeDir, url, { getFocus, setFocus }) {
   }
 
   if (route === '/api/sessions') {
-    const raw = store.listSessions({
-      limit: Number(url.searchParams.get('limit')) || 50,
-      agent: url.searchParams.get('agent') || undefined,
-      kind: url.searchParams.get('kind') || undefined,
-      includeArchived: url.searchParams.get('includeArchived') === '1',
-    });
+    // A single-session lookup lets the sidebar force-include the session on screen
+    // even when a limit or filter would have excluded it, so the highlight can never
+    // disagree with the detail pane.
+    const only = url.searchParams.get('id');
+    const raw = only
+      ? [store.getSession(only)].filter(Boolean)
+      : store.listSessions({
+          limit: Number(url.searchParams.get('limit')) || 50,
+          agent: url.searchParams.get('agent') || undefined,
+          kind: url.searchParams.get('kind') || undefined,
+          includeArchived: url.searchParams.get('includeArchived') === '1',
+        });
     const sessions = (await store.annotateWorkspaces(raw))
       .map((session) => ({ ...session, workspaceDir: redactPath(session.workspaceDir, { homeDir }) }));
     return { sessions };
+  }
+
+  if (route === '/api/agents') {
+    // Agents differ per machine — sub-agent names come from whatever presets that
+    // install has — so the filter's options are read from the data, not hard-coded.
+    return { agents: store.listAgents() };
   }
 
   if (route === '/api/search') {
@@ -288,20 +300,18 @@ function overview(store, homeDir, sessionId) {
   const session = store.getSession(sessionId);
   if (!session) throw new Error(`session_not_found:${sessionId}`);
   const stats = store.getStats(sessionId);
-  const page = store.getEvents({ sessionId, offset: 0, limit: 1000, detailLevel: 'summary' });
-  const tasks = store.listBackgroundTasks(sessionId, { limit: 200 });
+  const tasks = store.listBackgroundTasks(sessionId, { limit: 500 });
   const agent = store.getAgentDefinition(sessionId);
+  // No events here on purpose: the client asks /api/events for the page it will
+  // actually render. Fetching them here only to discard them was the single
+  // largest waste in a session switch.
   return {
     session: { ...session, workspaceDir: redactPath(session.workspaceDir, { homeDir }) },
     stats,
+    turns: store.getTurnSummaries(sessionId),
     agent: agent
       ? { ...agent, systemPrompt: agent.systemPrompt ? redactText(agent.systemPrompt, { maxLength: 20000 }) : null }
       : null,
-    source: page.source,
-    total: page.total,
-    events: page.events,
-    // Kept so the timeline can draw measured tool spans; the record rows carry the
-    // same tasks joined by tool call ID, so the UI never renders them twice.
     tasks,
   };
 }

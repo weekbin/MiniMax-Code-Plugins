@@ -17,12 +17,13 @@
   <div class="side-search">
     <input id="search" type="search" placeholder="搜索标题 / 仓库 / 路径…" autocomplete="off" spellcheck="false">
   </div>
-  <div class="side-filters" id="session-filters">
-    <button class="chip is-on" data-agent="">全部</button>
-    <button class="chip" data-agent="mavis">mavis</button>
-    <button class="chip" data-agent="explore">explore</button>
-    <button class="chip" data-agent="worker">worker</button>
-    <button class="chip" data-agent="verifier">verifier</button>
+  <div class="side-filters">
+    <label class="agent-filter">
+      <span class="agent-filter-label">Agent</span>
+      <select id="agent-select" aria-label="按 Agent 筛选会话">
+        <option value="">全部</option>
+      </select>
+    </label>
     <button class="chip ghost-chip" id="collapse-all" title="全部折叠 / 展开">折叠切换</button>
   </div>
   <div id="session-groups" class="session-groups"></div>

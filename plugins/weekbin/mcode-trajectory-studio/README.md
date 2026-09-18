@@ -62,10 +62,18 @@ question and does not repeat another surface's answer:
   harness-injected context in violet), `MODEL` (requests split into thinking and output segments)
   and `TOOLS` (measured task spans in orange, gaps derived from record spacing in grey and labelled
   as derived). Wheel zooms, drag pans, double click resets.
+- **Sidebar rows toggle on the whole row**, not just the caret: clicking a collapsed parent
+  selects and opens it, clicking the selected open parent closes it. The agent filter is a dropdown
+  whose options are read from the data (`mavis`, `verifier`, `explore`, … as configured on that
+  machine), because sub-agent presets differ per install.
 - **Stream** merges messages and tool calls into one narrative: `TOOL bash ▸ {payload} ⇉ {result}`
   with the measured duration, an agent badge for sub-agents, and a one-click jump into the
   sub-agent's own session. Injected context is visually distinct from things the user typed.
   Filter by human input, injected context, tool calls, or failures only; filter by turn ID or text.
+- **Performance**: the stream renders 150 rows and appends the next batch as you scroll, rows are
+  cached and filtering never rebuilds the DOM, text filters are debounced, and turn totals are folded
+  server-side so a paged view still shows whole-turn numbers. A session switch on a 600-row session
+  went from ~700 ms with 227 ms main-thread stalls to ~120 ms with none.
 - **Inspector** is tabbed: 概要 (hierarchy, status, token usage, context split), 载荷 (tool arguments
   or message body), 结果 (result text plus a **failure evidence** block), 计时 (recorded instant,
   request/thinking/decode time, and whether the tool duration was measured or absent), and Schema.
