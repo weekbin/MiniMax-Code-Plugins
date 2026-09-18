@@ -431,7 +431,7 @@ summary.panel-head:hover .summary-caret { border-left-color: var(--accent); }
    the stream scans as a single column of text. */
 .srow {
   display: grid;
-  grid-template-columns: 84px minmax(0, 1fr) 92px;
+  grid-template-columns: 88px minmax(0, 1fr) 138px;
   gap: 8px;
   align-items: center;
   /* One fixed line height for every kind of row, so the stream reads as a single
@@ -444,9 +444,12 @@ summary.panel-head:hover .summary-caret { border-left-color: var(--accent); }
 .srow:hover { background: var(--bg-3); }
 .srow[aria-selected="true"] { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .srow-message.is-injected { background: color-mix(in srgb, var(--injected) 6%, transparent); }
-.srow-tool { padding-left: 22px; }
-.srow-tool.is-fail { border-left: 2px solid var(--tool); }
-.srow-tool.is-fail.is-hard { border-left-color: var(--err); }
+.srow-message.is-user { box-shadow: inset 3px 0 0 transparent; }
+/* A tool row is marked by an inset line rather than a border or padding, so the badge
+   column stays aligned with message rows. */
+.srow-tool { box-shadow: inset 3px 0 0 transparent; }
+.srow-tool.is-fail { box-shadow: inset 3px 0 0 var(--tool); }
+.srow-tool.is-fail.is-hard { box-shadow: inset 3px 0 0 var(--err); }
 
 .srow-badge { display: flex; align-items: center; gap: 4px; min-width: 0; line-height: 18px; }
 .badge {
@@ -489,7 +492,23 @@ summary.panel-head:hover .summary-caret { border-left-color: var(--accent); }
 .sig-hard { background: color-mix(in srgb, var(--err) 18%, transparent); color: var(--err); }
 .sig-exit { background: color-mix(in srgb, var(--tool) 18%, transparent); color: var(--tool); }
 
-.srow-meta { display: flex; align-items: center; justify-content: flex-end; gap: 6px; line-height: 18px; font-size: 10.5px; font-family: var(--mono); color: var(--fg-dim); white-space: nowrap; }
+/* Right-aligned, but clipped rather than spilling leftwards over the body: with
+   justify-content: flex-end an over-wide child used to extend past the column edge and
+   overlap the row text. */
+.srow-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  line-height: 18px;
+  font-size: 10px;
+  font-family: var(--mono);
+  color: var(--fg-dim);
+  white-space: nowrap;
+}
+.srow-meta > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .srow-meta .is-think { color: var(--think); }
 .srow-meta .is-dim { color: var(--fg-faint); }
 .srow-meta .is-sub { color: var(--think); }

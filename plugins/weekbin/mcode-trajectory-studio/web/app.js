@@ -1034,9 +1034,9 @@ function renderMessageRow(row) {
   node.append(body);
 
   const meta = textNode('div', 'srow-meta');
-  if (event.requestDurationMs) meta.append(textNode('div', '', fmtMs(event.requestDurationMs)));
-  if (event.thinkingDurationMs) meta.append(textNode('div', 'is-think', `思 ${fmtMs(event.thinkingDurationMs)}`));
-  if (event.usage?.outputTokens) meta.append(textNode('div', 'is-dim', `${fmtTokens(event.usage.outputTokens)} tok`));
+  if (event.requestDurationMs) meta.append(textNode('span', '', fmtMs(event.requestDurationMs)));
+  if (event.thinkingDurationMs) meta.append(textNode('span', 'is-think', `思${fmtMs(event.thinkingDurationMs)}`));
+  if (event.usage?.outputTokens) meta.append(textNode('span', 'is-dim', `${fmtTokens(event.usage.outputTokens)} tok`));
   node.append(meta);
 
   node.addEventListener('click', () => openInspector({ kind: 'message', eventIndex: event.index }));
@@ -1082,9 +1082,10 @@ function renderToolRow(row) {
   node.append(body);
 
   const meta = textNode('div', 'srow-meta');
-  if (call.durationMs !== null) meta.append(textNode('div', '', fmtMs(call.durationMs)));
-  else meta.append(textNode('div', 'is-dim', '—'));
-  if (call.agentName) meta.append(textNode('div', 'is-sub', `↳ ${call.agentName}`));
+  meta.append(call.durationMs !== null
+    ? textNode('span', '', fmtMs(call.durationMs))
+    : textNode('span', 'is-dim', '—'));
+  if (call.agentName) meta.append(textNode('span', 'is-sub', `↳ ${call.agentName}`));
   if (call.childSessionId) {
     const drill = document.createElement('button');
     drill.type = 'button';
@@ -1169,8 +1170,7 @@ function renderInspector() {
   }
 
   if (state.tab === 'summary') renderSummaryTab(body, event, call);
-  else if (state.tab === 'payload') renderPayloadTab(body, event, call);
-  else if (state.tab === 'result') renderResultTab(body, event, call);
+  else if (state.tab === 'payload') renderPayloadAndResultTab(body, event, call);
   else if (state.tab === 'timing') renderTimingTab(body, event, call);
   else renderSchemaTab(body, event, call);
 }
@@ -1231,6 +1231,17 @@ function renderSummaryTab(body, event, call) {
     section.append(textNode('pre', 'block', JSON.stringify(event.metadata, null, 2)));
     body.append(section);
   }
+}
+
+/**
+ * Payload and result in one view.
+ *
+ * They were separate tabs, which forced a click back and forth to answer the only
+ * question that matters — what was sent, and what came back.
+ */
+function renderPayloadAndResultTab(body, event, call) {
+  renderPayloadTab(body, event, call);
+  renderResultTab(body, event, call);
 }
 
 function renderPayloadTab(body, event, call) {
