@@ -81,7 +81,16 @@ export function createStudio({ store, homeDir, pluginDataDir = null }) {
     server.keepAliveTimeout = 5000;
 
     const preferred = Number.isInteger(requested) ? requested : (await readPersistedPort(pluginDataDir));
-    port = await listenOnFreePort(server, preferred);
+    const bound = await listenOnFreePort(server, preferred);
+    if (Number.isInteger(preferred) && preferred >= 1024 && bound !== preferred) {
+      // Silently moving to another port hides the real problem: something else is
+      // already serving the requested one, so the old panel keeps answering and the
+      // reader is looking at stale code.
+      process.stderr.write(
+        `[trajectory-studio] port ${preferred} is in use; listening on ${bound} instead. ` +
+        `Another instance is still serving ${preferred}.\n`);
+    }
+    port = bound;
     await persistPort(pluginDataDir, port);
     return { url: `http://127.0.0.1:${port}/`, port, reused: false, sessionId: focusSessionId };
   }
@@ -257,6 +266,12 @@ async function api(store, homeDir, url, { getFocus, setFocus }) {
     }
     setFocus?.(sessionId);
     return overview(store, homeDir, sessionId);
+  }
+
+  if (route === '/api/timeline') {
+    const sessionId = url.searchParams.get('id') || getFocus();
+    if (!sessionId) throw new Error('session_required');
+    return { sessionId, points: store.getTimeline(sessionId) };
   }
 
   if (route === '/api/task-output') {

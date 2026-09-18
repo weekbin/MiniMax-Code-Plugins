@@ -70,10 +70,20 @@ question and does not repeat another surface's answer:
   with the measured duration, an agent badge for sub-agents, and a one-click jump into the
   sub-agent's own session. Injected context is visually distinct from things the user typed.
   Filter by human input, injected context, tool calls, or failures only; filter by turn ID or text.
+- **Themes**: light and dark, defaulting to the OS preference and switchable with one click.
+  Compact 2px radii throughout, and thin scrollbars via both the standard properties and the
+  WebKit pseudo-elements.
+- **Turn headers lead with a human ordinal** (`第 3 轮`) and keep the runtime's turn ID as
+  secondary text.
 - **Performance**: the stream renders 150 rows and appends the next batch as you scroll, rows are
   cached and filtering never rebuilds the DOM, text filters are debounced, and turn totals are folded
   server-side so a paged view still shows whole-turn numbers. A session switch on a 600-row session
-  went from ~700 ms with 227 ms main-thread stalls to ~120 ms with none.
+  went from ~700 ms with 227 ms main-thread stalls to ~120 ms with none. Very large sessions
+  (10k+ records) had a separate problem: the statistics fold re-parsed every row's JSON in a
+  correlated subquery, so it now expands `tool_calls` in a single join and caches folded totals
+  against the session's `updated_at_ms` — a revisit costs 1 ms instead of 383 ms. Records are
+  paged from the server (200 at a time) instead of fetching 1000 with full content up front, and
+  the timeline reads a separate compact projection so the axis always covers the whole session.
 - **Inspector** is tabbed: 概要 (hierarchy, status, token usage, context split), 载荷 (tool arguments
   or message body), 结果 (result text plus a **failure evidence** block), 计时 (recorded instant,
   request/thinking/decode time, and whether the tool duration was measured or absent), and Schema.

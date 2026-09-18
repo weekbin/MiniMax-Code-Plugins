@@ -19,7 +19,9 @@ const MAX_LANE_ROWS = 8;
 const LANE_ROW_PX = 17;
 /** Stream rows rendered per batch. The rest load as the reader scrolls. */
 const STREAM_PAGE = 150;
-const MAX_STREAM_ROWS = 4000;
+/** Records fetched per request. Only what will be rendered is fetched. */
+const EVENT_PAGE = 200;
+const MAX_STREAM_ROWS = 6000;
 const MAX_BARS = 320;
 
 const state = {
@@ -37,19 +39,72 @@ const state = {
   selected: null,
   search: '',
   axis: null,
+  timeline: [],
   view: { start: 0, end: 1 },
   collapsed: readCollapsed(),
   expanded: readExpanded(),
   tab: 'summary',
   // Stream is cached and paged: rows are rebuilt only when the session's events
   // change, and only STREAM_PAGE of them enter the DOM at a time.
-  streamRows: null,
+  streamRows: [],
   filteredRows: null,
   renderedRows: 0,
   loadingMore: false,
+  // Records are paged from the server: nextOffset is null once the session is fully
+  // loaded, and eventsTotal is the server's count for the whole session.
+  nextOffset: 0,
+  eventsTotal: 0,
+  loadingEvents: false,
+  eventsSource: 'sqlite',
+  turnOrder: [],
+  theme: 'dark',
 };
 
 const el = (id) => document.getElementById(id);
+
+/* ----------------------------------------------------------------- theme -- */
+
+const THEME_KEY = 'trajectory.theme';
+
+function applyTheme(theme) {
+  state.theme = theme;
+  // "auto" leaves the attribute off so the prefers-color-scheme rules win.
+  if (theme === 'auto') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', theme);
+  const button = document.getElementById('theme-toggle');
+  if (button) {
+    const showing = theme === 'auto' ? 'auto' : theme;
+    button.textContent = theme === 'light' ? '☀' : theme === 'dark' ? '☾' : '◐';
+    button.title = `当前：${showing === 'auto' ? '跟随系统' : showing === 'light' ? '浅色' : '深色'} · 点击切换`;
+  }
+}
+
+function readTheme() {
+  try {
+    const stored = localStorage.getItem(THEME_KEY);
+    if (stored === 'light' || stored === 'dark' || stored === 'auto') return stored;
+  } catch {
+    /* storage is optional */
+  }
+  return 'auto';
+}
+
+/** The theme actually on screen, resolving "auto" against the OS preference. */
+function effectiveTheme() {
+  if (state.theme === 'light' || state.theme === 'dark') return state.theme;
+  return window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+}
+
+/** One click flips light/dark, starting from whatever is currently showing. */
+function toggleTheme() {
+  const next = effectiveTheme() === 'light' ? 'dark' : 'light';
+  applyTheme(next);
+  try {
+    localStorage.setItem(THEME_KEY, next);
+  } catch {
+    /* storage is optional */
+  }
+}
 
 /* ------------------------------------------------------------------ fetch */
 
@@ -556,32 +611,31 @@ function renderStats(stats) {
 
 /* -------------------------------------------------------------- timeline -- */
 
-function buildAxis(events, tasks) {
-  const timed = events.filter((event) => Number.isFinite(event.createdAtMs));
+/**
+ * The axis is built from the compact timeline projection, not from the paged stream
+ * records, so the overview always covers the whole session.
+ */
+function buildAxis(points, tasks) {
+  const timed = points.filter((point) => Number.isFinite(point.at));
   if (timed.length === 0) return null;
 
   const inputItems = [];
   const modelItems = [];
   const toolItems = [];
 
-  for (const event of timed) {
-    if (event.role === 'user') {
-      inputItems.push({
-        start: event.createdAtMs,
-        end: event.createdAtMs + 1,
-        event,
-        injected: event.inputKind === 'injected',
-      });
+  for (const point of timed) {
+    if (point.role === 'user') {
+      inputItems.push({ start: point.at, end: point.at + 1, point, injected: point.injected });
       continue;
     }
-    const duration = event.requestDurationMs;
+    const duration = point.durationMs;
     if (duration && duration > 0) {
       modelItems.push({
-        start: event.createdAtMs - duration,
-        end: event.createdAtMs,
+        start: point.at - duration,
+        end: point.at,
         duration,
-        event,
-        thinking: Math.min(event.thinkingDurationMs ?? 0, duration),
+        point,
+        thinking: Math.min(point.thinkingMs ?? 0, duration),
       });
     }
   }
@@ -601,12 +655,12 @@ function buildAxis(events, tasks) {
 
   // Gaps between a finished record and the next model call are time the model was
   // not running. Labelled as derived because only task-backed calls are measured.
-  const ordered = [...timed].sort((a, b) => a.createdAtMs - b.createdAtMs);
+  const ordered = [...timed].sort((a, b) => a.at - b.at);
   for (let index = 0; index + 1 < ordered.length; index += 1) {
     const current = ordered[index];
     const next = ordered[index + 1];
-    const gapStart = current.createdAtMs;
-    const gapEnd = next.createdAtMs - (next.requestDurationMs ?? 0);
+    const gapStart = current.at;
+    const gapEnd = next.at - (next.durationMs ?? 0);
     if (gapEnd - gapStart > 250) {
       toolItems.push({ start: gapStart, end: gapEnd, derived: true, measured: false });
     }
@@ -639,8 +693,9 @@ function packRows(items) {
   return Math.max(1, rowEnds.length);
 }
 
-function renderOverview(events, tasks) {
-  state.axis = buildAxis(events, tasks);
+function renderOverview(points, tasks) {
+  state.timeline = points ?? [];
+  state.axis = buildAxis(state.timeline, tasks);
   state.view = { start: 0, end: 1 };
   drawOverview();
 }
@@ -714,20 +769,18 @@ function drawOverview() {
       }
 
       block.title = lane.key === 'tool' && item.task
-        ? `${item.task.kind} · ${item.task.status} · ${fmtMs(item.end - item.start)}\n${item.task.description ?? ''}`
+        ? `${item.task.kind} · ${item.task.status} · ${fmtMs(item.end - item.start)}\n${item.task.description ?? ''}\n点击定位到轨迹流`
         : lane.key === 'tool'
           ? `等待 / 工具执行（推导自记录间隔）· ${fmtMs(item.end - item.start)}`
           : lane.key === 'input'
-            ? `INPUT #${item.event.index} · ${item.injected ? '注入上下文' : '人类输入'} · ${fmtClock(item.event.createdAtMs)}`
-            : `MODEL #${item.event.index} · ${fmtMs(item.duration)}（思考 ${fmtMs(item.thinking)}）`;
+            ? `${item.injected ? '注入上下文' : '人类输入'} · ${fmtClock(item.point.at)}（点击定位到轨迹流）`
+            : `MODEL · ${fmtMs(item.duration)}（思考 ${fmtMs(item.thinking)}）· ${fmtClock(item.point.at)}（点击定位到轨迹流）`;
 
       block.addEventListener('click', (event) => {
         event.stopPropagation();
-        if (lane.key === 'tool' && item.task?.toolCallId) {
-          focusToolCall(item.task.toolCallId);
-        } else if (item.event) {
-          openInspector({ kind: 'message', eventIndex: item.event.index });
-        }
+        if (lane.key === 'tool' && item.task?.toolCallId) locateToolCall(item.task.toolCallId);
+        else if (lane.key === 'tool') banner('这是推导出的等待区间，没有对应的单条记录。');
+        else locateRow(item.point.rowId);
       });
       track.append(block);
     }
@@ -737,12 +790,16 @@ function drawOverview() {
   }
 
   const zoomed = view.end - view.start < 0.999;
+  const stacked = axis.toolItems.some((item) => item.row > 0);
   el('overview-hint').textContent =
     `INPUT（人类 ${axis.inputItems.filter((item) => !item.injected).length} / 注入 ${axis.inputItems.filter((item) => item.injected).length}）` +
     ` · MODEL ${axis.modelItems.length}` +
     ` · TOOLS（实测 ${axis.toolItems.filter((item) => item.measured).length} / 推导 ${axis.toolItems.filter((item) => item.derived).length}）` +
     ` · 全跨度 ${fmtMs(total)} · 窗口 ${fmtMs(viewSpan)}` +
-    (zoomed ? ' · 已缩放（双击重置）' : ' · 滚轮缩放，拖拽平移');
+    (zoomed ? ' · 已缩放（双击重置）' : ' · 滚轮缩放，拖拽平移') +
+    // A lane growing taller is not a second category — it is concurrency, and saying
+    // so avoids the obvious misreading.
+    (stacked ? ' · 同一通道出现多行表示这些调用在时间上重叠（并行执行），不是分类' : '');
 }
 
 function bindTimelineControls() {
@@ -849,7 +906,11 @@ function applyFilters() {
 
 function turnHeader(turnId) {
   const summary = turnId ? state.turns.get(turnId) : null;
+  const ordinal = turnId ? state.turnOrder.indexOf(turnId) : -1;
   const head = textNode('div', 'turn-head');
+  // Humans count turns; the runtime's turn id is a hash. Lead with the number and
+  // keep the id as secondary text rather than the other way round.
+  head.append(textNode('span', 'th-ordinal', ordinal >= 0 ? `第 ${ordinal + 1} 轮` : '未分轮'));
   head.append(textNode('span', 'th-id', turnId ? String(turnId) : '(无轮次)'));
   if (summary) head.append(textNode('span', '', `${summary.count} 条`));
   const agg = textNode('div', 'th-agg');
@@ -933,6 +994,7 @@ function renderMessageRow(row) {
   const injected = event.inputKind === 'injected';
   const node = textNode('div', `srow srow-message${injected ? ' is-injected' : ''}${event.role === 'user' ? ' is-user' : ''}`);
   node.dataset.eventIndex = String(event.index);
+  node.dataset.rowId = String(event.rowId ?? event.index);
   markSelected(node, false);
 
   const badge = textNode('div', 'srow-badge');
@@ -964,11 +1026,11 @@ function renderMessageRow(row) {
     body.append(textNode('div', 'srow-text is-dim', '(空记录)'));
   }
 
-  const flags = textNode('div', 'srow-flags');
-  if (event.hasThinking && text) flags.append(textNode('span', 'tool-tag is-think', '思考'));
-  if (event.kind === 'compaction') flags.append(textNode('span', 'tool-tag is-compact', '压缩'));
-  if (event.kind === 'compaction_failed') flags.append(textNode('span', 'tool-tag is-fail', '压缩失败'));
-  if (flags.childElementCount) body.append(flags);
+  // Marker chips sit inline on the same line rather than in a second row, so every
+  // stream row keeps the same one-line rhythm.
+  if (event.kind === 'compaction') body.append(textNode('span', 'tool-tag is-compact', '压缩'));
+  if (event.kind === 'compaction_failed') body.append(textNode('span', 'tool-tag is-fail', '压缩失败'));
+  if (event.hasThinking && text) body.append(textNode('span', 'tool-tag is-think', '思考'));
   node.append(body);
 
   const meta = textNode('div', 'srow-meta');
@@ -989,6 +1051,7 @@ function renderToolRow(row) {
   const node = textNode('div', `srow srow-tool${failed ? ' is-fail' : ''}${parsed.severity === 'hard' ? ' is-hard' : ''}`);
   node.dataset.eventIndex = String(event.index);
   node.dataset.position = String(position);
+  node.dataset.rowId = String(event.rowId ?? event.index);
   node.dataset.toolCallId = call.id ?? '';
   markSelected(node, true, position);
 
@@ -996,24 +1059,23 @@ function renderToolRow(row) {
   badge.append(textNode('span', 'badge badge-tool', 'TOOL'));
   node.append(badge);
 
+  // Every part is a direct child of the flex body, so the row stays one line and the
+  // result text is what absorbs the remaining width.
   const body = textNode('div', 'srow-body');
-  const head = textNode('div', 'srow-tool-head');
-  head.append(textNode('span', 'tool-name', call.name ?? 'tool'));
+  body.append(textNode('span', 'tool-name', call.name ?? 'tool'));
   const payload = payloadPreview(call.args) || call.description;
   if (payload) {
-    head.append(textNode('span', 'tool-arrow', '▸'));
+    body.append(textNode('span', 'tool-arrow', '▸'));
     const payloadNode = textNode('span', 'tool-payload', oneLine(payload, 150));
     payloadNode.title = typeof call.args === 'string' ? call.args.slice(0, 2000) : '';
-    head.append(payloadNode);
+    body.append(payloadNode);
   }
   if (parsed.text) {
-    head.append(textNode('span', 'tool-arrow', '⇉'));
-    const resultNode = textNode('span', `tool-result${parsed.failed ? ' is-fail' : ''}`, oneLine(parsed.text, 160));
+    body.append(textNode('span', 'tool-arrow', '⇉'));
+    const resultNode = textNode('span', `tool-result${parsed.failed ? ' is-fail' : ''}`, oneLine(parsed.text, 200));
     resultNode.title = parsed.text.slice(0, 2000);
-    head.append(resultNode);
+    body.append(resultNode);
   }
-  body.append(head);
-
   if (parsed.signal) {
     body.append(textNode('span', `sig sig-${parsed.severity}`, `⚠ ${parsed.signal}`));
   }
@@ -1086,19 +1148,6 @@ function refreshSelectionHighlight() {
   }
 }
 
-function focusToolCall(toolCallId) {
-  for (const event of state.events) {
-    const position = (event.toolCalls ?? []).findIndex((call) => call.id === toolCallId);
-    if (position >= 0) {
-      openInspector({ kind: 'tool', eventIndex: event.index, position });
-      const node = el('stream').querySelector(`[data-tool-call-id="${CSS.escape(toolCallId)}"]`);
-      if (node) node.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      return true;
-    }
-  }
-  banner('未在当前已加载记录中找到该工具调用。');
-  return false;
-}
 
 function renderInspector() {
   const payload = selectedPayload();
@@ -1353,7 +1402,22 @@ async function selectSession(sessionId) {
   await loadOverview();
 }
 
+let loadingDepth = 0;
+function setLoading(on) {
+  loadingDepth = Math.max(0, loadingDepth + (on ? 1 : -1));
+  el('main').dataset.loading = loadingDepth > 0 ? 'true' : 'false';
+}
+
 async function loadOverview() {
+  setLoading(true);
+  try {
+    return await loadOverviewInner();
+  } finally {
+    setLoading(false);
+  }
+}
+
+async function loadOverviewInner() {
   const query = state.sessionId ? `?id=${encodeURIComponent(state.sessionId)}` : '';
   const payload = await api(`/api/overview${query}`);
   if (!payload.session) {
@@ -1367,6 +1431,7 @@ async function loadOverview() {
   state.sessionId = payload.session.sessionId;
   state.tasks = payload.tasks ?? [];
   state.turns = new Map((payload.turns ?? []).map((turn) => [turn.turnId, turn]));
+  state.turnOrder = (payload.turns ?? []).map((turn) => turn.turnId);
 
   // The header and the sidebar highlight must agree with what is on screen, so the
   // selected session is force-included in the list even when the fetch limit, the
@@ -1382,21 +1447,124 @@ async function loadOverview() {
   revealAncestors(state.sessionId);
   renderSessions();
   scrollSelectedIntoView();
-  await refreshEvents();
+
+  // The axis needs the whole session; the stream needs only its first page. Fetch
+  // them together so the first paint has both.
+  const [, timeline] = await Promise.all([
+    refreshEvents(),
+    api(`/api/timeline?id=${encodeURIComponent(state.sessionId)}`)
+      .then((page) => page.points ?? [])
+      .catch(() => []),
+  ]);
+  renderOverview(timeline, state.tasks);
+}
+
+/**
+ * Fetch one page of records from the server and append it.
+ *
+ * The stream used to request 1000 records with full content on every switch — up to
+ * 6 MB for a large session — to render the first 150. Now only what will be shown is
+ * fetched, and the rest arrives as the reader scrolls.
+ */
+async function loadEvents({ reset = false } = {}) {
+  if (reset) {
+    state.events = [];
+    state.streamRows = [];
+    state.filteredRows = null;
+    state.renderedRows = 0;
+    state.lastTurn = undefined;
+    state.nextOffset = 0;
+    state.eventsTotal = 0;
+  }
+  if (state.loadingEvents || state.nextOffset === null) return false;
+  state.loadingEvents = true;
+  try {
+    const detail = state.detailLevel === 'full' ? '&detailLevel=full' : '';
+    const payload = await api(
+      `/api/events?id=${encodeURIComponent(state.sessionId)}&offset=${state.nextOffset}&limit=${EVENT_PAGE}${detail}`);
+    const incoming = payload.events ?? [];
+    for (const event of incoming) {
+      state.events.push(event);
+      state.streamRows.push({ kind: 'message', event });
+      for (const [position, call] of (event.toolCalls ?? []).entries()) {
+        state.streamRows.push({ kind: 'tool', event, call, position });
+      }
+    }
+    state.nextOffset = payload.nextOffset ?? null;
+    state.eventsTotal = payload.total ?? state.events.length;
+    state.eventsSource = payload.source ?? 'sqlite';
+    state.filteredRows = null;
+    return incoming.length > 0;
+  } finally {
+    state.loadingEvents = false;
+  }
 }
 
 async function refreshEvents() {
-  const detail = state.detailLevel === 'full' ? '&detailLevel=full' : '';
-  const payload = await api(`/api/events?id=${encodeURIComponent(state.sessionId)}&limit=1000${detail}`);
-  state.events = payload.events ?? [];
-  state.streamRows = null;          // rebuilt lazily from the new events
-  state.filteredRows = null;
-  renderOverview(state.events, state.tasks);
+  await loadEvents({ reset: true });
   renderStream();
   if (state.selected) renderInspector();
-  if (payload.source === 'jsonl') {
+  if (state.eventsSource === 'jsonl') {
     banner('该会话未进入 SQLite 投影，已回退到 messages.jsonl。计时与任务关联可能缺失。');
   }
+}
+
+/**
+ * Bring a record into view wherever it sits in the session: keep asking the server
+ * for pages until it is loaded, then keep rendering until it is in the DOM.
+ */
+async function locateRow(rowId, { silent = false } = {}) {
+  let guard = 0;
+  while (guard < 60) {
+    guard += 1;
+    const event = state.events.find((item) => item.rowId === rowId);
+    if (event) {
+      // A timeline INPUT/MODEL block refers to a record, never to a tool call.
+      openInspector({ kind: 'message', eventIndex: event.index });
+      return scrollRowIntoView(rowId);
+    }
+    if (state.nextOffset === null) break;
+    await loadEvents();
+  }
+  if (!silent) banner('未能定位到该记录。');
+  return false;
+}
+
+async function locateToolCall(toolCallId, { silent = false } = {}) {
+  let guard = 0;
+  while (guard < 60) {
+    guard += 1;
+    for (const event of state.events) {
+      const position = (event.toolCalls ?? []).findIndex((call) => call.id === toolCallId);
+      if (position >= 0) {
+        openInspector({ kind: 'tool', eventIndex: event.index, position });
+        return scrollRowIntoView(`call:${toolCallId}`);
+      }
+    }
+    if (state.nextOffset === null) break;
+    await loadEvents();
+  }
+  if (!silent) banner('未能在已加载的记录中找到该工具调用。');
+  return false;
+}
+
+/** Render further batches until the wanted row is in the DOM, then scroll to it. */
+function scrollRowIntoView(key) {
+  const selector = typeof key === 'string' && key.startsWith('call:')
+    ? `[data-tool-call-id="${CSS.escape(key.slice(5))}"]`
+    : `[data-row-id="${CSS.escape(String(key))}"]`;
+  for (let guard = 0; guard < 60; guard += 1) {
+    const node = el('stream').querySelector(selector);
+    if (node) {
+      node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      updateStreamCount();
+      return true;
+    }
+    if ((state.renderedRows ?? 0) >= (state.filteredRows?.length ?? 0)) break;
+    appendStreamRows();
+  }
+  updateStreamCount();
+  return false;
 }
 
 /** Options come from the data: sub-agent presets differ per install. */
@@ -1483,17 +1651,24 @@ function wire() {
 
   // Loading the next batch as the reader approaches the bottom keeps the initial
   // paint small without hiding anything.
-  el('stream').addEventListener('scroll', () => {
+  el('stream').addEventListener('scroll', async () => {
     const host = el('stream');
     if (state.loadingMore) return;
     if (host.scrollTop + host.clientHeight < host.scrollHeight - 320) return;
-    if ((state.renderedRows ?? 0) >= (state.filteredRows?.length ?? 0)) return;
     state.loadingMore = true;
-    requestAnimationFrame(() => {
-      appendStreamRows();
+    try {
+      // Render what is already loaded first, and only then ask the server for more,
+      // so scrolling stays responsive while a large session streams in.
+      if ((state.renderedRows ?? 0) < (state.filteredRows?.length ?? 0)) {
+        appendStreamRows();
+      } else if (state.nextOffset !== null && !state.textQuery && !state.turnQuery) {
+        await loadEvents();
+        appendStreamRows();
+      }
       updateStreamCount();
+    } finally {
       state.loadingMore = false;
-    });
+    }
   });
 
   const debouncedFilters = debounce(() => {
@@ -1547,6 +1722,8 @@ function wire() {
     loadOverview().catch((error) => banner(`刷新失败：${error.message}`));
   });
 
+  el('theme-toggle').addEventListener('click', toggleTheme);
+
   el('ins-close').addEventListener('click', closeInspector);
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') closeInspector();
@@ -1554,6 +1731,7 @@ function wire() {
 }
 
 async function boot() {
+  applyTheme(readTheme());
   wire();
   el('inspector').setAttribute('data-open', 'false');
   document.body.dataset.inspector = 'false';

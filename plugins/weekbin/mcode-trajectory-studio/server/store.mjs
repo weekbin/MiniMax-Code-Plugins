@@ -21,6 +21,14 @@ import { resolveWorkspaceIdentities } from './git.mjs';
 export const SESSION_KINDS = ['conversation', 'task', 'peek', 'channel', 'cron', 'unknown'];
 
 const MAX_JSONL_LINE_BYTES = 2 * 1024 * 1024;
+/**
+ * A record's turn identity, from whichever place the runtime recorded it. Used for
+ * both the per-turn fold and the event projection so the two always agree.
+ */
+const TURN_KEY_SQL =
+  "COALESCE(json_extract(data_json, '$.turn_id'), json_extract(data_json, '$.turnId'), turn_id)";
+/** Folded per-session totals kept warm; browsing revisits sessions constantly. */
+const CACHE_ENTRIES = 96;
 
 /* ------------------------------------------------------------------ paths -- */
 
@@ -122,6 +130,33 @@ export class Store {
       assets: db ? tableColumns(db, 'local_runtime_session_assets') : new Set(),
     };
     this.hasFts = Boolean(db) && tableExists(db, 'local_runtime_sessions_fts');
+    // A finished session never changes, so its folded totals are cached against the
+    // session's own updated_at_ms. Revisiting a session — by far the common case when
+    // browsing — then costs nothing, and the first visit is the only one that scans.
+    this.statsCache = new Map();
+    this.turnsCache = new Map();
+  }
+
+  #cached(map, key, compute) {
+    if (map.has(key)) {
+      const value = map.get(key);
+      map.delete(key);
+      map.set(key, value);            // refresh recency
+      return value;
+    }
+    const value = compute();
+    map.set(key, value);
+    if (map.size > CACHE_ENTRIES) map.delete(map.keys().next().value);
+    return value;
+  }
+
+  invalidateSession(sessionId) {
+    for (const key of [...this.statsCache.keys()]) {
+      if (key.startsWith(`${sessionId}|`)) this.statsCache.delete(key);
+    }
+    for (const key of [...this.turnsCache.keys()]) {
+      if (key.startsWith(`${sessionId}|`)) this.turnsCache.delete(key);
+    }
   }
 
   close() {
@@ -307,10 +342,12 @@ export class Store {
   getStats(sessionId) {
     const session = this.getSession(sessionId);
     if (!this.db || !session) return null;
+    return this.#cached(this.statsCache, `${sessionId}|${session.updatedAtMs}`, () => this.#computeStats(sessionId, session));
+  }
 
+  #computeStats(sessionId, session) {
     const agg = this.#rowAggregate(sessionId);
     const toolTasks = this.#toolTaskAggregate(sessionId);
-    const compactions = this.#compactionAggregate(sessionId);
     const assets = this.#assetAggregate(sessionId);
 
     const llmMs = agg.requestMs;
@@ -351,8 +388,8 @@ export class Store {
       thinkingEvents: agg.thinkingEvents,
       subagentTasks: toolTasks.subagentCount,
       backgroundTasks: toolTasks.taskCount,
-      compactions: compactions.total,
-      compactionFailures: compactions.failed,
+      compactions: agg.compactions,
+      compactionFailures: agg.compactionFailures,
       assets: assets.total,
       sources: agg.sources,
       children: session.children.length,
@@ -362,6 +399,9 @@ export class Store {
 
   #rowAggregate(sessionId) {
     const expr = (jsonPath) => `json_extract(data_json, '${jsonPath}')`;
+    // One pass over the session's rows folds every message-level total, including
+    // compactions. Large sessions run to tens of thousands of rows, so the number of
+    // expressions here matters far less than the number of scans.
     const sql = `
       SELECT
         COUNT(*) AS events,
@@ -374,7 +414,9 @@ export class Store {
         SUM(COALESCE(${expr('$.usage.output_tokens')}, 0)) AS output_tokens,
         SUM(COALESCE(${expr('$.usage.cache_read')}, 0)) AS cache_read,
         SUM(COALESCE(${expr('$.usage.total_tokens')}, 0)) AS total_tokens,
-        MAX(${expr('$.usage.context_window')}) AS context_window
+        MAX(${expr('$.usage.context_window')}) AS context_window,
+        SUM(CASE WHEN ${expr('$.kind')} = 'compaction' THEN 1 ELSE 0 END) AS compactions,
+        SUM(CASE WHEN ${expr('$.kind')} = 'compaction_failed' THEN 1 ELSE 0 END) AS compaction_failures
       FROM local_runtime_message_rows
       WHERE session_id = ?
     `;
@@ -386,18 +428,18 @@ export class Store {
       base = {};
     }
 
+    // Expanding tool_calls with json_each in a join is one pass. The previous
+    // correlated subquery re-parsed every row's JSON separately and dominated the
+    // whole statistics call on large sessions.
     let toolCalls = 0;
     let toolFailures = 0;
     try {
       const row = this.db.prepare(`
         SELECT
-          SUM((SELECT COUNT(*) FROM json_each(data_json, '$.tool_calls'))) AS calls,
-          SUM((
-            SELECT COUNT(*) FROM json_each(data_json, '$.tool_calls') AS tc
-            WHERE json_extract(tc.value, '$.tool_call_status') NOT IN (2)
-          )) AS failures
-        FROM local_runtime_message_rows
-        WHERE session_id = ? AND json_extract(data_json, '$.tool_calls') IS NOT NULL
+          COUNT(*) AS calls,
+          SUM(CASE WHEN COALESCE(json_extract(tc.value, '$.tool_call_status'), 2) <> 2 THEN 1 ELSE 0 END) AS failures
+        FROM local_runtime_message_rows AS r, json_each(r.data_json, '$.tool_calls') AS tc
+        WHERE r.session_id = ?
       `).get(sessionId) || {};
       toolCalls = num(row.calls) ?? 0;
       toolFailures = num(row.failures) ?? 0;
@@ -429,6 +471,8 @@ export class Store {
       cacheReadTokens: num(base.cache_read) ?? 0,
       totalTokens: num(base.total_tokens) ?? 0,
       contextWindowTokens: num(base.context_window),
+      compactions: num(base.compactions) ?? 0,
+      compactionFailures: num(base.compaction_failures) ?? 0,
       toolCalls,
       toolFailures,
       sources,
@@ -455,21 +499,6 @@ export class Store {
       };
     } catch {
       return { totalMs: null, taskCount: 0, subagentCount: 0 };
-    }
-  }
-
-  #compactionAggregate(sessionId) {
-    try {
-      const row = this.db.prepare(`
-        SELECT
-          SUM(CASE WHEN json_extract(data_json, '$.kind') = 'compaction' THEN 1 ELSE 0 END) AS total,
-          SUM(CASE WHEN json_extract(data_json, '$.kind') = 'compaction_failed' THEN 1 ELSE 0 END) AS failed
-        FROM local_runtime_message_rows
-        WHERE session_id = ?
-      `).get(sessionId) || {};
-      return { total: num(row.total) ?? 0, failed: num(row.failed) ?? 0 };
-    } catch {
-      return { total: 0, failed: 0 };
     }
   }
 
@@ -610,26 +639,78 @@ export class Store {
    */
   getTurnSummaries(sessionId) {
     if (!this.db) return [];
+    const updatedAtMs = this.getSession(sessionId)?.updatedAtMs ?? 0;
+    return this.#cached(this.turnsCache, `${sessionId}|${updatedAtMs}`,
+      () => this.#computeTurnSummaries(sessionId));
+  }
+
+  #computeTurnSummaries(sessionId) {
     try {
+      // The result alias must differ from every real column name. `local_runtime_message_rows`
+      // has its own `turn_id`, and aliasing the JSON expression to the same name makes
+      // the driver return the column instead — silently yielding null turn ids.
       return this.db.prepare(`
         SELECT
-          json_extract(data_json, '$.turn_id') AS turn_id,
+          ${TURN_KEY_SQL} AS turn_key,
           COUNT(*) AS count,
           SUM(COALESCE(json_extract(data_json, '$.usage.request_duration_ms'), 0)) AS llm_ms,
           SUM(COALESCE(json_extract(data_json, '$.usage.output_tokens'), 0)) AS output_tokens,
           MIN(created_at_ms) AS first_ms
         FROM local_runtime_message_rows
         WHERE session_id = ?
-        GROUP BY turn_id
+        GROUP BY turn_key
         ORDER BY first_ms ASC
       `).all(sessionId).map((row) => ({
-        turnId: row.turn_id ?? null,
+        turnId: row.turn_key ?? null,
         count: num(row.count) ?? 0,
         llmMs: num(row.llm_ms) ?? 0,
         outputTokens: num(row.output_tokens) ?? 0,
       }));
     } catch (error) {
       this.warnings.push(`turn_summary_failed:${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Compact projection for the timeline.
+   *
+   * The timeline needs every event's timing to draw an honest axis, but it needs no
+   * text at all. Fetching it separately keeps the axis complete while the stream
+   * pages, instead of forcing one large request to serve both.
+   */
+  getTimeline(sessionId, { cap = 6000 } = {}) {
+    if (!this.db) return [];
+    const expr = (jsonPath) => `json_extract(data_json, '${jsonPath}')`;
+    try {
+      const rows = this.db.prepare(`
+        SELECT
+          id AS row_id,
+          created_at_ms AS at_ms,
+          ${expr('$.role')} AS role_json,
+          ${expr('$.source')} AS source_json,
+          ${expr('$.kind')} AS kind_json,
+          ${expr('$.sourceContext.origin.type')} AS origin_type,
+          ${expr('$.usage.request_duration_ms')} AS duration_ms,
+          ${expr('$.thinking_duration_ms')} AS thinking_ms
+        FROM local_runtime_message_rows
+        WHERE session_id = ?
+        ORDER BY id ASC
+        LIMIT ?
+      `).all(sessionId, cap);
+      return rows.map((row) => ({
+        rowId: row.row_id,
+        at: num(row.at_ms),
+        role: row.role_json ?? null,
+        source: row.source_json ?? null,
+        kind: row.kind_json ?? null,
+        injected: Boolean(row.origin_type) || row.source_json === 'thread-goal'
+          || row.source_json === 'background-task' || row.source_json === 'task',
+        durationMs: num(row.duration_ms),
+        thinkingMs: num(row.thinking_ms),
+      }));
+    } catch (error) {
+      this.warnings.push(`timeline_failed:${error.message}`);
       return [];
     }
   }
@@ -662,7 +743,7 @@ export class Store {
     const where = ['session_id = ?'];
     const params = [sessionId];
     if (turnId) {
-      where.push("json_extract(data_json, '$.turn_id') = ?");
+      where.push(`${TURN_KEY_SQL} = ?`);
       params.push(turnId);
     }
 
@@ -715,7 +796,7 @@ export class Store {
       index,
       rowId: row.id,
       msgId: data.msg_id ?? null,
-      turnId: data.turn_id ?? row.turn_id ?? data.turnId ?? null,
+      turnId: data.turn_id ?? row.turn_id ?? data.turnId ?? null,   // same order as TURN_KEY_SQL
       role: data.role ?? row.role ?? null,
       source,
       msgType: num(data.msg_type),

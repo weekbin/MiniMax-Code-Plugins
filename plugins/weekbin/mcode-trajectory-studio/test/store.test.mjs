@@ -538,6 +538,41 @@ test('turn summaries are folded server-side for the whole session', async (t) =>
   assert.equal(turns[1].llmMs, 500);
 });
 
+test('turn summaries never come back with a null turn id', async (t) => {
+  // `local_runtime_message_rows` has a real `turn_id` column. Aliasing the JSON
+  // expression to that same name makes the driver return the column instead and
+  // silently yields nulls, which broke the "第 N 轮" ordinal in the UI.
+  const dataDir = await makeDataDir();
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const store = openStore({ dataDir });
+  t.after(() => store.close());
+
+  const turns = store.getTurnSummaries('sess-a');
+  assert.ok(turns.length > 0);
+  for (const turn of turns) {
+    assert.ok(turn.turnId, `turn id must not be null (got ${JSON.stringify(turn)})`);
+  }
+  assert.deepEqual(turns.map((turn) => turn.turnId), ['turn-1', 'turn-2', 'turn-3', 'turn-4']);
+});
+
+test('timeline points keep their json role and source, not the shadowed columns', async (t) => {
+  const dataDir = await makeDataDir();
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const store = openStore({ dataDir });
+  t.after(() => store.close());
+
+  const points = store.getTimeline('sess-a');
+  assert.equal(points.length, 6);
+  assert.equal(points[0].role, 'user');
+  assert.equal(points[0].source, 'api');
+  assert.equal(points[1].role, 'assistant');
+  assert.equal(points[1].durationMs, 1500);
+  assert.equal(points[1].thinkingMs, 200);
+  const injected = points.find((point) => point.source === 'thread-goal');
+  assert.equal(injected.injected, true, 'goal-injected records are flagged for the axis');
+  assert.equal(points.find((point) => point.kind === 'compaction').kind, 'compaction');
+});
+
 test('agent options are read from the data, not hard-coded', async (t) => {
   const dataDir = await makeDataDir();
   t.after(() => rm(dataDir, { recursive: true, force: true }));
