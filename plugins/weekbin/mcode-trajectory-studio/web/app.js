@@ -1,20 +1,22 @@
 /**
  * Trajectory Studio client.
  *
- * Talks only to the local panel's own /api/* routes. Every request carries the
- * custom client header the server requires, so a foreign page cannot read data.
+ * Talks only to the local panel's own /api/* routes, always with the custom client
+ * header the server requires, so a foreign page cannot read local session data.
  */
 
 const API_HEADER = { 'x-trajectory-client': '1' };
-const MAX_RENDERED_RECORDS = 800;
-const MAX_BARS = 500;
+const MAX_RENDERED_RECORDS = 600;
+const MAX_LANE_ROWS = 8;
+const LANE_ROW_PX = 17;
 
 const state = {
   sessions: [],
   sessionId: null,
   overview: null,
   events: [],
-  detailLevel: 'summary',
+  tasks: [],
+  detailLevel: 'full',
   agentFilter: '',
   eventFilter: 'all',
   turnQuery: '',
@@ -22,6 +24,9 @@ const state = {
   search: '',
   axis: null,
   view: { start: 0, end: 1 },
+  collapsed: readCollapsed(),
+  openTask: null,
+  taskOutput: new Map(),
 };
 
 const el = (id) => document.getElementById(id);
@@ -33,6 +38,24 @@ async function api(pathname) {
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
   return payload;
+}
+
+/* -------------------------------------------------- collapsed group state */
+
+function readCollapsed() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem('trajectory.collapsedWorkspaces') || '[]'));
+  } catch {
+    return new Set();
+  }
+}
+
+function writeCollapsed() {
+  try {
+    localStorage.setItem('trajectory.collapsedWorkspaces', JSON.stringify([...state.collapsed]));
+  } catch {
+    /* storage is optional */
+  }
 }
 
 /* ---------------------------------------------------------------- helpers */
@@ -72,6 +95,15 @@ function shortId(id) {
   return typeof id === 'string' ? id.replace(/^mvs_/, '').slice(0, 10) : '—';
 }
 
+/** Collapse the home prefix and keep only the tail of long workspace paths. */
+function shortWorkspace(dir) {
+  if (!dir) return '(无工作区)';
+  let value = dir;
+  if (/^\/home\/[^/]+/.test(value)) value = `~${value.replace(/^\/home\/[^/]+/, '')}`;
+  const parts = value.split('/').filter(Boolean);
+  return parts.length <= 3 ? value : `…/${parts.slice(-3).join('/')}`;
+}
+
 function textNode(tag, className, text) {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -83,36 +115,82 @@ function banner(message) {
   const node = el('banner');
   node.textContent = message;
   node.hidden = !message;
-  if (message) setTimeout(() => { node.hidden = true; }, 8000);
+  if (message) setTimeout(() => { node.hidden = true; }, 9000);
 }
 
 /* ---------------------------------------------------------------- sidebar */
 
-function renderSessions() {
-  const list = el('session-list');
-  list.textContent = '';
+function visibleSessions() {
   const term = state.search.trim().toLowerCase();
-  const rows = state.sessions.filter((session) => {
+  return state.sessions.filter((session) => {
     if (state.agentFilter && session.agent !== state.agentFilter) return false;
     if (!term) return true;
     return `${session.title ?? ''} ${session.sessionId} ${session.workspaceDir ?? ''}`.toLowerCase().includes(term);
   });
+}
+
+function renderSessions() {
+  const host = el('session-groups');
+  host.textContent = '';
+  const rows = visibleSessions();
   if (rows.length === 0) {
-    list.append(textNode('li', 'muted small', '  没有匹配的会话'));
+    host.append(textNode('p', 'muted small', '  没有匹配的会话'));
     return;
   }
+
+  // Group by workspace, keeping the most recently updated group first.
+  const groups = new Map();
   for (const session of rows) {
-    const item = document.createElement('button');
-    item.className = 'session-item';
-    item.type = 'button';
-    if (session.sessionId === state.sessionId) item.setAttribute('aria-current', 'true');
-    item.append(textNode('span', 's-title', session.title || '(无标题)'));
-    item.append(textNode('span', 's-meta',
-      `${session.agent ?? '?'} · ${session.sessionKind} · ${fmtAge(session.updatedAtMs)} · ${shortId(session.sessionId)}`));
-    item.addEventListener('click', () => selectSession(session.sessionId));
-    const li = document.createElement('li');
-    li.append(item);
-    list.append(li);
+    const key = session.workspaceDir || '';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(session);
+  }
+  const ordered = [...groups.entries()].sort(
+    (a, b) => Math.max(...b[1].map((s) => s.updatedAtMs ?? 0)) - Math.max(...a[1].map((s) => s.updatedAtMs ?? 0)),
+  );
+
+  for (const [dir, sessions] of ordered) {
+    const collapsed = state.collapsed.has(dir);
+    const section = textNode('section', `ws-group${collapsed ? ' is-collapsed' : ''}`);
+
+    const head = document.createElement('button');
+    head.type = 'button';
+    head.className = 'ws-head';
+    head.title = dir || '(无工作区)';
+    head.append(textNode('span', 'ws-caret', collapsed ? '▸' : '▾'));
+    head.append(textNode('span', 'ws-name', shortWorkspace(dir)));
+    head.append(textNode('span', 'ws-count', String(sessions.length)));
+    head.addEventListener('click', () => {
+      if (state.collapsed.has(dir)) state.collapsed.delete(dir);
+      else state.collapsed.add(dir);
+      writeCollapsed();
+      renderSessions();
+    });
+    section.append(head);
+
+    if (!collapsed) {
+      const list = document.createElement('ul');
+      list.className = 'ws-sessions';
+      for (const session of sessions) {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = `session-item s-${session.sessionKind ?? 'unknown'}`;
+        if (session.sessionId === state.sessionId) item.setAttribute('aria-current', 'true');
+        item.append(textNode('span', 's-title', session.title || '(无标题)'));
+        const badges = textNode('span', 's-badges');
+        badges.append(textNode('span', 's-agent', session.agent ?? '?'));
+        if (session.parentSessionId) badges.append(textNode('span', 's-child', '子'));
+        badges.append(textNode('span', 's-kind', session.sessionKind ?? ''));
+        badges.append(textNode('span', 's-age', fmtAge(session.updatedAtMs)));
+        item.append(badges);
+        item.addEventListener('click', () => selectSession(session.sessionId));
+        const li = document.createElement('li');
+        li.append(item);
+        list.append(li);
+      }
+      section.append(list);
+    }
+    host.append(section);
   }
 }
 
@@ -146,130 +224,237 @@ function renderStats(stats) {
     host.append(card);
   }
 
-  const sources = (stats.sources || [])
-    .map((entry) => `${entry.source}:${entry.count}`)
-    .join('  ');
+  const sources = (stats.sources || []).map((entry) => `${entry.source}:${entry.count}`).join('  ');
   el('session-meta').textContent =
-    `${shortId(stats.sessionId)} · ${stats.agent ?? '?'} · ${stats.sessionKind} · 来源 ${sources || '—'} · ${stats.workspaceDir ?? ''}`;
+    `${shortId(stats.sessionId)} · ${stats.agent ?? '?'} · ${stats.sessionKind} · 来源 ${sources || '—'} · ` +
+    `${shortWorkspace(stats.workspaceDir)}${stats.children ? ` · ${stats.children} 个子会话` : ''}`;
   el('session-title').textContent = stats.title || '(无标题)';
 }
 
-/* --------------------------------------------------------------- overview */
+/* -------------------------------------------------------------- timeline -- */
 
 /**
- * The overview projects each record onto a shared time axis. Sessions routinely
- * span hours while individual requests last milliseconds, so the axis carries a
- * zoomable view window: wheel zooms around the cursor, dragging pans, and a
- * double click resets to the full extent.
+ * The timeline is the dsh-style narrative: three lanes (INPUT, MODEL, TOOL)
+ * sharing one time axis, rather than one row per record. Overlapping blocks
+ * within a lane are stacked greedily into sub-rows.
  */
-function buildSpans(events) {
+function buildAxis(events, tasks) {
   const timed = events.filter((event) => Number.isFinite(event.createdAtMs));
   if (timed.length === 0) return null;
-  const spans = timed.map((event) => {
-    const duration = event.requestDurationMs ?? 0;
-    const end = event.createdAtMs;
-    return { event, start: duration > 0 ? end - duration : end, end, duration };
-  });
-  const min = Math.min(...spans.map((span) => span.start));
-  const max = Math.max(...spans.map((span) => span.end));
-  return { spans, min, max: Math.max(max, min + 1) };
+
+  const inputItems = [];
+  const modelItems = [];
+  const toolItems = [];
+
+  for (const event of timed) {
+    if (event.role === 'user') {
+      inputItems.push({ start: event.createdAtMs, end: event.createdAtMs + 1, event, kind: 'input' });
+      continue;
+    }
+    const duration = event.requestDurationMs;
+    if (duration && duration > 0) {
+      modelItems.push({
+        start: event.createdAtMs - duration,
+        end: event.createdAtMs,
+        duration,
+        event,
+        thinking: Math.min(event.thinkingDurationMs ?? 0, duration),
+      });
+    }
+  }
+
+  for (const task of tasks) {
+    if (!Number.isFinite(task.createdAtMs)) continue;
+    const end = [task.endedAtMs, task.updatedAtMs, task.createdAtMs].find((value) => Number.isFinite(value)) ?? task.createdAtMs;
+    toolItems.push({
+      start: task.createdAtMs,
+      end: Math.max(end, task.createdAtMs + 1),
+      task,
+      kind: 'task',
+      failed: task.status === 'failed',
+      running: task.status === 'running',
+    });
+  }
+
+  // Gaps between a finished record and the next model call are time the model was
+  // not running: tool execution plus scheduling. They are drawn faintly and
+  // labelled as derived so they are never mistaken for measured tool spans.
+  const ordered = [...timed].sort((a, b) => a.createdAtMs - b.createdAtMs);
+  for (let index = 0; index + 1 < ordered.length; index += 1) {
+    const current = ordered[index];
+    const next = ordered[index + 1];
+    const gapStart = current.createdAtMs;
+    const gapEnd = next.createdAtMs - (next.requestDurationMs ?? 0);
+    if (gapEnd - gapStart > 250) {
+      toolItems.push({ start: gapStart, end: gapEnd, kind: 'wait', derived: true });
+    }
+  }
+
+  const all = [...inputItems, ...modelItems, ...toolItems];
+  const min = Math.min(...all.map((item) => item.start));
+  const max = Math.max(...all.map((item) => item.end));
+  return { inputItems, modelItems, toolItems, min, max: Math.max(max, min + 1) };
 }
 
-function renderOverview(events) {
-  const host = el('overview');
-  host.textContent = '';
-  const built = buildSpans(events);
-  state.axis = built;
-  state.view = { start: 0, end: 1 };
-  if (!built) {
-    host.append(textNode('p', 'muted small', '没有可用的时间戳。'));
-    el('overview-hint').textContent = '';
-    return;
+/** Greedy interval packing: place each item in the first free lane sub-row. */
+function packRows(items) {
+  const sorted = [...items].sort((a, b) => a.start - b.start || a.end - b.end);
+  const rowEnds = [];
+  for (const item of sorted) {
+    let row = rowEnds.findIndex((end) => end <= item.start);
+    if (row === -1) {
+      if (rowEnds.length < MAX_LANE_ROWS) {
+        rowEnds.push(item.end);
+        row = rowEnds.length - 1;
+      } else {
+        row = MAX_LANE_ROWS - 1;
+        rowEnds[row] = Math.max(rowEnds[row], item.end);
+      }
+    } else {
+      rowEnds[row] = item.end;
+    }
+    item.row = row;
   }
+  return Math.max(1, rowEnds.length);
+}
+
+function renderOverview(events, tasks) {
+  state.axis = buildAxis(events, tasks);
+  state.view = { start: 0, end: 1 };
   drawOverview();
 }
 
 function drawOverview() {
   const host = el('overview');
-  const built = state.axis;
-  if (!built) return;
   host.textContent = '';
+  const axis = state.axis;
+  if (!axis) {
+    host.append(textNode('p', 'muted small', '没有可用的时间戳。'));
+    el('overview-hint').textContent = '';
+    return;
+  }
 
-  const { spans, min, max } = built;
+  const { min, max } = axis;
   const total = max - min;
   const view = state.view;
-  const viewStartMs = min + total * view.start;
-  const viewEndMs = min + total * view.end;
-  const viewSpan = Math.max(1, viewEndMs - viewStartMs);
-  const pctOf = (value) => ((value - viewStartMs) / viewSpan) * 100;
-  const win = (value) => value >= viewStartMs && value <= viewEndMs;
+  const viewStart = min + total * view.start;
+  const viewEnd = min + total * view.end;
+  const viewSpan = Math.max(1, viewEnd - viewStart);
+  const pctOf = (value) => ((value - viewStart) / viewSpan) * 100;
+  const inView = (item) => item.end >= viewStart && item.start <= viewEnd;
 
+  /* ---- ruler ---- */
+  const rulerRow = textNode('div', 'ov-row-grid ov-ruler-row');
+  rulerRow.append(textNode('div', 'ov-lane-label', ''));
   const ruler = textNode('div', 'ov-ruler');
-  const ticks = 6;
-  for (let index = 0; index <= ticks; index += 1) {
-    const at = viewStartMs + (viewSpan * index) / ticks;
-    const tick = textNode('div', 'ov-tick', fmtClock(at));
-    tick.style.left = `${(index / ticks) * 100}%`;
+  for (let index = 0; index <= 6; index += 1) {
+    const tick = textNode('div', 'ov-tick', fmtClock(viewStart + (viewSpan * index) / 6));
+    tick.style.left = `${(index / 6) * 100}%`;
     ruler.append(tick);
   }
-  host.append(ruler);
+  rulerRow.append(ruler);
+  host.append(rulerRow);
 
-  const visible = spans.filter((span) => win(span.end) || win(span.start) || (span.start < viewStartMs && span.end > viewEndMs));
-  const drawn = visible.slice(-MAX_BARS);
+  /* ---- lanes ---- */
+  const lanes = [
+    { key: 'input', label: 'INPUT', items: axis.inputItems, render: renderInputBlock },
+    { key: 'model', label: 'MODEL', items: axis.modelItems, render: renderModelBlock },
+    { key: 'tool', label: 'TOOL', items: axis.toolItems, render: renderToolBlock },
+  ];
 
-  for (const span of drawn) {
-    const clippedStart = Math.max(span.start, viewStartMs);
-    const clippedEnd = Math.min(span.end, viewEndMs);
-    const row = textNode('div', 'ov-row');
-    const bar = textNode('div', `ov-bar${span.event.role === 'user' ? ' is-user' : ''}`);
-    bar.style.left = `${pctOf(clippedStart)}%`;
-    bar.style.width = `${Math.max(0, pctOf(clippedEnd) - pctOf(clippedStart))}%`;
-    if (span.event.toolCalls?.some((call) => call.status !== null && call.status !== 2)) bar.classList.add('is-err');
+  for (const lane of lanes) {
+    const visible = lane.items.filter(inView);
+    const rowCount = packRows(visible);
+    const grid = textNode('div', 'ov-row-grid ov-lane');
+    grid.dataset.lane = lane.key;
+    grid.append(textNode('div', 'ov-lane-label', lane.label));
 
-    if (span.duration > 0 && span.event.role !== 'user') {
-      const thinking = Math.min(span.event.thinkingDurationMs ?? 0, span.duration);
-      if (thinking > 0) {
-        const segment = textNode('i', 'ov-seg think');
-        segment.style.width = `${(thinking / span.duration) * 100}%`;
-        bar.append(segment);
-      }
-      const output = span.duration - thinking;
-      if (output > 0) {
-        const segment = textNode('i', 'ov-seg out');
-        segment.style.width = `${(output / span.duration) * 100}%`;
-        bar.append(segment);
-      }
+    const track = textNode('div', 'ov-lane-track');
+    track.style.height = `${rowCount * LANE_ROW_PX}px`;
+
+    for (const item of visible) {
+      const start = Math.max(item.start, viewStart);
+      const end = Math.min(item.end, viewEnd);
+      const left = pctOf(start);
+      const width = Math.max(0, pctOf(end) - left);
+      const block = lane.render(item, width);
+      block.style.left = `${left}%`;
+      block.style.width = `${width}%`;
+      block.style.top = `${item.row * LANE_ROW_PX}px`;
+      track.append(block);
     }
 
-    const duration = span.duration > 0 ? ` · ${fmtMs(span.duration)}` : '';
-    bar.title = `#${span.event.index} ${span.event.role}${duration} · ${fmtClock(span.end)}`;
-    bar.addEventListener('click', (event) => {
-      event.stopPropagation();
-      openInspector(span.event.index);
-    });
-    row.append(bar);
-    host.append(row);
-  }
-
-  if (drawn.length === 0) {
-    host.append(textNode('p', 'muted small', '当前时间窗内没有记录，滚轮缩小或双击重置。'));
+    if (visible.length === 0) track.append(textNode('p', 'ov-empty muted small', '该通道在当前时间窗内无记录'));
+    grid.append(track);
+    host.append(grid);
   }
 
   const zoomed = view.end - view.start < 0.999;
   el('overview-hint').textContent =
-    `${spans.length} 条时间记录 · 全跨度 ${fmtMs(total)} · 窗口 ${fmtMs(viewSpan)}` +
-    (zoomed ? ' · 已缩放（双击重置）' : ' · 滚轮缩放，拖拽平移') +
-    (visible.length > MAX_BARS ? ` · 窗口内 ${visible.length} 条，仅绘制最近 ${MAX_BARS} 条` : '');
+    `INPUT ${axis.inputItems.length} · MODEL ${axis.modelItems.length} · TOOL ${axis.toolItems.length}` +
+    ` · 全跨度 ${fmtMs(total)} · 窗口 ${fmtMs(viewSpan)}` +
+    (zoomed ? ' · 已缩放（双击重置）' : ' · 滚轮缩放，拖拽平移');
 }
 
-function bindOverviewControls() {
+function renderInputBlock(item, width) {
+  const block = textNode('div', 'ov-block ov-input');
+  block.style.minWidth = '4px';
+  block.title = `INPUT #${item.event.index} · ${fmtClock(item.event.createdAtMs)} · ${item.event.contentLength ?? 0} 字符`;
+  block.addEventListener('click', (event) => {
+    event.stopPropagation();
+    openInspector(item.event.index);
+  });
+  return block;
+}
+
+function renderModelBlock(item) {
+  const block = textNode('div', `ov-block ov-model${item.event.kind ? ' is-compaction' : ''}`);
+  if (item.event.toolCalls?.some((call) => call.status !== null && call.status !== 2)) block.classList.add('is-err');
+  if (item.thinking > 0) {
+    const segment = textNode('i', 'ov-seg think');
+    segment.style.width = `${(item.thinking / item.duration) * 100}%`;
+    block.append(segment);
+  }
+  const output = item.duration - item.thinking;
+  if (output > 0) {
+    const segment = textNode('i', 'ov-seg out');
+    segment.style.width = `${(output / item.duration) * 100}%`;
+    block.append(segment);
+  }
+  block.title = `MODEL #${item.event.index} · ${fmtMs(item.duration)}（思考 ${fmtMs(item.thinking)}）· ${fmtClock(item.event.createdAtMs)}`;
+  block.addEventListener('click', (event) => {
+    event.stopPropagation();
+    openInspector(item.event.index);
+  });
+  return block;
+}
+
+function renderToolBlock(item) {
+  if (item.kind === 'wait') {
+    const block = textNode('div', 'ov-block ov-wait');
+    block.title = `等待 / 工具执行（推导自记录间隔）· ${fmtMs(item.end - item.start)}`;
+    return block;
+  }
+  const block = textNode('div', `ov-block ov-tool${item.failed ? ' is-err' : ''}${item.running ? ' is-running' : ''}`);
+  const task = item.task;
+  block.title = `${task.kind} · ${task.status} · ${fmtMs(item.end - item.start)}${task.description ? `\n${task.description.slice(0, 160)}` : ''}`;
+  if (task.kind === 'subagent') block.classList.add('is-subagent');
+  block.addEventListener('click', (event) => {
+    event.stopPropagation();
+    revealTask(task.taskId);
+  });
+  return block;
+}
+
+function bindTimelineControls() {
   const host = el('overview');
   let drag = null;
 
   host.addEventListener('wheel', (event) => {
-    if (!state.axis) return;
+    if (!state.axis || event.target.closest('.ov-lane-track') === null) return;
     event.preventDefault();
-    const rect = host.getBoundingClientRect();
+    const track = host.querySelector('.ov-lane-track');
+    const rect = track.getBoundingClientRect();
     const at = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
     const factor = event.deltaY > 0 ? 1.25 : 0.8;
     const view = state.view;
@@ -291,11 +476,12 @@ function bindOverviewControls() {
 
   host.addEventListener('pointermove', (event) => {
     if (!drag) return;
-    const rect = host.getBoundingClientRect();
+    const track = host.querySelector('.ov-lane-track');
+    if (!track) return;
+    const rect = track.getBoundingClientRect();
     const delta = (event.clientX - drag.x) / rect.width;
     const width = drag.view.end - drag.view.start;
-    let start = drag.view.start - delta * width;
-    start = Math.min(Math.max(0, start), 1 - width);
+    const start = Math.min(Math.max(0, drag.view.start - delta * width), 1 - width);
     state.view = { start, end: start + width };
     drawOverview();
   });
@@ -307,7 +493,6 @@ function bindOverviewControls() {
   };
   host.addEventListener('pointerup', stopDrag);
   host.addEventListener('pointercancel', stopDrag);
-
   host.addEventListener('dblclick', () => {
     if (!state.axis) return;
     state.view = { start: 0, end: 1 };
@@ -351,9 +536,7 @@ function renderRecords() {
   }
 
   let currentTurn = null;
-  const rendered = rows.slice(0, MAX_RENDERED_RECORDS);
-
-  for (const event of rendered) {
+  for (const event of rows.slice(0, MAX_RENDERED_RECORDS)) {
     if (event.turnId !== currentTurn) {
       currentTurn = event.turnId;
       const turnEvents = state.events.filter((item) => item.turnId === currentTurn);
@@ -379,15 +562,26 @@ function renderRecords() {
     row.append(tags);
 
     const body = textNode('div', 'rec-body');
-    const preview = event.content ?? null;
+    // An empty string is "no text", not "some text"; fall through to thinking, then
+    // to the tool-call list, so every row carries something readable.
+    const text = typeof event.content === 'string' ? event.content.trim() : '';
+    const thinking = typeof event.thinking === 'string' ? event.thinking.trim() : '';
+    const toolNames = (event.toolCalls ?? []).map((call) => call.name).filter(Boolean);
+    let preview = text;
+    let prefix = '';
+    if (!preview && thinking) {
+      preview = thinking;
+      prefix = '[思考] ';
+    }
+    if (!preview && toolNames.length) preview = `[调用] ${toolNames.join(', ')}`;
     if (preview) {
-      body.append(textNode('div', 'rec-text', preview.slice(0, 240)));
-    } else if (event.contentLength) {
-      body.append(textNode('div', 'rec-text dim', `（${event.contentLength} 字符，勾选"显示正文"查看）`));
+      const line = textNode('div', 'rec-text', prefix + preview.replace(/\s+/g, ' ').trim());
+      line.title = (prefix + preview).slice(0, 600);
+      body.append(line);
     } else if (event.kind) {
-      body.append(textNode('div', 'rec-text dim', `${event.kind}`));
+      body.append(textNode('div', 'rec-text dim', event.kind));
     } else {
-      body.append(textNode('div', 'rec-text dim', '（无正文）'));
+      body.append(textNode('div', 'rec-text dim', '（空记录）'));
     }
 
     const toolRow = textNode('div', 'rec-tools');
@@ -396,9 +590,7 @@ function renderRecords() {
       const bad = call.status !== null && call.status !== 2;
       toolRow.append(textNode('span', `tool-tag${bad ? ' is-fail' : ''}`, call.name ?? 'tool'));
     }
-    if ((event.toolCalls?.length ?? 0) > 8) {
-      toolRow.append(textNode('span', 'tool-tag', `+${event.toolCalls.length - 8}`));
-    }
+    if ((event.toolCalls?.length ?? 0) > 8) toolRow.append(textNode('span', 'tool-tag', `+${event.toolCalls.length - 8}`));
     if (toolRow.childElementCount) body.append(toolRow);
     row.append(body);
 
@@ -414,29 +606,147 @@ function renderRecords() {
 
   if (rows.length > MAX_RENDERED_RECORDS) {
     host.append(textNode('p', 'muted small',
-      `仅渲染前 ${MAX_RENDERED_RECORDS} 条。请用上方筛选或 turn ID 缩小范围。`));
+      `仅渲染前 ${MAX_RENDERED_RECORDS} 条。请用筛选或 turn ID 缩小范围。`));
   }
 }
 
 /* ------------------------------------------------------------------ tasks */
 
+function taskStatusClass(status) {
+  if (status === 'failed') return ' is-fail';
+  if (status === 'succeeded') return ' is-ok';
+  if (status === 'running') return ' is-running';
+  return '';
+}
+
 function renderTasks(tasks) {
   const wrap = el('tasks-wrap');
   const host = el('tasks');
   host.textContent = '';
-  if (!tasks || tasks.length === 0) {
+  state.tasks = tasks ?? [];
+  if (state.tasks.length === 0) {
     wrap.hidden = true;
     return;
   }
   wrap.hidden = false;
-  el('task-count').textContent = `${tasks.length} 个`;
-  for (const task of tasks) {
-    const row = textNode('div', `task${task.status === 'failed' ? ' is-fail' : task.status === 'succeeded' ? ' is-ok' : ''}`);
-    row.append(textNode('span', 't-kind', `${task.kind} ${task.task_id.slice(0, 20)}`));
-    row.append(textNode('span', 't-status', task.status));
-    row.append(textNode('span', 't-dur', fmtMs(task.duration_ms)));
-    host.append(row);
+  const failed = state.tasks.filter((task) => task.status === 'failed').length;
+  const subs = state.tasks.filter((task) => task.kind === 'subagent').length;
+  el('task-count').textContent = `${state.tasks.length} 个 · 子代理 ${subs}${failed ? ` · 失败 ${failed}` : ''}`;
+
+  for (const task of state.tasks) {
+    const card = textNode('div', `task${taskStatusClass(task.status)}`);
+    card.dataset.taskId = task.taskId;
+    if (task.taskId === state.openTask) card.classList.add('is-open');
+
+    const head = document.createElement('button');
+    head.type = 'button';
+    head.className = 'task-head';
+    head.append(textNode('span', 't-caret', task.taskId === state.openTask ? '▾' : '▸'));
+    head.append(textNode('span', `t-kind t-${task.kind}`, task.kind === 'subagent' ? `subagent·${task.agentName ?? '?'}` : task.kind));
+    head.append(textNode('span', 't-desc', task.description || '(无描述)'));
+    head.append(textNode('span', 't-status', task.status));
+    head.append(textNode('span', 't-dur', fmtMs(task.durationMs)));
+    head.addEventListener('click', () => toggleTask(task.taskId));
+    card.append(head);
+
+    if (task.taskId === state.openTask) card.append(buildTaskBody(task));
+    host.append(card);
   }
+}
+
+function buildTaskBody(task) {
+  const body = textNode('div', 'task-body');
+
+  const dt = document.createElement('dl');
+  dt.className = 'kv';
+  const add = (key, value) => {
+    if (value === null || value === undefined || value === '') return;
+    dt.append(textNode('dt', '', key));
+    dt.append(textNode('dd', '', String(value)));
+  };
+  add('任务 ID', task.taskId);
+  add('开始', fmtClock(task.startedAtMs ?? task.createdAtMs));
+  add('结束', task.endedAtMs ? fmtClock(task.endedAtMs) : '（进行中）');
+  add('耗时', fmtMs(task.durationMs));
+  add('所属轮次', task.parentTurnId);
+  add('执行模式', task.executionMode);
+  add('子代理', task.agentName);
+  add('工具调用 ID', task.toolCallId);
+  add('子会话', task.childSessionId);
+  body.append(dt);
+
+  if (task.command && task.command !== task.description) {
+    body.append(textNode('h4', '', '命令'));
+    body.append(textNode('pre', 'block', task.command));
+  }
+
+  const actions = textNode('div', 'task-actions');
+  if (task.hasOutput) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn small-btn';
+    button.textContent = state.taskOutput.has(task.taskId) ? '收起输出' : '查看输出';
+    button.addEventListener('click', () => toggleTaskOutput(task.taskId));
+    actions.append(button);
+  }
+  if (task.childSessionId) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn small-btn';
+    button.textContent = '打开子会话轨迹 →';
+    button.addEventListener('click', () => selectSession(task.childSessionId));
+    actions.append(button);
+  }
+  if (task.toolCallId) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn small-btn';
+    button.textContent = '定位调用记录';
+    button.addEventListener('click', () => {
+      const found = state.events.find((event) => event.toolCalls?.some((call) => call.id === task.toolCallId));
+      if (found) openInspector(found.index);
+      else banner('未在当前已加载记录中找到该工具调用。');
+    });
+    actions.append(button);
+  }
+  if (actions.childElementCount) body.append(actions);
+
+  if (state.taskOutput.has(task.taskId)) {
+    const output = state.taskOutput.get(task.taskId);
+    body.append(textNode('h4', '', output.available ? `输出${output.truncated ? `（尾部，共 ${output.bytes} 字节）` : `（${output.bytes} 字节）`}` : '输出'));
+    body.append(textNode('pre', 'block task-output', output.available ? output.text : '（输出文件不存在）'));
+  }
+
+  return body;
+}
+
+function toggleTask(taskId) {
+  state.openTask = state.openTask === taskId ? null : taskId;
+  renderTasks(state.tasks);
+}
+
+async function toggleTaskOutput(taskId) {
+  if (state.taskOutput.has(taskId)) {
+    state.taskOutput.delete(taskId);
+    renderTasks(state.tasks);
+    return;
+  }
+  try {
+    const output = await api(`/api/task-output?taskId=${encodeURIComponent(taskId)}&maxBytes=16384`);
+    state.taskOutput.set(taskId, output);
+    state.openTask = taskId;
+    renderTasks(state.tasks);
+  } catch (error) {
+    banner(`读取任务输出失败：${error.message}`);
+  }
+}
+
+/** Open the task card for a timeline block, scrolling it into view. */
+function revealTask(taskId) {
+  state.openTask = taskId;
+  renderTasks(state.tasks);
+  const card = el('tasks').querySelector(`[data-task-id="${CSS.escape(taskId)}"]`);
+  if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 /* -------------------------------------------------------------- inspector */
@@ -452,8 +762,7 @@ function openInspector(index) {
   state.selectedIndex = index;
   renderRecords();
 
-  const inspector = el('inspector');
-  inspector.setAttribute('data-open', 'true');
+  el('inspector').setAttribute('data-open', 'true');
   document.body.dataset.inspector = 'true';
   el('ins-title').textContent = `记录 #${event.index}`;
 
@@ -471,10 +780,9 @@ function openInspector(index) {
     statRow(dt, '输出耗时(近似)', fmtMs(Math.max(0, event.requestDurationMs - event.thinkingDurationMs)));
   }
   statRow(dt, 'finish_reason', event.finishReason);
-  statRow(dt, '完成状态', event.requestDurationMs ? '已落定' : '无计时（进行中或不适用）');
   timing.append(dt);
   if (event.requestDurationMs) {
-    const total = event.requestDurationMs || 1;
+    const total = event.requestDurationMs;
     const thinking = Math.min(event.thinkingDurationMs ?? 0, total);
     const bars = textNode('div', 'bars');
     const thinkBar = textNode('i');
@@ -526,11 +834,10 @@ function openInspector(index) {
   }
 
   if (event.metadata) {
-    const metaSection = textNode('section', 'ins-section');
-    metaSection.append(textNode('h4', '', '压缩元数据'));
-    const pre = textNode('pre', 'block', JSON.stringify(event.metadata, null, 2));
-    metaSection.append(pre);
-    body.append(metaSection);
+    const section = textNode('section', 'ins-section');
+    section.append(textNode('h4', '', '压缩元数据'));
+    section.append(textNode('pre', 'block', JSON.stringify(event.metadata, null, 2)));
+    body.append(section);
   }
 
   if (event.thinking) {
@@ -551,12 +858,12 @@ function openInspector(index) {
     const section = textNode('section', 'ins-section');
     section.append(textNode('h4', '', `工具调用 (${event.toolCalls.length})`));
     for (const call of event.toolCalls) {
-      const dtl = document.createElement('dl');
-      dtl.className = 'kv';
-      statRow(dtl, '名称', call.name);
-      statRow(dtl, 'call_id', call.id);
-      statRow(dtl, '状态', call.status === 2 ? '成功' : call.status === null ? '未知（summary 模式）' : `状态码 ${call.status}`);
-      section.append(dtl);
+      const dl = document.createElement('dl');
+      dl.className = 'kv';
+      statRow(dl, '名称', call.name);
+      statRow(dl, 'call_id', call.id);
+      statRow(dl, '状态', call.status === 2 ? '成功' : call.status === null ? '未知' : `状态码 ${call.status}`);
+      section.append(dl);
       if (call.args !== undefined && call.args !== null) {
         section.append(textNode('h4', '', '入参'));
         section.append(textNode('pre', 'block', typeof call.args === 'string' ? call.args : JSON.stringify(call.args, null, 2)));
@@ -570,8 +877,7 @@ function openInspector(index) {
   }
 
   if (state.detailLevel !== 'full') {
-    const note = textNode('p', 'muted small', '勾选顶部的"显示正文"可加载入参、结果与完整文本。');
-    body.append(note);
+    body.append(textNode('p', 'muted small', '勾选顶部的"显示正文"可加载完整文本与工具入参。'));
   }
 }
 
@@ -585,7 +891,7 @@ function closeInspector() {
 /* ------------------------------------------------------------------ flow */
 
 async function loadSessions() {
-  const payload = await api('/api/sessions?limit=200');
+  const payload = await api('/api/sessions?limit=300');
   state.sessions = payload.sessions ?? [];
   renderSessions();
 }
@@ -593,8 +899,8 @@ async function loadSessions() {
 async function selectSession(sessionId) {
   state.sessionId = sessionId;
   state.selectedIndex = null;
+  state.openTask = null;
   closeInspector();
-  renderSessions();
   await loadOverview();
 }
 
@@ -621,7 +927,7 @@ async function refreshEvents() {
   const detail = state.detailLevel === 'full' ? '&detailLevel=full' : '';
   const payload = await api(`/api/events?id=${encodeURIComponent(state.sessionId)}&limit=1000${detail}`);
   state.events = payload.events ?? [];
-  renderOverview(state.events);
+  renderOverview(state.events, state.tasks);
   renderRecords();
   if (payload.source === 'jsonl') {
     banner('该会话未进入 SQLite 投影，已回退到 messages.jsonl。计时字段可能缺失。');
@@ -631,17 +937,45 @@ async function refreshEvents() {
 /* ------------------------------------------------------------------- wire */
 
 function wire() {
-  bindOverviewControls();
+  bindTimelineControls();
 
   el('search').addEventListener('input', (event) => {
     state.search = event.target.value;
     renderSessions();
   });
 
+  el('search').addEventListener('keydown', async (event) => {
+    if (event.key !== 'Enter' || !state.search.trim()) return;
+    try {
+      const payload = await api(`/api/search?q=${encodeURIComponent(state.search.trim())}&limit=100`);
+      if (payload.sessions?.length) {
+        state.sessions = payload.sessions;
+        state.collapsed.clear();
+        writeCollapsed();
+        renderSessions();
+      }
+    } catch (error) {
+      banner(`搜索失败：${error.message}`);
+    }
+  });
+
+  el('collapse-all').addEventListener('click', () => {
+    const dirs = [...new Set(visibleSessions().map((session) => session.workspaceDir || ''))];
+    const allCollapsed = dirs.length > 0 && dirs.every((dir) => state.collapsed.has(dir));
+    for (const dir of dirs) {
+      if (allCollapsed) state.collapsed.delete(dir);
+      else state.collapsed.add(dir);
+    }
+    writeCollapsed();
+    renderSessions();
+  });
+
   el('session-filters').addEventListener('click', (event) => {
-    const button = event.target.closest('.chip');
+    const button = event.target.closest('.chip[data-agent]');
     if (!button) return;
-    for (const chip of el('session-filters').querySelectorAll('.chip')) chip.classList.toggle('is-on', chip === button);
+    for (const chip of el('session-filters').querySelectorAll('.chip[data-agent]')) {
+      chip.classList.toggle('is-on', chip === button);
+    }
     state.agentFilter = button.dataset.agent ?? '';
     renderSessions();
   });
@@ -674,22 +1008,8 @@ function wire() {
   });
 
   el('ins-close').addEventListener('click', closeInspector);
-
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') closeInspector();
-  });
-
-  el('search').addEventListener('keydown', async (event) => {
-    if (event.key !== 'Enter' || !state.search.trim()) return;
-    try {
-      const payload = await api(`/api/search?q=${encodeURIComponent(state.search.trim())}&limit=100`);
-      if (payload.sessions?.length) {
-        state.sessions = payload.sessions;
-        renderSessions();
-      }
-    } catch (error) {
-      banner(`搜索失败：${error.message}`);
-    }
   });
 }
 

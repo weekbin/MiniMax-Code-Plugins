@@ -96,14 +96,20 @@ async function makeDataDir({ withSqlite = true, withJsonl = true } = {}) {
 
     db.prepare(`
       INSERT INTO local_runtime_background_tasks (task_id, owner_session_id, kind, status, created_at_ms, updated_at_ms, ended_at_ms, record_json)
-      VALUES ('t1', 'sess-a', 'bash', 'succeeded', 1000, 1300, 1300, '{}'),
-             ('t2', 'sess-a', 'subagent', 'running', 1400, 1400, NULL, '{}')
+      VALUES ('t1', 'sess-a', 'bash', 'succeeded', 1000, 1300, 1300,
+              '{"description":"ls -la","toolCallId":"c1","metadata":{"command":"ls -la","parentTurnId":"turn-1"},"outputRef":{"uri":"/tmp/x.log"}}'),
+             ('t2', 'sess-a', 'subagent', 'running', 1400, 1400, NULL,
+              '{"description":"Map the call graph","metadata":{"agentName":"explore","childSessionId":"sess-b"}}')
     `).run();
     db.prepare(`
       INSERT INTO local_runtime_session_assets (session_id, msg_id, message_created_at_ms, asset_index, asset_key, source_tag, path, data_json)
       VALUES ('sess-a', 'm2', 1200, 0, 'k', 'media', '/tmp/a.png', '{}')
     `).run();
     db.close();
+
+    const taskDir = path.join(dataDir, 'background-tasks', 't1');
+    await mkdir(taskDir, { recursive: true });
+    await writeFile(path.join(taskDir, 'output.log'), 'line one\nline two\nlisting complete\n', 'utf8');
   }
 
   if (withJsonl) {
@@ -196,8 +202,65 @@ test('tool wall-clock is summed from background tasks', async (t) => {
 
   const tasks = store.listBackgroundTasks('sess-a');
   assert.equal(tasks.length, 2);
-  assert.equal(tasks.find((task) => task.task_id === 't1').duration_ms, 300);
+  assert.equal(tasks.find((task) => task.taskId === 't1').durationMs, 300);
   assert.equal(store.getStats('sess-a').toolMs, 300, 'running task has no ended_at_ms');
+});
+
+test('tasks carry description, agent, child session and output availability', async (t) => {
+  const dataDir = await makeDataDir();
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const store = openStore({ dataDir });
+  t.after(() => store.close());
+
+  const tasks = store.listBackgroundTasks('sess-a');
+  const bash = tasks.find((task) => task.taskId === 't1');
+  assert.equal(bash.description, 'ls -la');
+  assert.equal(bash.command, 'ls -la');
+  assert.equal(bash.toolCallId, 'c1');
+  assert.equal(bash.parentTurnId, 'turn-1');
+  assert.equal(bash.hasOutput, true);
+  assert.equal(bash.status, 'succeeded');
+
+  const sub = tasks.find((task) => task.taskId === 't2');
+  assert.equal(sub.kind, 'subagent');
+  assert.equal(sub.agentName, 'explore');
+  assert.equal(sub.childSessionId, 'sess-b', 'sub-agent tasks link to their child session');
+  assert.equal(sub.hasOutput, false);
+
+  assert.deepEqual(store.listBackgroundTasks('sess-a', { kind: 'subagent' }).map((task) => task.taskId), ['t2']);
+});
+
+test('task output is read as a bounded tail and rejects unsafe ids', async (t) => {
+  const dataDir = await makeDataDir();
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const store = openStore({ dataDir });
+  t.after(() => store.close());
+
+  const output = await store.readTaskOutput('t1');
+  assert.equal(output.available, true);
+  assert.match(output.text, /listing complete/);
+
+  const tail = await store.readTaskOutput('t1', { maxBytes: 256 });
+  assert.equal(tail.available, true);
+  assert.equal(tail.truncated, false, 'file is smaller than the floor of 256 bytes');
+
+  const missing = await store.readTaskOutput('t_missing');
+  assert.equal(missing.available, false);
+  assert.equal(missing.text, '');
+
+  for (const bad of ['../../etc/passwd', 'a/b', '', 'x'.repeat(200)]) {
+    await assert.rejects(() => store.readTaskOutput(bad), /invalid_task_id/);
+  }
+});
+
+test('child sessions are listed for drill-down', async (t) => {
+  const dataDir = await makeDataDir();
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const store = openStore({ dataDir });
+  t.after(() => store.close());
+
+  assert.deepEqual(store.listChildSessions('sess-a').map((session) => session.sessionId), ['sess-b']);
+  assert.deepEqual(store.listChildSessions('sess-b'), []);
 });
 
 test('getEvents omits content in summary mode and includes it in full mode', async (t) => {
@@ -341,8 +404,8 @@ test('redactPath collapses the home prefix', () => {
 
 test('tools are declared with the expected names and bounded schemas', () => {
   assert.deepEqual(TOOLS.map((tool) => tool.name), [
-    'trajectory_list', 'trajectory_summary', 'trajectory_get',
-    'trajectory_search', 'trajectory_tasks', 'trajectory_studio',
+    'trajectory_list', 'trajectory_summary', 'trajectory_get', 'trajectory_search',
+    'trajectory_tasks', 'trajectory_task_output', 'trajectory_studio',
   ]);
   for (const tool of TOOLS) {
     assert.equal(tool.inputSchema.type, 'object');
@@ -363,7 +426,7 @@ test('handleRpcMessage answers initialize, tools/list and tool calls', async (t)
   assert.equal(init.result.serverInfo.name, 'mcode-trajectory-studio');
 
   const list = handleRpcMessage(handler, { jsonrpc: '2.0', id: 2, method: 'tools/list' });
-  assert.equal(list.result.tools.length, 6);
+  assert.equal(list.result.tools.length, 7);
 
   const notif = handleRpcMessage(handler, { jsonrpc: '2.0', method: 'notifications/initialized' });
   assert.equal(notif, null, 'notifications are not answered');

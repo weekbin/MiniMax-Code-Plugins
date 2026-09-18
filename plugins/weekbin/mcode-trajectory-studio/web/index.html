@@ -23,8 +23,9 @@
     <button class="chip" data-agent="explore">explore</button>
     <button class="chip" data-agent="worker">worker</button>
     <button class="chip" data-agent="verifier">verifier</button>
+    <button class="chip ghost-chip" id="collapse-all" title="全部折叠 / 展开">折叠切换</button>
   </div>
-  <ul id="session-list" class="session-list"></ul>
+  <div id="session-groups" class="session-groups"></div>
 </aside>
 
 <main id="main">
@@ -34,8 +35,8 @@
       <p id="session-meta" class="muted"></p>
     </div>
     <div class="topbar-controls">
-      <label class="toggle">
-        <input type="checkbox" id="full-detail">
+      <label class="toggle" title="关闭后只显示角色、耗时与工具名，不加载正文与入参">
+        <input type="checkbox" id="full-detail" checked>
         <span>显示正文</span>
       </label>
       <button id="reload" class="btn">刷新</button>
@@ -44,22 +45,27 @@
 
   <section id="stats" class="stats"></section>
 
-  <section id="overview-wrap" class="panel">
+  <section class="panel">
     <div class="panel-head">
-      <h3>时间概览</h3>
+      <h3>时间轴</h3>
       <div class="legend">
-        <span class="lg lg-think"></span>思考段
-        <span class="lg lg-out"></span>输出段
-        <span class="lg lg-tool"></span>工具/等待
+        <span class="lg lg-input"></span>INPUT
+        <span class="lg lg-think"></span>MODEL·思考
+        <span class="lg lg-out"></span>MODEL·输出
+        <span class="lg lg-tool"></span>TOOL
+        <span class="lg lg-wait"></span>等待(推导)
         <span class="lg lg-err"></span>失败
       </div>
     </div>
     <div id="overview" class="overview"></div>
-    <p id="overview-hint" class="muted small"></p>
+    <p id="overview-hint" class="muted small overview-hint"></p>
   </section>
 
-  <section id="filters-wrapper" class="panel filters-panel">
-    <div class="panel-head"><h3>筛选</h3><span id="filter-count" class="muted small"></span></div>
+  <section class="panel">
+    <div class="panel-head">
+      <h3>筛选</h3>
+      <span id="filter-count" class="muted small"></span>
+    </div>
     <div class="filters" id="event-filters">
       <button class="chip is-on" data-filter="all">全部</button>
       <button class="chip" data-filter="assistant">助手</button>
@@ -81,7 +87,10 @@
   </section>
 
   <section id="tasks-wrap" class="panel" hidden>
-    <div class="panel-head"><h3>后台任务 / 子代理</h3><span id="task-count" class="muted small"></span></div>
+    <div class="panel-head">
+      <h3>后台任务 / 子代理</h3>
+      <span id="task-count" class="muted small"></span>
+    </div>
     <div id="tasks" class="tasks"></div>
   </section>
 </main>

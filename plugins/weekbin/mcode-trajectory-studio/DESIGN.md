@@ -419,6 +419,25 @@ plugins/weekbin/mcode-trajectory-studio/
 | 附件 / 图片摘要 | ⚠️ 部分 | 有 `session_assets` 计数，未渲染图片 |
 | 分页 + 只渲染可见行 | ⚠️ 部分 | 有分页与 `offset`/`nextOffset`；前端一次性渲染前 800 条，未做虚拟滚动 |
 
+### 8.5 面板交互修订（v0.1.0 二轮）
+
+| 反馈 | 处理 |
+|---|---|
+| 侧边栏会话应按 workspace 分类并支持折叠 | 按 `workspaceDir` 分组，组头显示路径尾段与数量徽标，可折叠，折叠状态存 `localStorage`；另加「折叠切换」一键全折/全展 |
+| 时间轴应按 INPUT / MODEL / TOOL 三行叙事，而不是按轮次堆叠 | 重做为三条共享时间轴的通道：INPUT（用户消息）、MODEL（请求，内含思考/输出双色段）、TOOL（后台任务与子代理，另加由记录间隔推导的浅色等待段）。通道内重叠块贪心装箱为子行。缩放/平移/重置保留 |
+| 默认显示正文，溢出单行省略，点开侧边栏看详情 | `detailLevel` 默认改为 `full`；记录行 `white-space: nowrap` + `text-overflow: ellipsis`；空正文时依次回退到思考内容、工具名，不再显示「（无正文）」；点击行打开右侧检查器 |
+| 后台任务/子代理不能展开、看不出作用 | 改为可展开卡片：任务 ID、起止时刻、耗时、所属轮次、执行模式、子代理名、工具调用 ID、子会话 ID、完整命令、**输出日志尾部**（`~/.minimax/background-tasks/<id>/output.log`，最多 16 KiB），以及三个操作：查看输出 / 打开子会话轨迹 / 定位调用记录 |
+
+新增能力对应关系：
+
+- `metadata.childSessionId` 让子代理任务可以下钻到自己的会话轨迹（已在真实数据上验证：点开 `verifier` 子代理后跳转到 `Goal verification` 会话）。
+- `output.log` 读取走独立工具 `trajectory_task_output`，路径由数据目录 + 任务 ID 重建（不信任存储的 URI），任务 ID 有严格形状校验，拒绝符号链接，只读尾部若干字节。
+
+### 8.6 面板安全基线（不变）
+
+`127.0.0.1` 绑定 + `Host`/`Origin` 校验 + API 强制自定义头 + 默认拒绝的 CSP。
+注意 CSP 的 `style-src 'self'` 会拦下 HTML 里的内联 `style` 属性——样式必须走外部 CSS 或 CSSOM。
+
 ---
 
 ## 附录 A：本机环境事实

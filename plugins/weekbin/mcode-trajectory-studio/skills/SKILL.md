@@ -28,18 +28,26 @@ Never widen to `full` on your own. The user's session content is theirs; ask bef
 3. `trajectory_get` — page through records in insert order. Use `offset`/`limit`; narrow with
    `turnId`. Read `nextOffset` and keep paging when you need the whole session.
 4. `trajectory_search` — full-text search over titles, agent names, statuses, and workspace paths.
-5. `trajectory_tasks` — background tasks and sub-agent dispatches owned by a session, with status
-   and wall-clock duration. This is the nested view.
-6. `trajectory_studio` — start the local web panel and return its URL.
+5. `trajectory_tasks` — background tasks and sub-agent dispatches owned by a session, with status,
+   wall-clock duration, the command or objective, the sub-agent name, and the child session ID.
+   This is the nested view.
+6. `trajectory_task_output` — the tail of one task's captured output (bounded). Use it to explain a
+   failure without opening the session directory by hand.
+7. `trajectory_studio` — start the local web panel and return its URL.
 
 ## Answering common questions
 
 - **"How long did this session take?"** → `trajectory_summary`, then report `llmMs`, `toolMs`,
   `decodeMs`, and `steps`. Say that `llmMs + toolMs` is the machine time, not wall-clock elapsed.
 - **"Why is it slow?"** → compare `llmMs` against `toolMs`; if tools dominate, call
-  `trajectory_tasks` and report the slowest tasks by `duration_ms`.
+  `trajectory_tasks` and report the slowest tasks by `durationMs`.
+- **"Why did this task fail?"** → `trajectory_tasks` to find the failed row, then
+  `trajectory_task_output` for its captured output.
 - **"What tools ran / what failed?"** → `trajectory_get` (summary) and read `toolCalls[].name` plus
   `toolCalls[].status`; `status !== 2` means the call did not succeed.
+- **"What did the sub-agents do?"** → `trajectory_tasks`, then filter `kind === 'subagent'`; each row
+  carries `agentName`, `description`, and `childSessionId`. Pass that child ID back into
+  `trajectory_summary` or `trajectory_get` to inspect the sub-agent's own trajectory.
 - **"How many turns?"** → `trajectory_summary.turns`, then `trajectory_get` to show per-turn
   totals from the `turnId` grouping.
 - **"Where did the context go?"** → `trajectory_get` and read each record's `contextUsage`

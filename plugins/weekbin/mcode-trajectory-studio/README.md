@@ -36,12 +36,23 @@ record, filters, and the background-task list.
 | `trajectory_summary` | dsh `sessionStats`-equivalent fold: turns, steps, `llmMs`, `toolMs`, `decodeMs`, tokens, tool calls and failures, compactions, sub-agents, assets, trigger sources |
 | `trajectory_get` | Paged trajectory records; `summary` or `full` detail |
 | `trajectory_search` | Full-text search over titles, agents, statuses, and workspace paths |
-| `trajectory_tasks` | Background tasks and sub-agent dispatches with status and duration |
+| `trajectory_tasks` | Background tasks and sub-agent dispatches with status, duration, command or objective, sub-agent name, and child session ID |
+| `trajectory_task_output` | Bounded tail of one task's captured output |
 | `trajectory_studio` | Start or stop the local Studio web panel |
 
-The Studio panel adds a time overview (thinking versus output segments per request), a per-turn
-record table, a per-record inspector with token/context breakdown, filters by role/source/tool
-and failure state, turn-ID jump, compaction markers, and the nested task list.
+The Studio panel is built as a narrative rather than a stack of rows:
+
+- **Sidebar** groups sessions by workspace, with per-group counts and collapsible sections whose
+  state persists across reloads.
+- **Timeline** uses three lanes sharing one zoomable time axis — `INPUT` (user messages), `MODEL`
+  (requests, split into thinking and output segments) and `TOOL` (background tasks and sub-agent
+  dispatches, plus faint gaps derived from record spacing and labelled as such). Overlapping blocks
+  stack into sub-rows. Wheel zooms, drag pans, double click resets.
+- **Records** show content by default, one line with an ellipsis; click a row to open the inspector
+  for the full text, token usage and context breakdown.
+- **Tasks** expand in place to show the task ID, start/end, duration, owning turn, execution mode,
+  sub-agent name, the captured output tail, and buttons to open the sub-agent's own trajectory or
+  jump to the record that invoked the call.
 
 ## What this reads
 

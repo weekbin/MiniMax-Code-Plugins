@@ -12,7 +12,7 @@ import path from 'node:path';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
-import { redactEvent, redactPath } from './redact.mjs';
+import { redactEvent, redactPath, redactText } from './redact.mjs';
 
 const WEB_ROOT = new URL('../web/', import.meta.url);
 const CLIENT_HEADER = 'x-trajectory-client';
@@ -242,6 +242,14 @@ async function api(store, homeDir, url, { getFocus, setFocus }) {
     }
     setFocus?.(sessionId);
     return overview(store, homeDir, sessionId);
+  }
+
+  if (route === '/api/task-output') {
+    const taskId = url.searchParams.get('taskId');
+    if (!taskId) throw new Error('taskId_required');
+    const maxBytes = Math.min(262144, Math.max(256, Number(url.searchParams.get('maxBytes')) || 16384));
+    const output = await store.readTaskOutput(taskId, { maxBytes });
+    return { ...output, text: redactText(output.text, { maxLength: 262144 }) };
   }
 
   if (route === '/api/events') {

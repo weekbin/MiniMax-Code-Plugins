@@ -7,7 +7,7 @@
 
 import { createInterface } from 'node:readline';
 
-import { redactEvent, redactPath } from './redact.mjs';
+import { redactEvent, redactPath, redactText } from './redact.mjs';
 import { SESSION_KINDS } from './store.mjs';
 
 export const SERVER_NAME = 'mcode-trajectory-studio';
@@ -70,11 +70,21 @@ export const TOOLS = [
   {
     name: 'trajectory_tasks',
     description:
-      'List the background tasks and sub-agent dispatches owned by one session, with status and wall-clock duration. This is the nested-tool view for a trajectory.',
+      'List the background tasks and sub-agent dispatches owned by one session, with status, wall-clock duration, the command or objective, the sub-agent name, and the child session ID when a sub-agent ran. This is the nested-tool view for a trajectory.',
     inputSchema: obj({
       sessionId: str('Exact session ID. Omit to use the most recently updated session.'),
-      limit: int('Maximum tasks to return.', { minimum: 1, maximum: 1000, default: 100 }),
+      limit: int('Maximum tasks to return.', { minimum: 1, maximum: 2000, default: 200 }),
+      kind: str('Restrict to one task kind, for example "bash" or "subagent".'),
     }),
+  },
+  {
+    name: 'trajectory_task_output',
+    description:
+      'Read the tail of the captured output for one background task, bounded to the last 16 KiB by default. Use it to explain why a task failed without opening the session directory by hand.',
+    inputSchema: obj({
+      taskId: str('Exact task ID, as returned by trajectory_tasks.', { minLength: 1 }),
+      maxBytes: int('Maximum bytes of trailing output to return.', { minimum: 256, maximum: 262144, default: 16384 }),
+    }, ['taskId']),
   },
   {
     name: 'trajectory_studio',
@@ -171,13 +181,20 @@ async function callTool(ctx, name, args = {}) {
     case 'trajectory_tasks': {
       const sessionId = await resolveSessionId(store, args.sessionId);
       if (!sessionId) throw new Error('no_sessions_available');
-      const tasks = store.listBackgroundTasks(sessionId, { limit: args.limit ?? 100 });
+      const tasks = store.listBackgroundTasks(sessionId, { limit: args.limit ?? 200, kind: args.kind });
       return {
         sessionId,
         returned: tasks.length,
-        totalMs: tasks.reduce((sum, task) => sum + (task.duration_ms ?? 0), 0),
+        totalMs: tasks.reduce((sum, task) => sum + (task.durationMs ?? 0), 0),
+        failed: tasks.filter((task) => task.status === 'failed').length,
+        subagents: tasks.filter((task) => task.kind === 'subagent').length,
         tasks,
       };
+    }
+
+    case 'trajectory_task_output': {
+      const output = await store.readTaskOutput(args.taskId, { maxBytes: args.maxBytes ?? 16384 });
+      return { ...output, text: redactText(output.text, { maxLength: 64000 }) };
     }
 
     case 'trajectory_studio': {
