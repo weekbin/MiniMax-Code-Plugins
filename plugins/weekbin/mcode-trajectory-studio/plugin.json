@@ -1,0 +1,23 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "mcode-trajectory-studio",
+  "version": "0.1.0",
+  "description": "Inspect MiniMax Code session trajectories from the runtime's read-only SQLite projection: turns, steps, LLM/tool/decode wall-clock time, token usage, tool arguments and results, compactions, sub-agent tasks, and full-text search, with a local interactive Studio panel.",
+  "author": {
+    "name": "weekbin",
+    "url": "https://github.com/weekbin"
+  },
+  "homepage": "https://github.com/weekbin/MiniMax-Code-Plugins/tree/main/plugins/weekbin/mcode-trajectory-studio",
+  "repository": "https://github.com/weekbin/MiniMax-Code-Plugins.git",
+  "license": "Apache-2.0",
+  "keywords": [
+    "minimax-code",
+    "mcode",
+    "trajectory",
+    "session",
+    "telemetry",
+    "sqlite",
+    "mcp",
+    "visualization"
+  ]
+}
