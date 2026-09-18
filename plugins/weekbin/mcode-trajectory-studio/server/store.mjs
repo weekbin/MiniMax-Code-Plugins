@@ -16,6 +16,8 @@ import { createReadStream } from 'node:fs';
 import { lstat, open, readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 
+import { resolveWorkspaceIdentities } from './git.mjs';
+
 export const SESSION_KINDS = ['conversation', 'task', 'peek', 'channel', 'cron', 'unknown'];
 
 const MAX_JSONL_LINE_BYTES = 2 * 1024 * 1024;
@@ -72,6 +74,24 @@ function parseJson(value) {
 function num(value) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
+
+/**
+ * Which doorway did this record enter the session through?
+ *
+ * `human` means the text is the person's own. `injected` means the harness put it
+ * there — a goal objective, a questionnaire answer channel, a background-task
+ * result — and the reader should not mistake it for something they typed.
+ */
+function classifyInput(source, originType) {
+  if (typeof originType === 'string' && originType) return 'injected';
+  if (source === 'thread-goal' || source === 'background-task' || source === 'task' || source === 'agent') {
+    return 'injected';
+  }
+  if (source === 'api' || source === 'questionnaire' || source === 'greeting') return 'human';
+  return 'unknown';
+}
+
+export { classifyInput };
 
 /**
  * Encode a user query into the token form the runtime's FTS5 index stores.
@@ -173,8 +193,7 @@ export class Store {
   }
 
   /** Read one session row plus its direct child sessions (sub-agents / tasks). */
-  getSession(sessionId) {
-    if (!this.db) return null;
+  getSession(sessionId) {    if (!this.db) return null;
     let row;
     try {
       row = this.db.prepare('SELECT * FROM local_runtime_sessions WHERE session_id = ?').get(sessionId);
@@ -195,6 +214,70 @@ export class Store {
       }
     }
     return { ...summary, children };
+  }
+
+  /* ------------------------------------------------------------ identity -- */
+
+  /**
+   * Annotate sessions with the repository they actually belong to, so every
+   * worktree of one project groups together instead of fragmenting by path.
+   */
+  async annotateWorkspaces(sessions) {
+    const resolve = await resolveWorkspaceIdentities(sessions.map((session) => session.workspaceDir));
+    return sessions.map((session) => {
+      const identity = resolve(session.workspaceDir);
+      return {
+        ...session,
+        groupKey: identity.key,
+        groupLabel: identity.label,
+        groupKind: identity.kind,
+        branch: identity.branch,
+        worktree: identity.worktree,
+      };
+    });
+  }
+
+  /**
+   * The agent definition the runtime recorded for a session: model selection,
+   * tool and skill allowlists, and the system prompt. Present only for sessions
+   * the runtime dispatched with an explicit definition (presets, sub-agents).
+   */
+  getAgentDefinition(sessionId) {
+    if (!this.db || !tableExists(this.db, 'local_runtime_session_agent_definitions')) return null;
+    let row;
+    try {
+      row = this.db.prepare(
+        'SELECT definition_json FROM local_runtime_session_agent_definitions WHERE session_id = ?',
+      ).get(sessionId);
+    } catch {
+      return null;
+    }
+    const definition = parseJson(row?.definition_json);
+    if (!definition) return null;
+
+    const capabilities = definition.capabilities && typeof definition.capabilities === 'object'
+      ? definition.capabilities
+      : {};
+    const model = definition.model && typeof definition.model === 'object' ? definition.model : {};
+    return {
+      definitionVersion: num(definition.definitionVersion),
+      ownerName: definition.exactOwnerName ?? null,
+      model: {
+        providerId: model.providerId ?? null,
+        modelId: model.modelId ?? null,
+        variant: model.variant ?? null,
+        contextWindow: num(model.contextWindow),
+        maxOutputTokens: num(model.maxOutputTokens),
+        parameterSnapshot: model.parameterSnapshot ?? null,
+      },
+      tools: Array.isArray(capabilities.tools) ? capabilities.tools : [],
+      disallowedTools: Array.isArray(capabilities.disallowedTools) ? capabilities.disallowedTools : [],
+      mcpServers: Array.isArray(capabilities.mcpServers) ? capabilities.mcpServers : [],
+      skills: Array.isArray(capabilities.skills) ? capabilities.skills : [],
+      extensionSkills: Array.isArray(capabilities.extensionSkills) ? capabilities.extensionSkills : [],
+      systemPrompt: typeof definition.systemPrompt === 'string' ? definition.systemPrompt : null,
+      project: definition.project && typeof definition.project === 'object' ? definition.project : null,
+    };
   }
 
   /* --------------------------------------------------------------- stats -- */
@@ -504,7 +587,20 @@ export class Store {
    * `detailLevel` gates whether content is returned at all: `summary` never
    * returns message text, tool arguments or tool results.
    */
-  getEvents({ sessionId, offset = 0, limit = 200, detailLevel = 'summary', turnId } = {}) {
+  /**
+   * Index background tasks by the tool call that spawned them, so a tool call and
+   * its measured duration live on one row instead of two separate views.
+   */
+  #taskIndex(sessionId) {
+    const index = new Map();
+    for (const task of this.listBackgroundTasks(sessionId, { limit: 2000 })) {
+      if (task.toolCallId) index.set(task.toolCallId, task);
+      else index.set(`__task__${task.taskId}`, task);
+    }
+    return index;
+  }
+
+  getEvents({ sessionId, offset = 0, limit = 200, detailLevel = 'summary', turnId, withTasks = true } = {}) {
     if (!this.db) return { events: [], total: 0, nextOffset: null, source: 'unavailable' };
     const safeLimit = Math.max(1, Math.min(1000, limit));
     const safeOffset = Math.max(0, offset);
@@ -540,7 +636,8 @@ export class Store {
       return { events: [], total: 0, nextOffset: null, source: 'error' };
     }
 
-    const events = rows.map((row, index) => this.#projectEvent(row, safeOffset + index, detailLevel));
+    const taskByCall = withTasks ? this.#taskIndex(sessionId) : new Map();
+    const events = rows.map((row, index) => this.#projectEvent(row, safeOffset + index, detailLevel, taskByCall));
     const consumed = safeOffset + rows.length;
     return {
       events,
@@ -550,11 +647,15 @@ export class Store {
     };
   }
 
-  #projectEvent(row, index, detailLevel) {
+  #projectEvent(row, index, detailLevel, taskByCall = new Map()) {
     const data = parseJson(row.data_json) || {};
     const usage = data.usage && typeof data.usage === 'object' ? data.usage : null;
     const contextUsage = data.context_usage && typeof data.context_usage === 'object' ? data.context_usage : null;
     const toolCalls = Array.isArray(data.tool_calls) ? data.tool_calls : null;
+    const source = data.source ?? row.source ?? null;
+    const origin = data.sourceContext?.origin && typeof data.sourceContext.origin === 'object'
+      ? data.sourceContext.origin
+      : null;
 
     const event = {
       index,
@@ -562,13 +663,18 @@ export class Store {
       msgId: data.msg_id ?? null,
       turnId: data.turn_id ?? row.turn_id ?? data.turnId ?? null,
       role: data.role ?? row.role ?? null,
-      source: data.source ?? row.source ?? null,
+      source,
       msgType: num(data.msg_type),
       kind: data.kind ?? null,
       finishReason: data.finish_reason ?? null,
       createdAtMs: num(row.created_at_ms) ?? num(data.timestamp),
       thinkingDurationMs: num(data.thinking_duration_ms),
       requestDurationMs: usage ? num(usage.request_duration_ms) : null,
+      // Only an inbound record has an input doorway. Distinguishes a person's own
+      // words from context the harness injected (a goal objective, a task result).
+      inputKind: (data.role ?? row.role) === 'user' ? classifyInput(source, origin?.type) : null,
+      originType: origin?.type ?? null,
+      goalId: origin?.goalId ?? null,
       usage: usage ? {
         inputTokens: num(usage.input_tokens),
         outputTokens: num(usage.output_tokens),
@@ -583,31 +689,44 @@ export class Store {
         components: Array.isArray(contextUsage.components) ? contextUsage.components : null,
       } : null,
       toolCallCount: toolCalls ? toolCalls.length : 0,
+      failureCount: toolCalls
+        ? toolCalls.filter((call) => num(call?.tool_call_status) !== null && num(call?.tool_call_status) !== 2).length
+        : 0,
       hasThinking: typeof data.thinking_content === 'string' && data.thinking_content.length > 0,
       contentLength: typeof data.msg_content === 'string' ? data.msg_content.length : 0,
     };
 
+    event.toolCalls = toolCalls
+      ? toolCalls.map((call) => {
+          const status = num(call?.tool_call_status);
+          const task = call?.tool_call_id ? taskByCall.get(call.tool_call_id) ?? null : null;
+          const projected = {
+            name: call?.tool_name ?? null,
+            id: call?.tool_call_id ?? null,
+            status,
+            ok: status === 2,
+            // The measured wall-clock for this call, when the runtime recorded it
+            // as a background task. Never estimated from record spacing.
+            durationMs: task?.durationMs ?? null,
+            taskId: task?.taskId ?? null,
+            taskStatus: task?.status ?? null,
+            agentName: task?.agentName ?? null,
+            childSessionId: task?.childSessionId ?? null,
+            hasOutput: task?.hasOutput ?? false,
+          };
+          if (detailLevel === 'full') {
+            projected.args = call?.tool_call_args ?? null;
+            projected.result = call?.tool_call_result_data ?? null;
+            projected.description = task?.description ?? null;
+          }
+          return projected;
+        })
+      : null;
+
     if (detailLevel === 'full') {
       event.content = typeof data.msg_content === 'string' ? data.msg_content : null;
       event.thinking = typeof data.thinking_content === 'string' ? data.thinking_content : null;
-      event.toolCalls = toolCalls
-        ? toolCalls.map((call) => ({
-            name: call?.tool_name ?? null,
-            id: call?.tool_call_id ?? null,
-            status: num(call?.tool_call_status),
-            args: call?.tool_call_args ?? null,
-            result: call?.tool_call_result_data ?? null,
-          }))
-        : null;
       if (data.metadata && typeof data.metadata === 'object') event.metadata = data.metadata;
-    } else {
-      event.toolCalls = toolCalls
-        ? toolCalls.map((call) => ({
-            name: call?.tool_name ?? null,
-            id: call?.tool_call_id ?? null,
-            status: num(call?.tool_call_status),
-          }))
-        : null;
     }
 
     return event;
@@ -708,6 +827,9 @@ export class Store {
           createdAtMs: num(message.timestamp),
           thinkingDurationMs: null,
           requestDurationMs: null,
+          inputKind: message.role === 'user' ? 'human' : 'unknown',
+          originType: null,
+          goalId: null,
           usage: usage ? {
             inputTokens: num(usage.input),
             outputTokens: num(usage.output),
@@ -716,23 +838,39 @@ export class Store {
             contextWindowTokens: null,
           } : null,
           contextUsage: null,
-          toolCallCount: toolUses.length,
+          toolCallCount: toolUses.length || (message.toolName ? 1 : 0),
+          failureCount: message.isError ? 1 : 0,
           hasThinking: thinking.length > 0,
           contentLength: text.length,
           model: message.model ?? null,
         };
+        const callNames = toolUses.length
+          ? toolUses.map((call) => ({ name: call.name ?? null, id: call.id ?? null }))
+          : (message.toolName ? [{ name: message.toolName, id: message.toolCallId ?? null }] : []);
+        event.toolCalls = callNames.length
+          ? callNames.map((call, position) => {
+              const projected = {
+                ...call,
+                status: message.isError && position === 0 ? 3 : (message.toolName ? 2 : null),
+                ok: !(message.isError && position === 0),
+                durationMs: null,
+                taskId: null,
+                taskStatus: null,
+                agentName: null,
+                childSessionId: null,
+                hasOutput: false,
+              };
+              if (detailLevel === 'full') {
+                projected.args = toolUses[position]?.arguments ?? null;
+                projected.result = position === 0 && message.content ? message.content : null;
+                projected.description = null;
+              }
+              return projected;
+            })
+          : null;
         if (detailLevel === 'full') {
           event.content = text || null;
           event.thinking = thinking || null;
-          event.toolCalls = toolUses.length
-            ? toolUses.map((call) => ({ name: call.name ?? null, id: call.id ?? null, status: null, args: call.arguments ?? null }))
-            : (message.toolName
-              ? [{ name: message.toolName, id: message.toolCallId ?? null, status: message.isError ? 3 : 2, args: null }]
-              : null);
-        } else {
-          event.toolCalls = toolUses.length
-            ? toolUses.map((call) => ({ name: call.name ?? null, id: call.id ?? null, status: null }))
-            : (message.toolName ? [{ name: message.toolName, id: message.toolCallId ?? null, status: message.isError ? 3 : 2 }] : null);
         }
         events.push(event);
       }

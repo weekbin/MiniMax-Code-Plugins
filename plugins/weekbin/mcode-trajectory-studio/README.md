@@ -40,19 +40,37 @@ record, filters, and the background-task list.
 | `trajectory_task_output` | Bounded tail of one task's captured output |
 | `trajectory_studio` | Start or stop the local Studio web panel |
 
-The Studio panel is built as a narrative rather than a stack of rows:
+The Studio panel is built as a narrative rather than a stack of rows. Each surface answers one
+question and does not repeat another surface's answer:
 
-- **Sidebar** groups sessions by workspace, with per-group counts and collapsible sections whose
-  state persists across reloads.
-- **Timeline** uses three lanes sharing one zoomable time axis — `INPUT` (user messages), `MODEL`
-  (requests, split into thinking and output segments) and `TOOL` (background tasks and sub-agent
-  dispatches, plus faint gaps derived from record spacing and labelled as such). Overlapping blocks
-  stack into sub-rows. Wheel zooms, drag pans, double click resets.
-- **Records** show content by default, one line with an ellipsis; click a row to open the inspector
-  for the full text, token usage and context breakdown.
-- **Tasks** expand in place to show the task ID, start/end, duration, owning turn, execution mode,
-  sub-agent name, the captured output tail, and buttons to open the sub-agent's own trajectory or
-  jump to the record that invoked the call.
+| Surface | Answers |
+|---|---|
+| **Agent 与能力** | What was this session configured with — model, tool allowlist, skills, system prompt |
+| **统计条** | What are the session totals — turns, steps, LLM/tool/decode wall-clock, tokens, failures |
+| **时间轴** | Where in time did it happen — navigation and zoom only, no text |
+| **轨迹流** | What happened — one scannable line per message and per tool call |
+| **检查器** | The full detail of exactly one selected row |
+
+- **Sidebar** groups sessions by **git repository**, not by path: `git rev-parse --git-common-dir`
+  folds every worktree of one project into a single collapsible group, so a long-lived repository
+  does not fragment across the sidebar. Directories outside a git tree fall back to path grouping,
+  and each group shows its branch, worktree count and session count.
+- **Timeline** uses three lanes sharing one zoomable axis — `INPUT` (human messages in blue,
+  harness-injected context in violet), `MODEL` (requests split into thinking and output segments)
+  and `TOOLS` (measured task spans in orange, gaps derived from record spacing in grey and labelled
+  as derived). Wheel zooms, drag pans, double click resets.
+- **Stream** merges messages and tool calls into one narrative: `TOOL bash ▸ {payload} ⇉ {result}`
+  with the measured duration, an agent badge for sub-agents, and a one-click jump into the
+  sub-agent's own session. Injected context is visually distinct from things the user typed.
+  Filter by human input, injected context, tool calls, or failures only; filter by turn ID or text.
+- **Inspector** is tabbed: 概要 (hierarchy, status, token usage, context split), 载荷 (tool arguments
+  or message body), 结果 (result text plus a **failure evidence** block), 计时 (recorded instant,
+  request/thinking/decode time, and whether the tool duration was measured or absent), and Schema.
+- **Failure localisation** is first-class: the header carries a `⚠ N 处失败（定位）` jump, the stream
+  marks each failure inline, and the result tab separates **hard** failures (Traceback, stderr,
+  `is_error`) from **soft** ones (a non-zero exit code, which is often just `grep` finding nothing).
+  A call can report success while its output contains a Traceback, so the classification reads the
+  text, not only the status code.
 
 ## What this reads
 

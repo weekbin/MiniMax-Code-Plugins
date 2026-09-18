@@ -26,7 +26,11 @@ Never widen to `full` on your own. The user's session content is theirs; ask bef
    `toolCalls`/`toolFailures`, `compactions`, `subagentTasks`, `assets`, and a `sources` breakdown.
    Omit `sessionId` for the most recently updated session.
 3. `trajectory_get` — page through records in insert order. Use `offset`/`limit`; narrow with
-   `turnId`. Read `nextOffset` and keep paging when you need the whole session.
+   `turnId`. Read `nextOffset` and keep paging when you need the whole session. Each record carries
+   `inputKind` (`human` / `injected`) so you can tell a person's own words from context the harness
+   injected, `failureCount`, and a `toolCalls` array where each entry has `name`, `ok`, `status`,
+   the measured `durationMs` (null when the runtime recorded no task for that call), `taskId`,
+   `agentName`, `childSessionId`, and — in `full` detail — `args` and `result`.
 4. `trajectory_search` — full-text search over titles, agent names, statuses, and workspace paths.
 5. `trajectory_tasks` — background tasks and sub-agent dispatches owned by a session, with status,
    wall-clock duration, the command or objective, the sub-agent name, and the child session ID.
@@ -44,10 +48,17 @@ Never widen to `full` on your own. The user's session content is theirs; ask bef
 - **"Why did this task fail?"** → `trajectory_tasks` to find the failed row, then
   `trajectory_task_output` for its captured output.
 - **"What tools ran / what failed?"** → `trajectory_get` (summary) and read `toolCalls[].name` plus
-  `toolCalls[].status`; `status !== 2` means the call did not succeed.
+  `toolCalls[].ok`; `ok !== true` means the call did not succeed. **A non-zero exit is not always a
+  real failure** — `grep` exits 1 on "no matches". Before reporting a failure, check the result text
+  in `full` detail for a `Traceback`, `[stderr]`, or `is_error: true`; only those are hard failures.
+  A call can also carry `ok: true` while its output contains a Traceback, so read the text, not just
+  the status.
 - **"What did the sub-agents do?"** → `trajectory_tasks`, then filter `kind === 'subagent'`; each row
   carries `agentName`, `description`, and `childSessionId`. Pass that child ID back into
   `trajectory_summary` or `trajectory_get` to inspect the sub-agent's own trajectory.
+- **"How was this session configured?"** → the Studio panel shows an `Agent 与能力` panel with the
+  model, tool allowlist, skills and system prompt, read from the runtime's session agent definition.
+  It is present only for sessions the runtime dispatched with an explicit definition.
 - **"How many turns?"** → `trajectory_summary.turns`, then `trajectory_get` to show per-turn
   totals from the `turnId` grouping.
 - **"Where did the context go?"** → `trajectory_get` and read each record's `contextUsage`

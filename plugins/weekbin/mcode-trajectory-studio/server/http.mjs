@@ -217,18 +217,21 @@ async function api(store, homeDir, url, { getFocus, setFocus }) {
   }
 
   if (route === '/api/sessions') {
-    const sessions = store.listSessions({
+    const raw = store.listSessions({
       limit: Number(url.searchParams.get('limit')) || 50,
       agent: url.searchParams.get('agent') || undefined,
       kind: url.searchParams.get('kind') || undefined,
       includeArchived: url.searchParams.get('includeArchived') === '1',
-    }).map((session) => ({ ...session, workspaceDir: redactPath(session.workspaceDir, { homeDir }) }));
+    });
+    const sessions = (await store.annotateWorkspaces(raw))
+      .map((session) => ({ ...session, workspaceDir: redactPath(session.workspaceDir, { homeDir }) }));
     return { sessions };
   }
 
   if (route === '/api/search') {
     const query = url.searchParams.get('q') || '';
-    const sessions = store.searchSessions({ query, limit: Number(url.searchParams.get('limit')) || 50 })
+    const raw = store.searchSessions({ query, limit: Number(url.searchParams.get('limit')) || 50 });
+    const sessions = (await store.annotateWorkspaces(raw))
       .map((session) => ({ ...session, workspaceDir: redactPath(session.workspaceDir, { homeDir }) }));
     return { query, sessions };
   }
@@ -287,12 +290,18 @@ function overview(store, homeDir, sessionId) {
   const stats = store.getStats(sessionId);
   const page = store.getEvents({ sessionId, offset: 0, limit: 1000, detailLevel: 'summary' });
   const tasks = store.listBackgroundTasks(sessionId, { limit: 200 });
+  const agent = store.getAgentDefinition(sessionId);
   return {
     session: { ...session, workspaceDir: redactPath(session.workspaceDir, { homeDir }) },
     stats,
+    agent: agent
+      ? { ...agent, systemPrompt: agent.systemPrompt ? redactText(agent.systemPrompt, { maxLength: 20000 }) : null }
+      : null,
     source: page.source,
     total: page.total,
     events: page.events,
+    // Kept so the timeline can draw measured tool spans; the record rows carry the
+    // same tasks joined by tool call ID, so the UI never renders them twice.
     tasks,
   };
 }

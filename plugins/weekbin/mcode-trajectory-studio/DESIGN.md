@@ -438,6 +438,50 @@ plugins/weekbin/mcode-trajectory-studio/
 `127.0.0.1` 绑定 + `Host`/`Origin` 校验 + API 强制自定义头 + 默认拒绝的 CSP。
 注意 CSP 的 `style-src 'self'` 会拦下 HTML 里的内联 `style` 属性——样式必须走外部 CSS 或 CSSOM。
 
+### 8.7 二轮重构：按维度展开、消除重复（v0.1.0 三轮）
+
+用户对照 dsh 的实际 Trajectory 界面提出三点：
+
+| 反馈 | 处理 |
+|---|---|
+| 按 workspace 分组时还要看是不是 git tree，是的话归为一类 | 新增 `server/git.mjs`：用 `git rev-parse --path-format=absolute --git-common-dir` 解析仓库（worktree 共享 common-dir，正是合并键），同仓库的所有 worktree 合成一组。实测 `CTAS` 组把 3 个工作区 60 个会话合并为一类，分组数从上百降到 39。非 git 目录回退路径分组 |
+| 内容要详细：用户输入、注入上下文、hooks、工具入参输出、schema，尤其失败处要能定位 | 见下 |
+| 按维度展开，不要平铺直叙，不要在不同功能里重复信息 | 见下 |
+
+**信息架构（每个面只回答一个问题，不重复）**
+
+| 面 | 回答 |
+|---|---|
+| Agent 与能力 | 这个会话被配置成什么（模型 / 工具白名单 / 技能 / 系统提示） |
+| 统计条 | 会话总量（轮次 / 步骤 / 三类墙钟 / token / 失败数） |
+| 时间轴 | 何时发生（仅导航与缩放，不含正文） |
+| 轨迹流 | 发生了什么（每条消息、每次工具调用一行） |
+| 检查器 | 选中那一行的完整细节 |
+
+**按维度展开的实现**
+
+- **人类输入 vs 框架注入**：`store.mjs` 新增 `classifyInput()`，依据 `sourceContext.origin.type`
+  与 `source` 判定。实测本机 2546 条用户行中 174 条问卷、3 条后台任务回灌为注入。前端用蓝色
+  `INPUT` 与紫色 `注入` 区分。
+- **工具入参与结果同行**：`#taskIndex()` 按 `toolCallId` 把 `local_runtime_background_tasks` 关联
+  到工具调用上，一行显示 `TOOL bash ▸ {入参} ⇉ {结果} · {实测耗时}`。实测某会话 181 次调用中
+  104 次拿到实测耗时，其余为进程内工具、如实显示 `—` 而不估算。
+- **Agent 能力维度**：新增 `getAgentDefinition()` 读取 `local_runtime_session_agent_definitions`，
+  展示 provider/model/variant/上下文窗口/最大输出/工具白名单/技能/系统提示。151 个会话有此记录。
+- **失败定位**：`classifyResult()` 基于运行时自己的 `details.is_error`、`Command exited with code N`
+  与结果文本里的 `Traceback` / `[stderr]` 分级——**硬失败**（Traceback/stderr/is_error）与
+  **软失败**（非零退出，`grep` 无匹配属此类，不应当成真故障）。关键点：全库 4103 次"失败"调用里
+  0 次带 stderr、260 次带 Traceback；且**存在调用状态码为 2（成功）但输出含 Traceback 的情况**，
+  只看状态码会漏掉，所以判级读文本而非只看状态码。检查器"结果"页给出失败证据块
+  （is_error / 退出码 / 调用状态码 / 判级）并直接从 Traceback 行开始截取。
+- **Schema**：运行时不持久化工具入参 schema（dsh 同样显示 "Schema unavailable"），分页给出明确解释
+  而不是留空。
+- **hooks**：本机 observability 目录与 `plugin-hook-cache` 均无 hook 事件落盘，因此不展示——
+  不编造不存在的数据。
+
+**删除的重复**：移除了独立的「后台任务/子代理」面板（它的信息已在 TOOL 行里，属重复），
+移除与工具行重复的任务计数卡片；时间轴明确标注"仅用于定位与缩放，正文见下方轨迹流"。
+
 ---
 
 ## 附录 A：本机环境事实

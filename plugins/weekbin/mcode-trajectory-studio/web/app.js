@@ -1,32 +1,41 @@
 /**
  * Trajectory Studio client.
  *
- * Talks only to the local panel's own /api/* routes, always with the custom client
- * header the server requires, so a foreign page cannot read local session data.
+ * Information architecture — each surface owns one question and does not repeat
+ * another surface's answer:
+ *
+ *   Agent 与能力  what was this session configured with (model, tools, skills, prompt)
+ *   统计条        what are the session totals (turns, wall-clock, tokens, failures)
+ *   时间轴        where in time did things happen (navigation and zoom only)
+ *   轨迹流        what happened, one scannable line per message and per tool call
+ *   检查器        the full detail of exactly one selected row
+ *
+ * The timeline draws measured tool spans; the stream carries the same tasks joined
+ * by tool call ID. Neither repeats the other's text.
  */
 
 const API_HEADER = { 'x-trajectory-client': '1' };
-const MAX_RENDERED_RECORDS = 600;
+const MAX_RENDERED_ROWS = 1200;
 const MAX_LANE_ROWS = 8;
 const LANE_ROW_PX = 17;
 
 const state = {
   sessions: [],
   sessionId: null,
-  overview: null,
   events: [],
   tasks: [],
+  agent: null,
   detailLevel: 'full',
   agentFilter: '',
-  eventFilter: 'all',
+  rowFilter: 'all',
   turnQuery: '',
-  selectedIndex: null,
+  textQuery: '',
+  selected: null,
   search: '',
   axis: null,
   view: { start: 0, end: 1 },
   collapsed: readCollapsed(),
-  openTask: null,
-  taskOutput: new Map(),
+  tab: 'summary',
 };
 
 const el = (id) => document.getElementById(id);
@@ -40,11 +49,11 @@ async function api(pathname) {
   return payload;
 }
 
-/* -------------------------------------------------- collapsed group state */
+/* ---------------------------------------------------------------- helpers */
 
 function readCollapsed() {
   try {
-    return new Set(JSON.parse(localStorage.getItem('trajectory.collapsedWorkspaces') || '[]'));
+    return new Set(JSON.parse(localStorage.getItem('trajectory.collapsedGroups') || '[]'));
   } catch {
     return new Set();
   }
@@ -52,13 +61,11 @@ function readCollapsed() {
 
 function writeCollapsed() {
   try {
-    localStorage.setItem('trajectory.collapsedWorkspaces', JSON.stringify([...state.collapsed]));
+    localStorage.setItem('trajectory.collapsedGroups', JSON.stringify([...state.collapsed]));
   } catch {
     /* storage is optional */
   }
 }
-
-/* ---------------------------------------------------------------- helpers */
 
 function fmtMs(ms) {
   if (ms === null || ms === undefined) return '—';
@@ -82,6 +89,14 @@ function fmtClock(ms) {
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`;
 }
 
+function fmtFull(ms) {
+  if (!ms) return '—';
+  const date = new Date(ms);
+  const pad = (value, width = 2) => String(value).padStart(width, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ` +
+    `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}.${pad(date.getMilliseconds(), 3)}`;
+}
+
 function fmtAge(ms) {
   if (!ms) return '';
   const delta = Date.now() - ms;
@@ -95,15 +110,6 @@ function shortId(id) {
   return typeof id === 'string' ? id.replace(/^mvs_/, '').slice(0, 10) : '—';
 }
 
-/** Collapse the home prefix and keep only the tail of long workspace paths. */
-function shortWorkspace(dir) {
-  if (!dir) return '(无工作区)';
-  let value = dir;
-  if (/^\/home\/[^/]+/.test(value)) value = `~${value.replace(/^\/home\/[^/]+/, '')}`;
-  const parts = value.split('/').filter(Boolean);
-  return parts.length <= 3 ? value : `…/${parts.slice(-3).join('/')}`;
-}
-
 function textNode(tag, className, text) {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -111,11 +117,100 @@ function textNode(tag, className, text) {
   return node;
 }
 
-function banner(message) {
-  const node = el('banner');
-  node.textContent = message;
-  node.hidden = !message;
-  if (message) setTimeout(() => { node.hidden = true; }, 9000);
+function oneLine(value, limit = 260) {
+  if (typeof value !== 'string') return '';
+  const flat = value.replace(/\s+/g, ' ').trim();
+  return flat.length > limit ? `${flat.slice(0, limit)}…` : flat;
+}
+
+/** Pull a readable one-liner out of a tool payload. */
+function payloadPreview(args) {
+  if (args === null || args === undefined) return '';
+  let value = args;
+  if (typeof value === 'string') {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return oneLine(value, 200);
+    }
+  }
+  if (value && typeof value === 'object') {
+    for (const key of ['command', 'file_path', 'path', 'pattern', 'query', 'url', 'prompt', 'objective', 'description', 'name']) {
+      if (typeof value[key] === 'string' && value[key]) return oneLine(value[key], 200);
+    }
+    const keys = Object.keys(value);
+    if (keys.length) return oneLine(`${keys[0]}: ${JSON.stringify(value[keys[0]])}`, 200);
+  }
+  return oneLine(JSON.stringify(value), 200);
+}
+
+/**
+ * Flatten a tool result into text plus an honest failure classification.
+ *
+ * A non-zero exit code is not by itself a problem — `grep` returns 1 for "no
+ * matches" — so the reader is shown the raw evidence (exit code, stderr,
+ * traceback, the runtime's own is_error flag) instead of a verdict.
+ */
+function parseResult(result) {
+  const empty = { text: '', failed: false, severity: null, signal: null, exitCode: null, isError: false, details: null };
+  if (result === null || result === undefined) return empty;
+
+  let value = result;
+  if (typeof value === 'string') {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      const text = String(result);
+      return classifyResult(text, null);
+    }
+  }
+  if (value && typeof value === 'object') {
+    const parts = [];
+    if (Array.isArray(value.content)) {
+      for (const item of value.content) {
+        if (typeof item?.text === 'string') parts.push(item.text);
+      }
+    }
+    if (typeof value.text === 'string') parts.push(value.text);
+    if (typeof value.error === 'string') parts.push(value.error);
+    return classifyResult(parts.join('\n'), value.details && typeof value.details === 'object' ? value.details : null);
+  }
+  return classifyResult(String(value), null);
+}
+
+function classifyResult(text, details) {
+  const exitCode = Number(text.match(/Command exited with code (-?\d+)/)?.[1] ?? NaN);
+  const isError = details?.is_error === true || details?.isError === true;
+  const status = typeof details?.status === 'string' ? details.status : null;
+  const hasTraceback = /Traceback \(most recent call last\)/.test(text);
+  const hasStderr = /\[stderr\]/.test(text);
+
+  let severity = null;
+  let signal = null;
+  if (hasTraceback) { severity = 'hard'; signal = 'Traceback'; }
+  else if (hasStderr) { severity = 'hard'; signal = 'stderr'; }
+  else if (isError || status === 'failed') { severity = 'hard'; signal = '运行时报错'; }
+  else if (Number.isFinite(exitCode) && exitCode !== 0) {
+    // Soft: the command ran and reported a non-zero status. Frequently benign.
+    severity = 'exit';
+    signal = `退出码 ${exitCode}`;
+  }
+
+  return {
+    text,
+    failed: severity !== null,
+    severity,
+    signal,
+    exitCode: Number.isFinite(exitCode) ? exitCode : null,
+    isError,
+    details,
+  };
+}
+
+function workspaceTail(dir) {
+  if (!dir) return '';
+  const parts = dir.split('/').filter(Boolean);
+  return parts.length <= 2 ? dir : parts.slice(-2).join('/');
 }
 
 /* ---------------------------------------------------------------- sidebar */
@@ -125,7 +220,8 @@ function visibleSessions() {
   return state.sessions.filter((session) => {
     if (state.agentFilter && session.agent !== state.agentFilter) return false;
     if (!term) return true;
-    return `${session.title ?? ''} ${session.sessionId} ${session.workspaceDir ?? ''}`.toLowerCase().includes(term);
+    return `${session.title ?? ''} ${session.sessionId} ${session.workspaceDir ?? ''} ${session.groupLabel ?? ''}`
+      .toLowerCase().includes(term);
   });
 }
 
@@ -138,31 +234,38 @@ function renderSessions() {
     return;
   }
 
-  // Group by workspace, keeping the most recently updated group first.
+  // Group by repository (worktrees merged), falling back to path when not in a git tree.
   const groups = new Map();
   for (const session of rows) {
-    const key = session.workspaceDir || '';
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(session);
+    const key = session.groupKey ?? `path:${session.workspaceDir ?? ''}`;
+    if (!groups.has(key)) {
+      groups.set(key, { key, label: session.groupLabel ?? '(无工作区)', kind: session.groupKind ?? 'path', sessions: [] });
+    }
+    groups.get(key).sessions.push(session);
   }
-  const ordered = [...groups.entries()].sort(
-    (a, b) => Math.max(...b[1].map((s) => s.updatedAtMs ?? 0)) - Math.max(...a[1].map((s) => s.updatedAtMs ?? 0)),
+  const ordered = [...groups.values()].sort(
+    (a, b) => Math.max(...b.sessions.map((s) => s.updatedAtMs ?? 0)) - Math.max(...a.sessions.map((s) => s.updatedAtMs ?? 0)),
   );
 
-  for (const [dir, sessions] of ordered) {
-    const collapsed = state.collapsed.has(dir);
+  for (const group of ordered) {
+    const collapsed = state.collapsed.has(group.key);
     const section = textNode('section', `ws-group${collapsed ? ' is-collapsed' : ''}`);
 
+    const dirs = new Set(group.sessions.map((session) => session.workspaceDir).filter(Boolean));
     const head = document.createElement('button');
     head.type = 'button';
     head.className = 'ws-head';
-    head.title = dir || '(无工作区)';
+    head.title = `${group.label}\n${[...dirs].join('\n')}`;
     head.append(textNode('span', 'ws-caret', collapsed ? '▸' : '▾'));
-    head.append(textNode('span', 'ws-name', shortWorkspace(dir)));
-    head.append(textNode('span', 'ws-count', String(sessions.length)));
+    head.append(textNode('span', `ws-kind ws-kind-${group.kind}`, group.kind === 'git' ? 'git' : 'dir'));
+    head.append(textNode('span', 'ws-name', group.label));
+    const meta = textNode('span', 'ws-meta');
+    if (group.kind === 'git' && dirs.size > 1) meta.append(textNode('span', 'ws-worktrees', `${dirs.size} 工作区`));
+    meta.append(textNode('span', 'ws-count', String(group.sessions.length)));
+    head.append(meta);
     head.addEventListener('click', () => {
-      if (state.collapsed.has(dir)) state.collapsed.delete(dir);
-      else state.collapsed.add(dir);
+      if (state.collapsed.has(group.key)) state.collapsed.delete(group.key);
+      else state.collapsed.add(group.key);
       writeCollapsed();
       renderSessions();
     });
@@ -171,7 +274,7 @@ function renderSessions() {
     if (!collapsed) {
       const list = document.createElement('ul');
       list.className = 'ws-sessions';
-      for (const session of sessions) {
+      for (const session of group.sessions) {
         const item = document.createElement('button');
         item.type = 'button';
         item.className = `session-item s-${session.sessionKind ?? 'unknown'}`;
@@ -180,9 +283,12 @@ function renderSessions() {
         const badges = textNode('span', 's-badges');
         badges.append(textNode('span', 's-agent', session.agent ?? '?'));
         if (session.parentSessionId) badges.append(textNode('span', 's-child', '子'));
-        badges.append(textNode('span', 's-kind', session.sessionKind ?? ''));
+        if (session.branch) badges.append(textNode('span', 's-branch', session.branch));
         badges.append(textNode('span', 's-age', fmtAge(session.updatedAtMs)));
         item.append(badges);
+        if (dirs.size > 1 && session.workspaceDir) {
+          item.append(textNode('span', 's-dir', workspaceTail(session.workspaceDir)));
+        }
         item.addEventListener('click', () => selectSession(session.sessionId));
         const li = document.createElement('li');
         li.append(item);
@@ -191,6 +297,75 @@ function renderSessions() {
       section.append(list);
     }
     host.append(section);
+  }
+}
+
+/* ------------------------------------------------------------- capability */
+
+function renderCapability(agent) {
+  const wrap = el('capability');
+  const body = el('cap-body');
+  body.textContent = '';
+  state.agent = agent;
+
+  if (!agent) {
+    el('cap-summary').textContent = '该会话未记录 Agent 定义';
+    body.append(textNode('p', 'muted small',
+      '运行时只为预设或子代理会话写入 Agent 定义（模型、工具白名单、技能、系统提示）。本会话没有这条记录。'));
+    return;
+  }
+
+  const model = agent.model ?? {};
+  el('cap-summary').textContent =
+    `${agent.ownerName ?? '—'} · ${model.modelId ?? '—'} · 工具 ${agent.tools.length} · 技能 ${agent.skills.length + agent.extensionSkills.length}`;
+
+  const grid = textNode('div', 'cap-grid');
+  const group = (title, rows) => {
+    const card = textNode('div', 'cap-card');
+    card.append(textNode('h4', '', title));
+    const dt = document.createElement('dl');
+    dt.className = 'kv';
+    for (const [key, value] of rows) {
+      if (value === null || value === undefined || value === '') continue;
+      dt.append(textNode('dt', '', key));
+      dt.append(textNode('dd', '', String(value)));
+    }
+    card.append(dt);
+    return card;
+  };
+
+  grid.append(group('模型', [
+    ['provider', model.providerId],
+    ['model', model.modelId],
+    ['variant', model.variant],
+    ['上下文窗口', model.contextWindow ? fmtTokens(model.contextWindow) : null],
+    ['最大输出', model.maxOutputTokens ? fmtTokens(model.maxOutputTokens) : null],
+    ['参数快照', model.parameterSnapshot ? JSON.stringify(model.parameterSnapshot) : null],
+  ]));
+
+  grid.append(group('能力', [
+    ['工具白名单', agent.tools.join(', ') || '（无）'],
+    ['禁用工具', agent.disallowedTools.join(', ')],
+    ['MCP 服务', agent.mcpServers.join(', ')],
+    ['定义版本', agent.definitionVersion],
+  ]));
+  body.append(grid);
+
+  if (agent.skills.length || agent.extensionSkills.length) {
+    const card = textNode('div', 'cap-card cap-wide');
+    card.append(textNode('h4', '', `技能 (${agent.skills.length} 内置 / ${agent.extensionSkills.length} 扩展)`));
+    const list = textNode('div', 'cap-chips');
+    for (const skill of agent.skills) list.append(textNode('span', 'tool-tag', skill));
+    for (const skill of agent.extensionSkills) list.append(textNode('span', 'tool-tag is-ext', skill));
+    card.append(list);
+    body.append(card);
+  }
+
+  if (agent.systemPrompt) {
+    const card = textNode('div', 'cap-card cap-wide');
+    card.append(textNode('h4', '', '系统提示'));
+    card.append(textNode('pre', 'block', agent.systemPrompt));
+    body.append(card);
   }
 }
 
@@ -204,9 +379,9 @@ function renderStats(stats) {
     ['轮次', stats.turns, '', false],
     ['步骤', stats.steps, '', false],
     ['LLM 耗时', fmtMs(stats.llmMs), 'request_duration_ms 之和', false],
-    ['工具耗时', fmtMs(stats.toolMs), `${stats.backgroundTasks} 个后台任务`, false],
+    ['工具耗时', fmtMs(stats.toolMs), `${stats.backgroundTasks} 个已记录任务`, false],
     ['解码耗时', fmtMs(stats.decodeMs), '近似：LLM − 思考', false],
-    ['TTFT', '不可用', 'mcode 不落盘', true],
+    ['TTFT', '不可用', '运行时不落盘', true],
     ['思考耗时', fmtMs(stats.thinkingMs), `${stats.thinkingEvents} 条含思考`, false],
     ['输出 token', fmtTokens(stats.decodeTokens), '', false],
     ['输入 token', fmtTokens(stats.inputTokens), '', false],
@@ -227,17 +402,20 @@ function renderStats(stats) {
   const sources = (stats.sources || []).map((entry) => `${entry.source}:${entry.count}`).join('  ');
   el('session-meta').textContent =
     `${shortId(stats.sessionId)} · ${stats.agent ?? '?'} · ${stats.sessionKind} · 来源 ${sources || '—'} · ` +
-    `${shortWorkspace(stats.workspaceDir)}${stats.children ? ` · ${stats.children} 个子会话` : ''}`;
+    `${stats.workspaceDir ?? ''}${stats.children ? ` · ${stats.children} 个子会话` : ''}`;
   el('session-title').textContent = stats.title || '(无标题)';
+
+  const jump = el('failure-jump');
+  if (stats.toolFailures > 0) {
+    jump.hidden = false;
+    jump.textContent = `⚠ ${stats.toolFailures} 处失败（定位）`;
+  } else {
+    jump.hidden = true;
+  }
 }
 
 /* -------------------------------------------------------------- timeline -- */
 
-/**
- * The timeline is the dsh-style narrative: three lanes (INPUT, MODEL, TOOL)
- * sharing one time axis, rather than one row per record. Overlapping blocks
- * within a lane are stacked greedily into sub-rows.
- */
 function buildAxis(events, tasks) {
   const timed = events.filter((event) => Number.isFinite(event.createdAtMs));
   if (timed.length === 0) return null;
@@ -248,7 +426,12 @@ function buildAxis(events, tasks) {
 
   for (const event of timed) {
     if (event.role === 'user') {
-      inputItems.push({ start: event.createdAtMs, end: event.createdAtMs + 1, event, kind: 'input' });
+      inputItems.push({
+        start: event.createdAtMs,
+        end: event.createdAtMs + 1,
+        event,
+        injected: event.inputKind === 'injected',
+      });
       continue;
     }
     const duration = event.requestDurationMs;
@@ -270,15 +453,14 @@ function buildAxis(events, tasks) {
       start: task.createdAtMs,
       end: Math.max(end, task.createdAtMs + 1),
       task,
-      kind: 'task',
+      measured: true,
       failed: task.status === 'failed',
       running: task.status === 'running',
     });
   }
 
   // Gaps between a finished record and the next model call are time the model was
-  // not running: tool execution plus scheduling. They are drawn faintly and
-  // labelled as derived so they are never mistaken for measured tool spans.
+  // not running. Labelled as derived because only task-backed calls are measured.
   const ordered = [...timed].sort((a, b) => a.createdAtMs - b.createdAtMs);
   for (let index = 0; index + 1 < ordered.length; index += 1) {
     const current = ordered[index];
@@ -286,7 +468,7 @@ function buildAxis(events, tasks) {
     const gapStart = current.createdAtMs;
     const gapEnd = next.createdAtMs - (next.requestDurationMs ?? 0);
     if (gapEnd - gapStart > 250) {
-      toolItems.push({ start: gapStart, end: gapEnd, kind: 'wait', derived: true });
+      toolItems.push({ start: gapStart, end: gapEnd, derived: true, measured: false });
     }
   }
 
@@ -296,7 +478,6 @@ function buildAxis(events, tasks) {
   return { inputItems, modelItems, toolItems, min, max: Math.max(max, min + 1) };
 }
 
-/** Greedy interval packing: place each item in the first free lane sub-row. */
 function packRows(items) {
   const sorted = [...items].sort((a, b) => a.start - b.start || a.end - b.end);
   const rowEnds = [];
@@ -343,7 +524,6 @@ function drawOverview() {
   const pctOf = (value) => ((value - viewStart) / viewSpan) * 100;
   const inView = (item) => item.end >= viewStart && item.start <= viewEnd;
 
-  /* ---- ruler ---- */
   const rulerRow = textNode('div', 'ov-row-grid ov-ruler-row');
   rulerRow.append(textNode('div', 'ov-lane-label', ''));
   const ruler = textNode('div', 'ov-ruler');
@@ -355,11 +535,10 @@ function drawOverview() {
   rulerRow.append(ruler);
   host.append(rulerRow);
 
-  /* ---- lanes ---- */
   const lanes = [
-    { key: 'input', label: 'INPUT', items: axis.inputItems, render: renderInputBlock },
-    { key: 'model', label: 'MODEL', items: axis.modelItems, render: renderModelBlock },
-    { key: 'tool', label: 'TOOL', items: axis.toolItems, render: renderToolBlock },
+    { key: 'input', label: 'INPUT', items: axis.inputItems, className: (item) => `ov-input${item.injected ? ' is-injected' : ''}` },
+    { key: 'model', label: 'MODEL', items: axis.modelItems, className: () => 'ov-model' },
+    { key: 'tool', label: 'TOOLS', items: axis.toolItems, className: (item) => `ov-tool${item.derived ? ' is-derived' : ''}${item.failed ? ' is-err' : ''}${item.running ? ' is-running' : ''}` },
   ];
 
   for (const lane of lanes) {
@@ -375,15 +554,43 @@ function drawOverview() {
     for (const item of visible) {
       const start = Math.max(item.start, viewStart);
       const end = Math.min(item.end, viewEnd);
-      const left = pctOf(start);
-      const width = Math.max(0, pctOf(end) - left);
-      const block = lane.render(item, width);
-      block.style.left = `${left}%`;
-      block.style.width = `${width}%`;
+      const block = textNode('div', `ov-block ${lane.className(item)}`);
+      block.style.left = `${pctOf(start)}%`;
+      block.style.width = `${Math.max(0, pctOf(end) - pctOf(start))}%`;
       block.style.top = `${item.row * LANE_ROW_PX}px`;
+
+      if (lane.key === 'model' && item.duration) {
+        if (item.thinking > 0) {
+          const segment = textNode('i', 'ov-seg think');
+          segment.style.width = `${(item.thinking / item.duration) * 100}%`;
+          block.append(segment);
+        }
+        const output = item.duration - item.thinking;
+        if (output > 0) {
+          const segment = textNode('i', 'ov-seg out');
+          segment.style.width = `${(output / item.duration) * 100}%`;
+          block.append(segment);
+        }
+      }
+
+      block.title = lane.key === 'tool' && item.task
+        ? `${item.task.kind} · ${item.task.status} · ${fmtMs(item.end - item.start)}\n${item.task.description ?? ''}`
+        : lane.key === 'tool'
+          ? `等待 / 工具执行（推导自记录间隔）· ${fmtMs(item.end - item.start)}`
+          : lane.key === 'input'
+            ? `INPUT #${item.event.index} · ${item.injected ? '注入上下文' : '人类输入'} · ${fmtClock(item.event.createdAtMs)}`
+            : `MODEL #${item.event.index} · ${fmtMs(item.duration)}（思考 ${fmtMs(item.thinking)}）`;
+
+      block.addEventListener('click', (event) => {
+        event.stopPropagation();
+        if (lane.key === 'tool' && item.task?.toolCallId) {
+          focusToolCall(item.task.toolCallId);
+        } else if (item.event) {
+          openInspector({ kind: 'message', eventIndex: item.event.index });
+        }
+      });
       track.append(block);
     }
-
     if (visible.length === 0) track.append(textNode('p', 'ov-empty muted small', '该通道在当前时间窗内无记录'));
     grid.append(track);
     host.append(grid);
@@ -391,67 +598,20 @@ function drawOverview() {
 
   const zoomed = view.end - view.start < 0.999;
   el('overview-hint').textContent =
-    `INPUT ${axis.inputItems.length} · MODEL ${axis.modelItems.length} · TOOL ${axis.toolItems.length}` +
+    `INPUT（人类 ${axis.inputItems.filter((item) => !item.injected).length} / 注入 ${axis.inputItems.filter((item) => item.injected).length}）` +
+    ` · MODEL ${axis.modelItems.length}` +
+    ` · TOOLS（实测 ${axis.toolItems.filter((item) => item.measured).length} / 推导 ${axis.toolItems.filter((item) => item.derived).length}）` +
     ` · 全跨度 ${fmtMs(total)} · 窗口 ${fmtMs(viewSpan)}` +
     (zoomed ? ' · 已缩放（双击重置）' : ' · 滚轮缩放，拖拽平移');
-}
-
-function renderInputBlock(item, width) {
-  const block = textNode('div', 'ov-block ov-input');
-  block.style.minWidth = '4px';
-  block.title = `INPUT #${item.event.index} · ${fmtClock(item.event.createdAtMs)} · ${item.event.contentLength ?? 0} 字符`;
-  block.addEventListener('click', (event) => {
-    event.stopPropagation();
-    openInspector(item.event.index);
-  });
-  return block;
-}
-
-function renderModelBlock(item) {
-  const block = textNode('div', `ov-block ov-model${item.event.kind ? ' is-compaction' : ''}`);
-  if (item.event.toolCalls?.some((call) => call.status !== null && call.status !== 2)) block.classList.add('is-err');
-  if (item.thinking > 0) {
-    const segment = textNode('i', 'ov-seg think');
-    segment.style.width = `${(item.thinking / item.duration) * 100}%`;
-    block.append(segment);
-  }
-  const output = item.duration - item.thinking;
-  if (output > 0) {
-    const segment = textNode('i', 'ov-seg out');
-    segment.style.width = `${(output / item.duration) * 100}%`;
-    block.append(segment);
-  }
-  block.title = `MODEL #${item.event.index} · ${fmtMs(item.duration)}（思考 ${fmtMs(item.thinking)}）· ${fmtClock(item.event.createdAtMs)}`;
-  block.addEventListener('click', (event) => {
-    event.stopPropagation();
-    openInspector(item.event.index);
-  });
-  return block;
-}
-
-function renderToolBlock(item) {
-  if (item.kind === 'wait') {
-    const block = textNode('div', 'ov-block ov-wait');
-    block.title = `等待 / 工具执行（推导自记录间隔）· ${fmtMs(item.end - item.start)}`;
-    return block;
-  }
-  const block = textNode('div', `ov-block ov-tool${item.failed ? ' is-err' : ''}${item.running ? ' is-running' : ''}`);
-  const task = item.task;
-  block.title = `${task.kind} · ${task.status} · ${fmtMs(item.end - item.start)}${task.description ? `\n${task.description.slice(0, 160)}` : ''}`;
-  if (task.kind === 'subagent') block.classList.add('is-subagent');
-  block.addEventListener('click', (event) => {
-    event.stopPropagation();
-    revealTask(task.taskId);
-  });
-  return block;
 }
 
 function bindTimelineControls() {
   const host = el('overview');
   let drag = null;
+  const trackWidth = () => host.querySelector('.ov-lane-track')?.getBoundingClientRect().width ?? 0;
 
   host.addEventListener('wheel', (event) => {
-    if (!state.axis || event.target.closest('.ov-lane-track') === null) return;
+    if (!state.axis || !event.target.closest('.ov-lane-track')) return;
     event.preventDefault();
     const track = host.querySelector('.ov-lane-track');
     const rect = track.getBoundingClientRect();
@@ -476,11 +636,8 @@ function bindTimelineControls() {
 
   host.addEventListener('pointermove', (event) => {
     if (!drag) return;
-    const track = host.querySelector('.ov-lane-track');
-    if (!track) return;
-    const rect = track.getBoundingClientRect();
-    const delta = (event.clientX - drag.x) / rect.width;
     const width = drag.view.end - drag.view.start;
+    const delta = (event.clientX - drag.x) / Math.max(1, trackWidth());
     const start = Math.min(Math.max(0, drag.view.start - delta * width), 1 - width);
     state.view = { start, end: start + width };
     drawOverview();
@@ -500,45 +657,63 @@ function bindTimelineControls() {
   });
 }
 
-/* ---------------------------------------------------------------- records */
+/* ----------------------------------------------------------------- stream */
 
-function eventMatchesFilter(event) {
-  switch (state.eventFilter) {
-    case 'assistant': return event.role === 'assistant';
-    case 'user': return event.role === 'user';
-    case 'tools': return (event.toolCallCount ?? 0) > 0;
-    case 'thinking': return Boolean(event.hasThinking);
-    case 'failed': return Boolean(event.toolCalls?.some((call) => call.status !== null && call.status !== 2));
-    case 'compaction': return Boolean(event.kind);
+/** Flatten events into scannable rows: one per message, one per tool call. */
+function buildStream(events) {
+  const rows = [];
+  for (const event of events) {
+    rows.push({ kind: 'message', event });
+    for (const [position, call] of (event.toolCalls ?? []).entries()) {
+      rows.push({ kind: 'tool', event, call, position });
+    }
+  }
+  return rows;
+}
+
+function toolFailed(call) {
+  return call.ok === false || call.taskStatus === 'failed';
+}
+
+function rowMatchesFilter(row) {
+  switch (state.rowFilter) {
+    case 'human': return row.kind === 'message' && row.event.role === 'user' && row.event.inputKind === 'human';
+    case 'injected': return row.kind === 'message' && row.event.inputKind === 'injected';
+    case 'tools': return row.kind === 'tool';
+    case 'failed': return row.kind === 'tool' && toolFailed(row.call);
     default: return true;
   }
 }
 
-function visibleEvents() {
-  return state.events.filter((event) => {
-    if (!eventMatchesFilter(event)) return false;
-    if (state.turnQuery && !String(event.turnId ?? '').includes(state.turnQuery)) return false;
-    return true;
-  });
+function rowMatchesText(row) {
+  if (!state.textQuery) return true;
+  const needle = state.textQuery.toLowerCase();
+  const haystack = row.kind === 'tool'
+    ? [row.call.name, row.call.description, row.call.args, row.call.result].filter(Boolean).join(' ')
+    : [row.event.content, row.event.thinking, row.event.originType, row.event.turnId].filter(Boolean).join(' ');
+  return String(haystack).toLowerCase().includes(needle);
 }
 
-function renderRecords() {
-  const host = el('records');
+function renderStream() {
+  const host = el('stream');
   host.textContent = '';
-  const rows = visibleEvents();
-  el('record-count').textContent = rows.length === state.events.length
-    ? `${rows.length} 条`
-    : `${rows.length} / ${state.events.length} 条`;
+  const all = buildStream(state.events);
+  const rows = all.filter((row) => rowMatchesFilter(row) && rowMatchesText(row)
+    && (!state.turnQuery || String(row.event.turnId ?? '').includes(state.turnQuery)));
+
+  el('record-count').textContent = rows.length === all.length
+    ? `${all.length} 行`
+    : `${rows.length} / ${all.length} 行`;
 
   if (rows.length === 0) {
-    host.append(textNode('p', 'muted small', '没有匹配的记录。'));
+    host.append(textNode('p', 'muted small', '没有匹配的条目。'));
     return;
   }
 
   let currentTurn = null;
-  for (const event of rows.slice(0, MAX_RENDERED_RECORDS)) {
-    if (event.turnId !== currentTurn) {
-      currentTurn = event.turnId;
+  for (const row of rows.slice(0, MAX_RENDERED_ROWS)) {
+    if (row.event.turnId !== currentTurn) {
+      currentTurn = row.event.turnId;
       const turnEvents = state.events.filter((item) => item.turnId === currentTurn);
       const turnMs = turnEvents.reduce((sum, item) => sum + (item.requestDurationMs ?? 0), 0);
       const turnTokens = turnEvents.reduce((sum, item) => sum + (item.usage?.outputTokens ?? 0), 0);
@@ -551,202 +726,137 @@ function renderRecords() {
       head.append(agg);
       host.append(head);
     }
-
-    const failed = Boolean(event.toolCalls?.some((call) => call.status !== null && call.status !== 2));
-    const row = textNode('div', `rec${failed ? ' is-err' : ''}${event.kind ? ' is-compaction' : ''}`);
-    if (event.index === state.selectedIndex) row.setAttribute('aria-selected', 'true');
-
-    const tags = textNode('div', 'rec-tags');
-    tags.append(textNode('span', 'rec-role', event.role ?? '—'));
-    tags.append(textNode('span', 'rec-src', event.source ?? ''));
-    row.append(tags);
-
-    const body = textNode('div', 'rec-body');
-    // An empty string is "no text", not "some text"; fall through to thinking, then
-    // to the tool-call list, so every row carries something readable.
-    const text = typeof event.content === 'string' ? event.content.trim() : '';
-    const thinking = typeof event.thinking === 'string' ? event.thinking.trim() : '';
-    const toolNames = (event.toolCalls ?? []).map((call) => call.name).filter(Boolean);
-    let preview = text;
-    let prefix = '';
-    if (!preview && thinking) {
-      preview = thinking;
-      prefix = '[思考] ';
-    }
-    if (!preview && toolNames.length) preview = `[调用] ${toolNames.join(', ')}`;
-    if (preview) {
-      const line = textNode('div', 'rec-text', prefix + preview.replace(/\s+/g, ' ').trim());
-      line.title = (prefix + preview).slice(0, 600);
-      body.append(line);
-    } else if (event.kind) {
-      body.append(textNode('div', 'rec-text dim', event.kind));
-    } else {
-      body.append(textNode('div', 'rec-text dim', '（空记录）'));
-    }
-
-    const toolRow = textNode('div', 'rec-tools');
-    if (event.hasThinking) toolRow.append(textNode('span', 'tool-tag is-think', '思考'));
-    for (const call of (event.toolCalls ?? []).slice(0, 8)) {
-      const bad = call.status !== null && call.status !== 2;
-      toolRow.append(textNode('span', `tool-tag${bad ? ' is-fail' : ''}`, call.name ?? 'tool'));
-    }
-    if ((event.toolCalls?.length ?? 0) > 8) toolRow.append(textNode('span', 'tool-tag', `+${event.toolCalls.length - 8}`));
-    if (toolRow.childElementCount) body.append(toolRow);
-    row.append(body);
-
-    const timing = textNode('div', 'rec-ms');
-    if (event.requestDurationMs) timing.append(textNode('div', '', fmtMs(event.requestDurationMs)));
-    if (event.thinkingDurationMs) timing.append(textNode('div', 'ms-think', `思 ${fmtMs(event.thinkingDurationMs)}`));
-    if (event.usage?.outputTokens) timing.append(textNode('div', 'ms-tok', `${fmtTokens(event.usage.outputTokens)} tok`));
-    row.append(timing);
-
-    row.addEventListener('click', () => openInspector(event.index));
-    host.append(row);
+    host.append(row.kind === 'tool' ? renderToolRow(row) : renderMessageRow(row));
   }
 
-  if (rows.length > MAX_RENDERED_RECORDS) {
-    host.append(textNode('p', 'muted small',
-      `仅渲染前 ${MAX_RENDERED_RECORDS} 条。请用筛选或 turn ID 缩小范围。`));
+  if (rows.length > MAX_RENDERED_ROWS) {
+    host.append(textNode('p', 'muted small', `仅渲染前 ${MAX_RENDERED_ROWS} 行。请用筛选缩小范围。`));
   }
 }
 
-/* ------------------------------------------------------------------ tasks */
-
-function taskStatusClass(status) {
-  if (status === 'failed') return ' is-fail';
-  if (status === 'succeeded') return ' is-ok';
-  if (status === 'running') return ' is-running';
-  return '';
-}
-
-function renderTasks(tasks) {
-  const wrap = el('tasks-wrap');
-  const host = el('tasks');
-  host.textContent = '';
-  state.tasks = tasks ?? [];
-  if (state.tasks.length === 0) {
-    wrap.hidden = true;
+function markSelected(node, isTool, position) {
+  const selected = state.selected;
+  if (!selected || selected.eventIndex !== undefined) {
+    if (!selected) return;
+    if (node.dataset.eventIndex === String(selected.eventIndex) && !isTool) node.setAttribute('aria-selected', 'true');
     return;
   }
-  wrap.hidden = false;
-  const failed = state.tasks.filter((task) => task.status === 'failed').length;
-  const subs = state.tasks.filter((task) => task.kind === 'subagent').length;
-  el('task-count').textContent = `${state.tasks.length} 个 · 子代理 ${subs}${failed ? ` · 失败 ${failed}` : ''}`;
-
-  for (const task of state.tasks) {
-    const card = textNode('div', `task${taskStatusClass(task.status)}`);
-    card.dataset.taskId = task.taskId;
-    if (task.taskId === state.openTask) card.classList.add('is-open');
-
-    const head = document.createElement('button');
-    head.type = 'button';
-    head.className = 'task-head';
-    head.append(textNode('span', 't-caret', task.taskId === state.openTask ? '▾' : '▸'));
-    head.append(textNode('span', `t-kind t-${task.kind}`, task.kind === 'subagent' ? `subagent·${task.agentName ?? '?'}` : task.kind));
-    head.append(textNode('span', 't-desc', task.description || '(无描述)'));
-    head.append(textNode('span', 't-status', task.status));
-    head.append(textNode('span', 't-dur', fmtMs(task.durationMs)));
-    head.addEventListener('click', () => toggleTask(task.taskId));
-    card.append(head);
-
-    if (task.taskId === state.openTask) card.append(buildTaskBody(task));
-    host.append(card);
+  if (node.dataset.eventIndex === String(selected.eventIndex) && node.dataset.position === String(position)) {
+    node.setAttribute('aria-selected', 'true');
   }
 }
 
-function buildTaskBody(task) {
-  const body = textNode('div', 'task-body');
+function renderMessageRow(row) {
+  const event = row.event;
+  const injected = event.inputKind === 'injected';
+  const node = textNode('div', `srow srow-message${injected ? ' is-injected' : ''}${event.role === 'user' ? ' is-user' : ''}`);
+  node.dataset.eventIndex = String(event.index);
+  markSelected(node, false);
 
-  const dt = document.createElement('dl');
-  dt.className = 'kv';
-  const add = (key, value) => {
-    if (value === null || value === undefined || value === '') return;
-    dt.append(textNode('dt', '', key));
-    dt.append(textNode('dd', '', String(value)));
-  };
-  add('任务 ID', task.taskId);
-  add('开始', fmtClock(task.startedAtMs ?? task.createdAtMs));
-  add('结束', task.endedAtMs ? fmtClock(task.endedAtMs) : '（进行中）');
-  add('耗时', fmtMs(task.durationMs));
-  add('所属轮次', task.parentTurnId);
-  add('执行模式', task.executionMode);
-  add('子代理', task.agentName);
-  add('工具调用 ID', task.toolCallId);
-  add('子会话', task.childSessionId);
-  body.append(dt);
+  const badge = textNode('div', 'srow-badge');
+  if (event.role === 'user') {
+    badge.append(textNode('span', `badge ${injected ? 'badge-injected' : 'badge-human'}`, injected ? '注入' : 'INPUT'));
+    if (injected && event.originType) badge.append(textNode('span', 'badge-note', oneLine(event.originType, 26)));
+  } else {
+    badge.append(textNode('span', 'badge badge-assistant', 'ASSISTANT'));
+  }
+  node.append(badge);
 
-  if (task.command && task.command !== task.description) {
-    body.append(textNode('h4', '', '命令'));
-    body.append(textNode('pre', 'block', task.command));
+  const body = textNode('div', 'srow-body');
+  const text = typeof event.content === 'string' ? event.content.trim() : '';
+  const thinking = typeof event.thinking === 'string' ? event.thinking.trim() : '';
+  const names = (event.toolCalls ?? []).map((call) => call.name).filter(Boolean);
+  if (text) {
+    const line = textNode('div', 'srow-text', oneLine(text, 400));
+    line.title = text.slice(0, 2000);
+    body.append(line);
+  } else if (thinking) {
+    const line = textNode('div', 'srow-text is-thinking', `[思考] ${oneLine(thinking, 400)}`);
+    line.title = thinking.slice(0, 2000);
+    body.append(line);
+  } else if (names.length) {
+    body.append(textNode('div', 'srow-text is-dim', `(仅工具调用: ${names.join(', ')})`));
+  } else if (event.kind) {
+    body.append(textNode('div', 'srow-text is-dim', event.kind));
+  } else {
+    body.append(textNode('div', 'srow-text is-dim', '(空记录)'));
   }
 
-  const actions = textNode('div', 'task-actions');
-  if (task.hasOutput) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'btn small-btn';
-    button.textContent = state.taskOutput.has(task.taskId) ? '收起输出' : '查看输出';
-    button.addEventListener('click', () => toggleTaskOutput(task.taskId));
-    actions.append(button);
+  const flags = textNode('div', 'srow-flags');
+  if (event.hasThinking && text) flags.append(textNode('span', 'tool-tag is-think', '思考'));
+  if (event.kind === 'compaction') flags.append(textNode('span', 'tool-tag is-compact', '压缩'));
+  if (event.kind === 'compaction_failed') flags.append(textNode('span', 'tool-tag is-fail', '压缩失败'));
+  if (flags.childElementCount) body.append(flags);
+  node.append(body);
+
+  const meta = textNode('div', 'srow-meta');
+  if (event.requestDurationMs) meta.append(textNode('div', '', fmtMs(event.requestDurationMs)));
+  if (event.thinkingDurationMs) meta.append(textNode('div', 'is-think', `思 ${fmtMs(event.thinkingDurationMs)}`));
+  if (event.usage?.outputTokens) meta.append(textNode('div', 'is-dim', `${fmtTokens(event.usage.outputTokens)} tok`));
+  node.append(meta);
+
+  node.addEventListener('click', () => openInspector({ kind: 'message', eventIndex: event.index }));
+  return node;
+}
+
+function renderToolRow(row) {
+  const { call, event, position } = row;
+  const failed = toolFailed(call);
+  const parsed = parseResult(call.result);
+
+  const node = textNode('div', `srow srow-tool${failed ? ' is-fail' : ''}${parsed.severity === 'hard' ? ' is-hard' : ''}`);
+  node.dataset.eventIndex = String(event.index);
+  node.dataset.position = String(position);
+  node.dataset.toolCallId = call.id ?? '';
+  markSelected(node, true, position);
+
+  const badge = textNode('div', 'srow-badge');
+  badge.append(textNode('span', 'badge badge-tool', 'TOOL'));
+  node.append(badge);
+
+  const body = textNode('div', 'srow-body');
+  const head = textNode('div', 'srow-tool-head');
+  head.append(textNode('span', 'tool-name', call.name ?? 'tool'));
+  const payload = payloadPreview(call.args) || call.description;
+  if (payload) {
+    head.append(textNode('span', 'tool-arrow', '▸'));
+    const payloadNode = textNode('span', 'tool-payload', oneLine(payload, 150));
+    payloadNode.title = typeof call.args === 'string' ? call.args.slice(0, 2000) : '';
+    head.append(payloadNode);
   }
-  if (task.childSessionId) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'btn small-btn';
-    button.textContent = '打开子会话轨迹 →';
-    button.addEventListener('click', () => selectSession(task.childSessionId));
-    actions.append(button);
+  if (parsed.text) {
+    head.append(textNode('span', 'tool-arrow', '⇉'));
+    const resultNode = textNode('span', `tool-result${parsed.failed ? ' is-fail' : ''}`, oneLine(parsed.text, 160));
+    resultNode.title = parsed.text.slice(0, 2000);
+    head.append(resultNode);
   }
-  if (task.toolCallId) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'btn small-btn';
-    button.textContent = '定位调用记录';
-    button.addEventListener('click', () => {
-      const found = state.events.find((event) => event.toolCalls?.some((call) => call.id === task.toolCallId));
-      if (found) openInspector(found.index);
-      else banner('未在当前已加载记录中找到该工具调用。');
+  body.append(head);
+
+  if (parsed.signal) {
+    body.append(textNode('span', `sig sig-${parsed.severity}`, `⚠ ${parsed.signal}`));
+  }
+  node.append(body);
+
+  const meta = textNode('div', 'srow-meta');
+  if (call.durationMs !== null) meta.append(textNode('div', '', fmtMs(call.durationMs)));
+  else meta.append(textNode('div', 'is-dim', '—'));
+  if (call.agentName) meta.append(textNode('div', 'is-sub', `↳ ${call.agentName}`));
+  if (call.childSessionId) {
+    const drill = document.createElement('button');
+    drill.type = 'button';
+    drill.className = 'mini-btn';
+    drill.textContent = '子会话 ↗';
+    drill.title = call.childSessionId;
+    drill.addEventListener('click', (clickEvent) => {
+      clickEvent.stopPropagation();
+      selectSession(call.childSessionId);
     });
-    actions.append(button);
+    meta.append(drill);
   }
-  if (actions.childElementCount) body.append(actions);
+  node.append(meta);
 
-  if (state.taskOutput.has(task.taskId)) {
-    const output = state.taskOutput.get(task.taskId);
-    body.append(textNode('h4', '', output.available ? `输出${output.truncated ? `（尾部，共 ${output.bytes} 字节）` : `（${output.bytes} 字节）`}` : '输出'));
-    body.append(textNode('pre', 'block task-output', output.available ? output.text : '（输出文件不存在）'));
-  }
-
-  return body;
-}
-
-function toggleTask(taskId) {
-  state.openTask = state.openTask === taskId ? null : taskId;
-  renderTasks(state.tasks);
-}
-
-async function toggleTaskOutput(taskId) {
-  if (state.taskOutput.has(taskId)) {
-    state.taskOutput.delete(taskId);
-    renderTasks(state.tasks);
-    return;
-  }
-  try {
-    const output = await api(`/api/task-output?taskId=${encodeURIComponent(taskId)}&maxBytes=16384`);
-    state.taskOutput.set(taskId, output);
-    state.openTask = taskId;
-    renderTasks(state.tasks);
-  } catch (error) {
-    banner(`读取任务输出失败：${error.message}`);
-  }
-}
-
-/** Open the task card for a timeline block, scrolling it into view. */
-function revealTask(taskId) {
-  state.openTask = taskId;
-  renderTasks(state.tasks);
-  const card = el('tasks').querySelector(`[data-task-id="${CSS.escape(taskId)}"]`);
-  if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  node.addEventListener('click', () => openInspector({ kind: 'tool', eventIndex: event.index, position }));
+  return node;
 }
 
 /* -------------------------------------------------------------- inspector */
@@ -756,58 +866,94 @@ function statRow(list, key, value) {
   list.append(textNode('dd', '', value === null || value === undefined ? '—' : String(value)));
 }
 
-function openInspector(index) {
-  const event = state.events.find((item) => item.index === index);
-  if (!event) return;
-  state.selectedIndex = index;
-  renderRecords();
+function selectedPayload() {
+  const selected = state.selected;
+  if (!selected) return null;
+  const event = state.events.find((item) => item.index === selected.eventIndex);
+  if (!event) return null;
+  const call = selected.kind === 'tool' ? event.toolCalls?.[selected.position] ?? null : null;
+  return { event, call };
+}
 
+function openInspector(selection) {
+  state.selected = selection;
+  renderStream();
   el('inspector').setAttribute('data-open', 'true');
   document.body.dataset.inspector = 'true';
-  el('ins-title').textContent = `记录 #${event.index}`;
+  renderInspector();
+}
 
+function closeInspector() {
+  el('inspector').setAttribute('data-open', 'false');
+  document.body.dataset.inspector = 'false';
+  state.selected = null;
+  renderStream();
+}
+
+function focusToolCall(toolCallId) {
+  for (const event of state.events) {
+    const position = (event.toolCalls ?? []).findIndex((call) => call.id === toolCallId);
+    if (position >= 0) {
+      openInspector({ kind: 'tool', eventIndex: event.index, position });
+      const node = el('stream').querySelector(`[data-tool-call-id="${CSS.escape(toolCallId)}"]`);
+      if (node) node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return true;
+    }
+  }
+  banner('未在当前已加载记录中找到该工具调用。');
+  return false;
+}
+
+function renderInspector() {
+  const payload = selectedPayload();
   const body = el('ins-body');
   body.textContent = '';
+  if (!payload) {
+    el('ins-title').textContent = '检查器';
+    el('ins-sub').textContent = '';
+    body.append(textNode('p', 'muted', '点击轨迹流中的任意一行查看详情。'));
+    return;
+  }
+  const { event, call } = payload;
 
-  const timing = textNode('section', 'ins-section');
-  timing.append(textNode('h4', '', '计时'));
+  el('ins-title').textContent = call ? `工具调用 · ${call.name ?? 'tool'}` : `记录 #${event.index}`;
+  el('ins-sub').textContent = `${event.turnId ?? '无轮次'} · ${fmtClock(event.createdAtMs)}`;
+
+  for (const tab of el('ins-tabs').querySelectorAll('.ins-tab')) {
+    tab.classList.toggle('is-on', tab.dataset.tab === state.tab);
+  }
+
+  if (state.tab === 'summary') renderSummaryTab(body, event, call);
+  else if (state.tab === 'payload') renderPayloadTab(body, event, call);
+  else if (state.tab === 'result') renderResultTab(body, event, call);
+  else if (state.tab === 'timing') renderTimingTab(body, event, call);
+  else renderSchemaTab(body, event, call);
+}
+
+function renderSummaryTab(body, event, call) {
+  const section = textNode('section', 'ins-section');
+  section.append(textNode('h4', '', '概要'));
   const dt = document.createElement('dl');
   dt.className = 'kv';
-  statRow(dt, '时间', fmtClock(event.createdAtMs));
-  statRow(dt, '请求耗时', fmtMs(event.requestDurationMs));
-  statRow(dt, '思考耗时', fmtMs(event.thinkingDurationMs));
-  if (event.requestDurationMs && event.thinkingDurationMs !== null) {
-    statRow(dt, '输出耗时(近似)', fmtMs(Math.max(0, event.requestDurationMs - event.thinkingDurationMs)));
+  statRow(dt, '层级', call
+    ? `${event.role === 'assistant' ? 'Assistant Message' : event.role} › Tool Call ${call.position ?? ''}`
+    : event.role);
+  statRow(dt, '状态', call
+    ? (call.ok === false ? `失败（状态码 ${call.status}）` : call.taskStatus === 'failed' ? '任务失败' : call.ok ? '完成' : '未知')
+    : (event.finishReason ?? (event.requestDurationMs ? '完成' : '—')));
+  statRow(dt, '输入类型', event.inputKind === 'injected' ? `注入上下文 (${event.originType ?? 'harness'})` :
+    event.inputKind === 'human' ? '人类输入' : '—');
+  statRow(dt, 'source', event.source);
+  statRow(dt, 'turn_id', event.turnId);
+  statRow(dt, 'msg_id', event.msgId);
+  if (call) {
+    statRow(dt, 'call_id', call.id);
+    statRow(dt, '任务 ID', call.taskId);
+    statRow(dt, '子代理', call.agentName);
+    statRow(dt, '子会话', call.childSessionId);
   }
-  statRow(dt, 'finish_reason', event.finishReason);
-  timing.append(dt);
-  if (event.requestDurationMs) {
-    const total = event.requestDurationMs;
-    const thinking = Math.min(event.thinkingDurationMs ?? 0, total);
-    const bars = textNode('div', 'bars');
-    const thinkBar = textNode('i');
-    thinkBar.style.width = `${(thinking / total) * 100}%`;
-    thinkBar.style.background = 'var(--think)';
-    const outBar = textNode('i');
-    outBar.style.width = `${((total - thinking) / total) * 100}%`;
-    outBar.style.background = 'var(--out)';
-    bars.append(thinkBar, outBar);
-    timing.append(bars);
-  }
-  body.append(timing);
-
-  const meta = textNode('section', 'ins-section');
-  meta.append(textNode('h4', '', '元数据'));
-  const md = document.createElement('dl');
-  md.className = 'kv';
-  statRow(md, 'turn_id', event.turnId);
-  statRow(md, 'role', event.role);
-  statRow(md, 'source', event.source);
-  statRow(md, 'kind', event.kind);
-  statRow(md, 'msg_id', event.msgId);
-  statRow(md, '内容长度', event.contentLength);
-  meta.append(md);
-  body.append(meta);
+  section.append(dt);
+  body.append(section);
 
   if (event.usage) {
     const usage = textNode('section', 'ins-section');
@@ -825,7 +971,8 @@ function openInspector(index) {
 
   if (event.contextUsage?.components) {
     const ctx = textNode('section', 'ins-section');
-    ctx.append(textNode('h4', '', `上下文分解 · 已用 ${fmtTokens(event.contextUsage.usedTokens)}${event.contextUsage.totalCountSource ? ` (${event.contextUsage.totalCountSource})` : ''}`));
+    ctx.append(textNode('h4', '', `上下文分解 · 已用 ${fmtTokens(event.contextUsage.usedTokens)}` +
+      `${event.contextUsage.totalCountSource ? ` (${event.contextUsage.totalCountSource})` : ''}`));
     const cd = document.createElement('dl');
     cd.className = 'kv';
     for (const part of event.contextUsage.components) statRow(cd, part.kind, fmtTokens(part.tokens));
@@ -839,6 +986,30 @@ function openInspector(index) {
     section.append(textNode('pre', 'block', JSON.stringify(event.metadata, null, 2)));
     body.append(section);
   }
+}
+
+function renderPayloadTab(body, event, call) {
+  if (call) {
+    const section = textNode('section', 'ins-section');
+    section.append(textNode('h4', '', '工具入参'));
+    if (call.args === null || call.args === undefined) {
+      section.append(textNode('p', 'muted small', '入参为空。'));
+    } else {
+      section.append(textNode('pre', 'block', prettyJson(call.args)));
+    }
+    if (call.description) {
+      section.append(textNode('h4', '', '任务描述'));
+      section.append(textNode('pre', 'block', call.description));
+    }
+    body.append(section);
+    if (event.thinking) {
+      const thinking = textNode('section', 'ins-section');
+      thinking.append(textNode('h4', '', '同轮思考'));
+      thinking.append(textNode('pre', 'block', event.thinking));
+      body.append(thinking);
+    }
+    return;
+  }
 
   if (event.thinking) {
     const section = textNode('section', 'ins-section');
@@ -846,46 +1017,127 @@ function openInspector(index) {
     section.append(textNode('pre', 'block', event.thinking));
     body.append(section);
   }
+  const section = textNode('section', 'ins-section');
+  section.append(textNode('h4', '', '正文'));
+  section.append(textNode('pre', 'block', event.content || '（无正文）'));
+  body.append(section);
+}
 
-  if (event.content) {
-    const section = textNode('section', 'ins-section');
-    section.append(textNode('h4', '', '正文'));
-    section.append(textNode('pre', 'block', event.content));
-    body.append(section);
+function renderResultTab(body, event, call) {
+  if (!call) {
+    body.append(textNode('p', 'muted small', '该记录不是工具调用。选中轨迹流里的 TOOL 行可查看结果。'));
+    return;
+  }
+  const parsed = parseResult(call.result);
+  if (!parsed.text && call.ok === false) {
+    body.append(textNode('p', 'muted small', '调用标记为失败，但运行时未落盘结果文本。'));
+    return;
+  }
+  if (!parsed.text) {
+    body.append(textNode('p', 'muted small', '没有结果文本。'));
+    return;
   }
 
-  if (event.toolCalls?.length) {
-    const section = textNode('section', 'ins-section');
-    section.append(textNode('h4', '', `工具调用 (${event.toolCalls.length})`));
-    for (const call of event.toolCalls) {
-      const dl = document.createElement('dl');
-      dl.className = 'kv';
-      statRow(dl, '名称', call.name);
-      statRow(dl, 'call_id', call.id);
-      statRow(dl, '状态', call.status === 2 ? '成功' : call.status === null ? '未知' : `状态码 ${call.status}`);
-      section.append(dl);
-      if (call.args !== undefined && call.args !== null) {
-        section.append(textNode('h4', '', '入参'));
-        section.append(textNode('pre', 'block', typeof call.args === 'string' ? call.args : JSON.stringify(call.args, null, 2)));
-      }
-      if (call.result !== undefined && call.result !== null) {
-        section.append(textNode('h4', '', '结果'));
-        section.append(textNode('pre', 'block', typeof call.result === 'string' ? call.result : JSON.stringify(call.result, null, 2)));
-      }
-    }
-    body.append(section);
+  if (parsed.failed) {
+    const alert = textNode('section', `ins-section ins-alert${parsed.severity === 'hard' ? ' is-hard' : ''}`);
+    alert.append(textNode('h4', '', `失败证据 · ${parsed.signal}`));
+    const evidence = document.createElement('dl');
+    evidence.className = 'kv';
+    statRow(evidence, '运行时错误标记', parsed.isError ? 'is_error: true' : '—');
+    statRow(evidence, '退出码', parsed.exitCode === null ? '未报告' : String(parsed.exitCode));
+    statRow(evidence, '调用状态码', call.status);
+    statRow(evidence, '判级', parsed.severity === 'hard'
+      ? '硬失败（Traceback / stderr / 运行时报错）'
+      : '软失败（命令非零退出，常见于 grep 无匹配等，请自行判断）');
+    alert.append(evidence);
+    alert.append(textNode('pre', 'block', failureExcerpt(parsed.text)));
+    body.append(alert);
   }
 
-  if (state.detailLevel !== 'full') {
-    body.append(textNode('p', 'muted small', '勾选顶部的"显示正文"可加载完整文本与工具入参。'));
+  const section = textNode('section', 'ins-section');
+  section.append(textNode('h4', '', `完整结果（${parsed.text.length} 字符）`));
+  section.append(textNode('pre', 'block', parsed.text));
+  body.append(section);
+
+  if (parsed.details) {
+    const details = textNode('section', 'ins-section');
+    details.append(textNode('h4', '', '附带细节'));
+    details.append(textNode('pre', 'block', JSON.stringify(parsed.details, null, 2)));
+    body.append(details);
   }
 }
 
-function closeInspector() {
-  el('inspector').setAttribute('data-open', 'false');
-  document.body.dataset.inspector = 'false';
-  state.selectedIndex = null;
-  renderRecords();
+/** Show the part of a result that explains the failure, not the head of the log. */
+function failureExcerpt(text) {
+  const lines = text.split('\n');
+  const anchor = lines.findIndex((line) => /Traceback \(most recent call last\)|\[stderr\]|^\s*(Error|Exception):|\bFATAL\b/i.test(line));
+  if (anchor === -1) return lines.slice(0, 40).join('\n');
+  return lines.slice(Math.max(0, anchor - 2), anchor + 38).join('\n');
+}
+
+function renderTimingTab(body, event, call) {
+  const section = textNode('section', 'ins-section');
+  section.append(textNode('h4', '', '计时'));
+  const dt = document.createElement('dl');
+  dt.className = 'kv';
+  statRow(dt, '记录时刻', fmtFull(event.createdAtMs));
+  statRow(dt, '模型请求耗时', fmtMs(event.requestDurationMs));
+  statRow(dt, '思考耗时', fmtMs(event.thinkingDurationMs));
+  if (event.requestDurationMs && event.thinkingDurationMs !== null) {
+    statRow(dt, '输出耗时(近似)', fmtMs(Math.max(0, event.requestDurationMs - event.thinkingDurationMs)));
+  }
+  if (call) {
+    statRow(dt, '工具耗时(实测)', call.durationMs === null ? '运行时未记录' : fmtMs(call.durationMs));
+    statRow(dt, '耗时来源', call.durationMs === null
+      ? '该调用不是后台任务，没有独立计时，不做估算'
+      : 'local_runtime_background_tasks 的 ended_at_ms − created_at_ms');
+  }
+  statRow(dt, 'finish_reason', event.finishReason);
+  section.append(dt);
+
+  if (event.requestDurationMs) {
+    const total = event.requestDurationMs;
+    const thinking = Math.min(event.thinkingDurationMs ?? 0, total);
+    const bars = textNode('div', 'bars');
+    const thinkBar = textNode('i');
+    thinkBar.style.width = `${(thinking / total) * 100}%`;
+    thinkBar.style.background = 'var(--think)';
+    const outBar = textNode('i');
+    outBar.style.width = `${((total - thinking) / total) * 100}%`;
+    outBar.style.background = 'var(--out)';
+    bars.append(thinkBar, outBar);
+    section.append(bars);
+  }
+  body.append(section);
+}
+
+function renderSchemaTab(body, event, call) {
+  const section = textNode('section', 'ins-section');
+  section.append(textNode('h4', '', 'Schema'));
+  if (!call) {
+    body.append(textNode('p', 'muted small', '该记录不是工具调用，没有入参 schema。'));
+    return;
+  }
+  section.append(textNode('p', 'muted small', `工具 ${call.name ?? '未知'}`));
+  section.append(textNode('p', 'muted',
+    '运行时不在会话数据里持久化工具的入参 schema，因此这里无法显示。' +
+    '这不是抓取失败——dsh 的 Trajectory 对同样缺失的数据也显示 "Schema unavailable"。'));
+  body.append(section);
+}
+
+function prettyJson(value) {
+  if (typeof value === 'string') {
+    try {
+      return JSON.stringify(JSON.parse(value), null, 2);
+    } catch {
+      return value;
+    }
+  }
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
 }
 
 /* ------------------------------------------------------------------ flow */
@@ -898,8 +1150,7 @@ async function loadSessions() {
 
 async function selectSession(sessionId) {
   state.sessionId = sessionId;
-  state.selectedIndex = null;
-  state.openTask = null;
+  state.selected = null;
   closeInspector();
   await loadOverview();
 }
@@ -911,16 +1162,16 @@ async function loadOverview() {
     el('session-title').textContent = '没有可用会话';
     el('session-meta').textContent = '';
     el('stats').textContent = '';
-    el('records').textContent = '';
+    el('stream').textContent = '';
     el('overview').textContent = '';
     return;
   }
   state.sessionId = payload.session.sessionId;
-  state.overview = payload;
+  state.tasks = payload.tasks ?? [];
   renderStats(payload.stats);
+  renderCapability(payload.agent);
   renderSessions();
   await refreshEvents();
-  renderTasks(payload.tasks);
 }
 
 async function refreshEvents() {
@@ -928,9 +1179,10 @@ async function refreshEvents() {
   const payload = await api(`/api/events?id=${encodeURIComponent(state.sessionId)}&limit=1000${detail}`);
   state.events = payload.events ?? [];
   renderOverview(state.events, state.tasks);
-  renderRecords();
+  renderStream();
+  if (state.selected) renderInspector();
   if (payload.source === 'jsonl') {
-    banner('该会话未进入 SQLite 投影，已回退到 messages.jsonl。计时字段可能缺失。');
+    banner('该会话未进入 SQLite 投影，已回退到 messages.jsonl。计时与任务关联可能缺失。');
   }
 }
 
@@ -960,11 +1212,11 @@ function wire() {
   });
 
   el('collapse-all').addEventListener('click', () => {
-    const dirs = [...new Set(visibleSessions().map((session) => session.workspaceDir || ''))];
-    const allCollapsed = dirs.length > 0 && dirs.every((dir) => state.collapsed.has(dir));
-    for (const dir of dirs) {
-      if (allCollapsed) state.collapsed.delete(dir);
-      else state.collapsed.add(dir);
+    const keys = [...new Set(visibleSessions().map((session) => session.groupKey ?? `path:${session.workspaceDir ?? ''}`))];
+    const allCollapsed = keys.length > 0 && keys.every((key) => state.collapsed.has(key));
+    for (const key of keys) {
+      if (allCollapsed) state.collapsed.delete(key);
+      else state.collapsed.add(key);
     }
     writeCollapsed();
     renderSessions();
@@ -980,24 +1232,44 @@ function wire() {
     renderSessions();
   });
 
-  el('event-filters').addEventListener('click', (event) => {
-    const button = event.target.closest('.chip');
+  el('stream').parentElement.addEventListener('click', (event) => {
+    const button = event.target.closest('.chip[data-filter]');
     if (!button) return;
-    for (const chip of el('event-filters').querySelectorAll('.chip')) chip.classList.toggle('is-on', chip === button);
-    state.eventFilter = button.dataset.filter ?? 'all';
-    renderRecords();
+    for (const chip of el('stream').parentElement.querySelectorAll('.chip[data-filter]')) {
+      chip.classList.toggle('is-on', chip === button);
+    }
+    state.rowFilter = button.dataset.filter ?? 'all';
+    renderStream();
   });
 
   el('turn-jump').addEventListener('input', (event) => {
     state.turnQuery = event.target.value.trim();
-    renderRecords();
+    renderStream();
+  });
+
+  el('text-filter').addEventListener('input', (event) => {
+    state.textQuery = event.target.value.trim();
+    renderStream();
+  });
+
+  el('failure-jump').addEventListener('click', () => {
+    const button = el('stream').parentElement.querySelector('.chip[data-filter="failed"]');
+    if (button) button.click();
+    const first = el('stream').querySelector('.srow-tool.is-fail');
+    if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+
+  el('ins-tabs').addEventListener('click', (event) => {
+    const tab = event.target.closest('.ins-tab');
+    if (!tab) return;
+    state.tab = tab.dataset.tab;
+    renderInspector();
   });
 
   el('full-detail').addEventListener('change', async (event) => {
     state.detailLevel = event.target.checked ? 'full' : 'summary';
     try {
       await refreshEvents();
-      if (state.selectedIndex !== null) openInspector(state.selectedIndex);
     } catch (error) {
       banner(`加载失败：${error.message}`);
     }
@@ -1015,7 +1287,8 @@ function wire() {
 
 async function boot() {
   wire();
-  closeInspector();
+  el('inspector').setAttribute('data-open', 'false');
+  document.body.dataset.inspector = 'false';
   try {
     const meta = await api('/api/meta');
     el('source-line').textContent = meta.sqliteAvailable

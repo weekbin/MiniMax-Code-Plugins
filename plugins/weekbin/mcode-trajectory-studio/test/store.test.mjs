@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -6,6 +7,7 @@ import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
 
 import { openStore, resolveDataDir, encodeFtsQuery } from '../server/store.mjs';
+import { resolveWorkspaceIdentity } from '../server/git.mjs';
 import { redactValue, redactText, redactPath } from '../server/redact.mjs';
 import { TOOLS, handleRpcMessage } from '../server/mcp.mjs';
 
@@ -39,6 +41,9 @@ async function makeDataDir({ withSqlite = true, withJsonl = true } = {}) {
         id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, msg_id TEXT NOT NULL,
         role TEXT, message_created_at_ms INTEGER NOT NULL, asset_index INTEGER NOT NULL,
         asset_key TEXT NOT NULL, source_tag TEXT NOT NULL, path TEXT NOT NULL, data_json TEXT NOT NULL
+      );
+      CREATE TABLE local_runtime_session_agent_definitions (
+        session_id TEXT PRIMARY KEY, definition_json TEXT NOT NULL
       );
       CREATE VIRTUAL TABLE local_runtime_sessions_fts USING fts5(
         session_id UNINDEXED, session_id_terms, agent_name_terms, title_terms,
@@ -93,6 +98,26 @@ async function makeDataDir({ withSqlite = true, withJsonl = true } = {}) {
       turn_id: 'turn-2', turnId: 'turn-2',
       metadata: { compactionId: 'ctx-1', messagesBefore: 40, messagesAfter: 2, tokensBefore: 90000, tokensAfter: 5000 },
     });
+    row('sess-a', 'm5', 'user', 'turn-3', 1600, {
+      msg_id: 'm5', role: 'user', source: 'thread-goal', msg_type: 1, msg_content: 'injected objective',
+      turn_id: 'turn-3', sourceContext: { origin: { type: 'thread-goal-kickoff', goalId: 'tg-1' } },
+    });
+    row('sess-a', 'm6', 'user', 'turn-4', 1700, {
+      msg_id: 'm6', role: 'user', source: 'questionnaire', msg_type: 1, msg_content: 'a person answered',
+      turn_id: 'turn-4',
+    });
+
+    db.prepare(`
+      INSERT INTO local_runtime_session_agent_definitions (session_id, definition_json)
+      VALUES ('sess-a', ?)
+    `).run(JSON.stringify({
+      definitionVersion: 2,
+      exactOwnerName: 'worker',
+      model: { providerId: 'minimax', modelId: 'MiniMax-M3', variant: 'thinking', contextWindow: 512000, maxOutputTokens: 128000 },
+      project: { workspaceDir: '/home/tester/ws' },
+      systemPrompt: 'You are a worker.',
+      capabilities: { tools: ['read', 'bash'], disallowedTools: [], mcpServers: [], skills: ['a-skill'], extensionSkills: ['ext:b'] },
+    }));
 
     db.prepare(`
       INSERT INTO local_runtime_background_tasks (task_id, owner_session_id, kind, status, created_at_ms, updated_at_ms, ended_at_ms, record_json)
@@ -174,7 +199,7 @@ test('getStats folds the dsh sessionStats fields', async (t) => {
   t.after(() => store.close());
 
   const stats = store.getStats('sess-a');
-  assert.equal(stats.turns, 2, 'two distinct turn IDs');
+  assert.equal(stats.turns, 4, 'four distinct turn IDs');
   assert.equal(stats.steps, 2, 'two records carrying request_duration_ms');
   assert.equal(stats.llmMs, 2000);
   assert.equal(stats.thinkingMs, 200);
@@ -191,7 +216,7 @@ test('getStats folds the dsh sessionStats fields', async (t) => {
   assert.equal(stats.ttftMs, null, 'ttft is never fabricated');
   assert.equal(stats.ttftAvailable, false);
   assert.equal(stats.children, 1, 'sess-b is a child of sess-a');
-  assert.deepEqual(stats.sources.map((s) => s.source).sort(), ['api', 'thread-goal']);
+  assert.deepEqual(stats.sources.map((s) => s.source).sort(), ['api', 'questionnaire', 'thread-goal']);
 });
 
 test('tool wall-clock is summed from background tasks', async (t) => {
@@ -270,7 +295,7 @@ test('getEvents omits content in summary mode and includes it in full mode', asy
   t.after(() => store.close());
 
   const summary = store.getEvents({ sessionId: 'sess-a', detailLevel: 'summary' });
-  assert.equal(summary.total, 4);
+  assert.equal(summary.total, 6);
   assert.equal(summary.source, 'sqlite');
   const withTools = summary.events.find((event) => event.toolCallCount > 0);
   assert.equal(withTools.content, undefined, 'summary must not leak text');
@@ -299,7 +324,10 @@ test('getEvents paginates and filters by turn', async (t) => {
   assert.equal(first.nextOffset, 2);
   const second = store.getEvents({ sessionId: 'sess-a', offset: first.nextOffset, limit: 2 });
   assert.equal(second.events.length, 2);
-  assert.equal(second.nextOffset, null);
+  assert.equal(second.nextOffset, 4, 'four of six records consumed');
+  const third = store.getEvents({ sessionId: 'sess-a', offset: second.nextOffset, limit: 2 });
+  assert.equal(third.events.length, 2);
+  assert.equal(third.nextOffset, null, 'no more pages');
 
   const turn2 = store.getEvents({ sessionId: 'sess-a', turnId: 'turn-2' });
   assert.deepEqual(turn2.events.map((event) => event.msgId), ['m3', 'm4']);
@@ -376,6 +404,125 @@ test('session directory lookup rejects traversal attempts', async (t) => {
   assert.equal(await store.findSessionDir(''), null);
 });
 
+/* --------------------------------------------------- dimensions & joins -- */
+
+test('human input is distinguished from harness-injected context', async (t) => {
+  const dataDir = await makeDataDir();
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const store = openStore({ dataDir });
+  t.after(() => store.close());
+
+  const events = store.getEvents({ sessionId: 'sess-a', detailLevel: 'full' }).events;
+  const byId = new Map(events.map((event) => [event.msgId, event]));
+
+  assert.equal(byId.get('m1').inputKind, 'human', 'a plain api user message is human');
+  assert.equal(byId.get('m5').inputKind, 'injected', 'a goal objective is injected');
+  assert.equal(byId.get('m5').originType, 'thread-goal-kickoff');
+  assert.equal(byId.get('m5').goalId, 'tg-1');
+  assert.equal(byId.get('m6').inputKind, 'human', 'a questionnaire answer is still the person');
+  assert.equal(byId.get('m2').inputKind, null, 'an assistant row has no input doorway');
+});
+
+test('tool calls are joined to their measured task duration', async (t) => {
+  const dataDir = await makeDataDir();
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const store = openStore({ dataDir });
+  t.after(() => store.close());
+
+  const events = store.getEvents({ sessionId: 'sess-a', detailLevel: 'full' }).events;
+  const call = events.find((event) => event.msgId === 'm2').toolCalls[0];
+  assert.equal(call.id, 'c1');
+  assert.equal(call.ok, true);
+  assert.equal(call.durationMs, 300, 'joined from the background task by tool call id');
+  assert.equal(call.taskId, 't1');
+  assert.equal(call.taskStatus, 'succeeded');
+  assert.equal(call.hasOutput, true);
+  assert.equal(call.description, 'ls -la');
+
+  const failing = events.find((event) => event.msgId === 'm3').toolCalls[0];
+  assert.equal(failing.ok, false, 'status 3 is a failure');
+  assert.equal(failing.durationMs, null, 'no task means no measured duration, never estimated');
+  assert.equal(events.find((event) => event.msgId === 'm3').failureCount, 1);
+});
+
+test('agent definition exposes model, capabilities and prompt', async (t) => {
+  const dataDir = await makeDataDir();
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const store = openStore({ dataDir });
+  t.after(() => store.close());
+
+  const agent = store.getAgentDefinition('sess-a');
+  assert.equal(agent.ownerName, 'worker');
+  assert.equal(agent.model.modelId, 'MiniMax-M3');
+  assert.equal(agent.model.contextWindow, 512000);
+  assert.deepEqual(agent.tools, ['read', 'bash']);
+  assert.deepEqual(agent.skills, ['a-skill']);
+  assert.deepEqual(agent.extensionSkills, ['ext:b']);
+  assert.equal(agent.systemPrompt, 'You are a worker.');
+  assert.equal(store.getAgentDefinition('sess-b'), null, 'no definition is not an error');
+});
+
+test('workspaces group by git repository so worktrees merge', async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), 'trajectory-git-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+
+  const repo = path.join(root, 'repo');
+  await mkdir(repo, { recursive: true });
+  const git = (args, cwd = repo) => new Promise((resolve) => {
+    execFile('git', ['-C', cwd, ...args], { timeout: 15000, env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1' } },
+      (error) => resolve(!error));
+  });
+
+  const available = await git(['init', '-q', '-b', 'main']);
+  if (!available) {
+    t.skip('git is not available in this environment');
+    return;
+  }
+  await git(['config', 'user.email', 'test@example.com']);
+  await git(['config', 'user.name', 'Test']);
+  await writeFile(path.join(repo, 'a.txt'), 'a\n', 'utf8');
+  await git(['add', '.']);
+  await git(['commit', '-qm', 'init']);
+
+  const worktree = path.join(root, 'wt');
+  const madeWorktree = await git(['worktree', 'add', '-q', '-b', 'feature', worktree]);
+
+  const main = await resolveWorkspaceIdentity(repo);
+  assert.equal(main.kind, 'git');
+  assert.equal(main.label, 'repo');
+  assert.equal(main.worktree, false);
+
+  if (madeWorktree) {
+    const linked = await resolveWorkspaceIdentity(worktree);
+    assert.equal(linked.key, main.key, 'a worktree shares its repository group');
+    assert.equal(linked.worktree, true);
+    assert.equal(linked.branch, 'feature');
+  }
+
+  const outside = path.join(root, 'plain');
+  await mkdir(outside, { recursive: true });
+  const plain = await resolveWorkspaceIdentity(outside);
+  assert.equal(plain.kind, 'path', 'a non-repository directory falls back to path grouping');
+  assert.notEqual(plain.key, main.key);
+
+  assert.equal((await resolveWorkspaceIdentity('')).kind, 'path');
+});
+
+test('annotateWorkspaces labels every session with its group', async (t) => {
+  const dataDir = await makeDataDir();
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const store = openStore({ dataDir });
+  t.after(() => store.close());
+
+  const annotated = await store.annotateWorkspaces(store.listSessions({ limit: 10 }));
+  assert.equal(annotated.length, 2);
+  for (const session of annotated) {
+    assert.ok(session.groupKey, 'every session gets a group key');
+    assert.ok(session.groupLabel, 'every session gets a human label');
+    assert.ok(['git', 'path'].includes(session.groupKind));
+  }
+});
+
 /* ------------------------------------------------------------- redaction -- */
 
 test('redactText removes credentials and bounds length', () => {
@@ -438,7 +585,7 @@ test('handleRpcMessage answers initialize, tools/list and tool calls', async (t)
     jsonrpc: '2.0', id: 4, method: 'tools/call',
     params: { name: 'trajectory_summary', arguments: { sessionId: 'sess-a' } },
   });
-  assert.equal(summary.result.structuredContent.turns, 2);
+  assert.equal(summary.result.structuredContent.turns, 4);
   assert.equal(summary.result.structuredContent.ttftMs, null);
 });
 

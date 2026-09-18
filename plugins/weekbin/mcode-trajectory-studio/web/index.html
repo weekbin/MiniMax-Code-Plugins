@@ -15,7 +15,7 @@
     <p id="source-line" class="muted">连接中…</p>
   </header>
   <div class="side-search">
-    <input id="search" type="search" placeholder="搜索标题 / 工作区…" autocomplete="off" spellcheck="false">
+    <input id="search" type="search" placeholder="搜索标题 / 仓库 / 路径…" autocomplete="off" spellcheck="false">
   </div>
   <div class="side-filters" id="session-filters">
     <button class="chip is-on" data-agent="">全部</button>
@@ -35,6 +35,7 @@
       <p id="session-meta" class="muted"></p>
     </div>
     <div class="topbar-controls">
+      <button id="failure-jump" class="btn danger" hidden></button>
       <label class="toggle" title="关闭后只显示角色、耗时与工具名，不加载正文与入参">
         <input type="checkbox" id="full-detail" checked>
         <span>显示正文</span>
@@ -43,19 +44,20 @@
     </div>
   </header>
 
+  <details id="capability" class="panel capability">
+    <summary class="panel-head">
+      <h3>Agent 与能力</h3>
+      <span id="cap-summary" class="muted small"></span>
+    </summary>
+    <div id="cap-body" class="cap-body"></div>
+  </details>
+
   <section id="stats" class="stats"></section>
 
   <section class="panel">
     <div class="panel-head">
       <h3>时间轴</h3>
-      <div class="legend">
-        <span class="lg lg-input"></span>INPUT
-        <span class="lg lg-think"></span>MODEL·思考
-        <span class="lg lg-out"></span>MODEL·输出
-        <span class="lg lg-tool"></span>TOOL
-        <span class="lg lg-wait"></span>等待(推导)
-        <span class="lg lg-err"></span>失败
-      </div>
+      <span class="muted small">仅用于定位与缩放，正文见下方轨迹流</span>
     </div>
     <div id="overview" class="overview"></div>
     <p id="overview-hint" class="muted small overview-hint"></p>
@@ -63,46 +65,40 @@
 
   <section class="panel">
     <div class="panel-head">
-      <h3>筛选</h3>
-      <span id="filter-count" class="muted small"></span>
+      <h3>轨迹流</h3>
+      <div class="stream-tools">
+        <span id="record-count" class="muted small"></span>
+        <button class="chip is-on" data-filter="all">全部</button>
+        <button class="chip" data-filter="human">人类输入</button>
+        <button class="chip" data-filter="injected">注入上下文</button>
+        <button class="chip" data-filter="tools">工具调用</button>
+        <button class="chip" data-filter="failed">仅失败</button>
+      </div>
     </div>
-    <div class="filters" id="event-filters">
-      <button class="chip is-on" data-filter="all">全部</button>
-      <button class="chip" data-filter="assistant">助手</button>
-      <button class="chip" data-filter="user">用户</button>
-      <button class="chip" data-filter="tools">含工具调用</button>
-      <button class="chip" data-filter="thinking">含思考</button>
-      <button class="chip" data-filter="failed">失败</button>
-      <button class="chip" data-filter="compaction">压缩</button>
-      <input id="turn-jump" class="turn-jump" type="search" placeholder="跳转 turn ID" autocomplete="off" spellcheck="false">
+    <div class="filters">
+      <input id="turn-jump" class="turn-jump" type="search" placeholder="按 turn ID 过滤" autocomplete="off" spellcheck="false">
+      <input id="text-filter" class="turn-jump" type="search" placeholder="按文本过滤（正文 / 工具名 / 入参 / 结果）" autocomplete="off" spellcheck="false">
     </div>
-  </section>
-
-  <section class="panel">
-    <div class="panel-head">
-      <h3>轨迹记录</h3>
-      <span id="record-count" class="muted small"></span>
-    </div>
-    <div id="records" class="records"></div>
-  </section>
-
-  <section id="tasks-wrap" class="panel" hidden>
-    <div class="panel-head">
-      <h3>后台任务 / 子代理</h3>
-      <span id="task-count" class="muted small"></span>
-    </div>
-    <div id="tasks" class="tasks"></div>
+    <div id="stream" class="stream"></div>
   </section>
 </main>
 
 <aside id="inspector" data-open="false">
   <header class="ins-head">
-    <h3 id="ins-title">检查器</h3>
+    <div class="ins-title-wrap">
+      <h3 id="ins-title">检查器</h3>
+      <p id="ins-sub" class="muted small"></p>
+    </div>
     <button id="ins-close" class="btn ghost" aria-label="关闭">×</button>
   </header>
-  <div id="ins-body" class="ins-body">
-    <p class="muted">点击任意记录查看详情。</p>
-  </div>
+  <nav id="ins-tabs" class="ins-tabs" role="tablist">
+    <button class="ins-tab is-on" data-tab="summary" role="tab">概要</button>
+    <button class="ins-tab" data-tab="payload" role="tab">载荷</button>
+    <button class="ins-tab" data-tab="result" role="tab">结果</button>
+    <button class="ins-tab" data-tab="timing" role="tab">计时</button>
+    <button class="ins-tab" data-tab="schema" role="tab">Schema</button>
+  </nav>
+  <div id="ins-body" class="ins-body"></div>
 </aside>
 
 <div id="banner" class="banner" hidden></div>
