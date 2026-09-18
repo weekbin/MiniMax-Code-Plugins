@@ -51,10 +51,13 @@ question and does not repeat another surface's answer:
 | **轨迹流** | What happened — one scannable line per message and per tool call |
 | **检查器** | The full detail of exactly one selected row |
 
-- **Sidebar** groups sessions by **git repository**, not by path: `git rev-parse --git-common-dir`
-  folds every worktree of one project into a single collapsible group, so a long-lived repository
-  does not fragment across the sidebar. Directories outside a git tree fall back to path grouping,
-  and each group shows its branch, worktree count and session count.
+- **Sidebar** is a minimal tree. Sessions group by **git repository**, not by path:
+  `git rev-parse --git-common-dir` folds every worktree of one project into a single collapsible
+  group, so a long-lived repository does not fragment across the sidebar. Directories outside a git
+  tree fall back to path grouping. **Sub-agent sessions nest under the session that dispatched them**,
+  recursively, with a caret to expand — so a fan-out reads as a tree instead of a flat list of
+  look-alike task sessions. Rows carry only a caret and a title; agent, branch, workspace and age
+  live in the tooltip, and expansion state persists across reloads.
 - **Timeline** uses three lanes sharing one zoomable axis — `INPUT` (human messages in blue,
   harness-injected context in violet), `MODEL` (requests split into thinking and output segments)
   and `TOOLS` (measured task spans in orange, gaps derived from record spacing in grey and labelled

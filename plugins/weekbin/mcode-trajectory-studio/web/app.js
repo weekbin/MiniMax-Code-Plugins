@@ -35,6 +35,7 @@ const state = {
   axis: null,
   view: { start: 0, end: 1 },
   collapsed: readCollapsed(),
+  expanded: readExpanded(),
   tab: 'summary',
 };
 
@@ -207,10 +208,29 @@ function classifyResult(text, details) {
   };
 }
 
-function workspaceTail(dir) {
-  if (!dir) return '';
-  const parts = dir.split('/').filter(Boolean);
-  return parts.length <= 2 ? dir : parts.slice(-2).join('/');
+/* ---------------------------------------------------------------- icons -- */
+
+const ICONS = {
+  folder: 'M2 4.6A1.6 1.6 0 0 1 3.6 3h2.5a1 1 0 0 1 .8.4l.8 1.1h4.7A1.6 1.6 0 0 1 14 6.1v5.3A1.6 1.6 0 0 1 12.4 13H3.6A1.6 1.6 0 0 1 2 11.4z',
+  caretRight: 'M6.5 3.8 10.2 8l-3.7 4.2',
+  caretDown: 'M3.8 6.5 8 10.2l4.2-3.7',
+};
+
+function icon(name, className = 'ic') {
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 16 16');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('class', className);
+  const path = document.createElementNS(NS, 'path');
+  path.setAttribute('d', ICONS[name] ?? '');
+  path.setAttribute('fill', 'none');
+  path.setAttribute('stroke', 'currentColor');
+  path.setAttribute('stroke-width', '1.6');
+  path.setAttribute('stroke-linecap', 'round');
+  path.setAttribute('stroke-linejoin', 'round');
+  svg.append(path);
+  return svg;
 }
 
 /* ---------------------------------------------------------------- sidebar */
@@ -225,6 +245,36 @@ function visibleSessions() {
   });
 }
 
+function readExpanded() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem('trajectory.expandedSessions') || '[]'));
+  } catch {
+    return new Set();
+  }
+}
+
+function writeExpanded() {
+  try {
+    localStorage.setItem('trajectory.expandedSessions', JSON.stringify([...state.expanded]));
+  } catch {
+    /* storage is optional */
+  }
+}
+
+/** Expand every ancestor of a session so the selected row is actually visible. */
+function revealAncestors(sessionId) {
+  const byId = new Map(state.sessions.map((session) => [session.sessionId, session]));
+  let cursor = byId.get(sessionId);
+  let guard = 0;
+  while (cursor?.parentSessionId && guard < 64) {
+    if (!byId.has(cursor.parentSessionId)) break;
+    state.expanded.add(cursor.parentSessionId);
+    cursor = byId.get(cursor.parentSessionId);
+    guard += 1;
+  }
+  writeExpanded();
+}
+
 function renderSessions() {
   const host = el('session-groups');
   host.textContent = '';
@@ -234,9 +284,24 @@ function renderSessions() {
     return;
   }
 
-  // Group by repository (worktrees merged), falling back to path when not in a git tree.
-  const groups = new Map();
+  // Sub-agents are children of the session that dispatched them. Anything whose
+  // parent is filtered out (or is not loaded) is promoted to a root so it stays reachable.
+  const present = new Set(rows.map((session) => session.sessionId));
+  const childrenOf = new Map();
+  const roots = [];
   for (const session of rows) {
+    const parent = session.parentSessionId;
+    if (parent && present.has(parent)) {
+      if (!childrenOf.has(parent)) childrenOf.set(parent, []);
+      childrenOf.get(parent).push(session);
+    } else {
+      roots.push(session);
+    }
+  }
+  for (const list of childrenOf.values()) list.sort((a, b) => (a.createdAtMs ?? 0) - (b.createdAtMs ?? 0));
+
+  const groups = new Map();
+  for (const session of roots) {
     const key = session.groupKey ?? `path:${session.workspaceDir ?? ''}`;
     if (!groups.has(key)) {
       groups.set(key, { key, label: session.groupLabel ?? '(无工作区)', kind: session.groupKind ?? 'path', sessions: [] });
@@ -250,19 +315,19 @@ function renderSessions() {
   for (const group of ordered) {
     const collapsed = state.collapsed.has(group.key);
     const section = textNode('section', `ws-group${collapsed ? ' is-collapsed' : ''}`);
+    const dirs = new Set();
+    for (const session of rows) {
+      if ((session.groupKey ?? `path:${session.workspaceDir ?? ''}`) === group.key && session.workspaceDir) dirs.add(session.workspaceDir);
+    }
 
-    const dirs = new Set(group.sessions.map((session) => session.workspaceDir).filter(Boolean));
     const head = document.createElement('button');
     head.type = 'button';
-    head.className = 'ws-head';
-    head.title = `${group.label}\n${[...dirs].join('\n')}`;
-    head.append(textNode('span', 'ws-caret', collapsed ? '▸' : '▾'));
-    head.append(textNode('span', `ws-kind ws-kind-${group.kind}`, group.kind === 'git' ? 'git' : 'dir'));
+    head.className = `ws-head ws-${group.kind}`;
+    head.title = `${group.label}${dirs.size > 1 ? ` · ${dirs.size} 个工作区` : ''}\n${[...dirs].join('\n')}`;
+    head.append(icon(collapsed ? 'caretRight' : 'caretDown', 'ic ws-caret'));
+    head.append(icon('folder', 'ic ws-folder'));
     head.append(textNode('span', 'ws-name', group.label));
-    const meta = textNode('span', 'ws-meta');
-    if (group.kind === 'git' && dirs.size > 1) meta.append(textNode('span', 'ws-worktrees', `${dirs.size} 工作区`));
-    meta.append(textNode('span', 'ws-count', String(group.sessions.length)));
-    head.append(meta);
+    head.append(textNode('span', 'ws-count', String(group.sessions.length)));
     head.addEventListener('click', () => {
       if (state.collapsed.has(group.key)) state.collapsed.delete(group.key);
       else state.collapsed.add(group.key);
@@ -274,30 +339,63 @@ function renderSessions() {
     if (!collapsed) {
       const list = document.createElement('ul');
       list.className = 'ws-sessions';
-      for (const session of group.sessions) {
-        const item = document.createElement('button');
-        item.type = 'button';
-        item.className = `session-item s-${session.sessionKind ?? 'unknown'}`;
-        if (session.sessionId === state.sessionId) item.setAttribute('aria-current', 'true');
-        item.append(textNode('span', 's-title', session.title || '(无标题)'));
-        const badges = textNode('span', 's-badges');
-        badges.append(textNode('span', 's-agent', session.agent ?? '?'));
-        if (session.parentSessionId) badges.append(textNode('span', 's-child', '子'));
-        if (session.branch) badges.append(textNode('span', 's-branch', session.branch));
-        badges.append(textNode('span', 's-age', fmtAge(session.updatedAtMs)));
-        item.append(badges);
-        if (dirs.size > 1 && session.workspaceDir) {
-          item.append(textNode('span', 's-dir', workspaceTail(session.workspaceDir)));
-        }
-        item.addEventListener('click', () => selectSession(session.sessionId));
-        const li = document.createElement('li');
-        li.append(item);
-        list.append(li);
-      }
+      const walk = (session, depth) => {
+        list.append(renderSessionItem(session, depth, childrenOf));
+        if (!state.expanded.has(session.sessionId)) return;
+        for (const child of childrenOf.get(session.sessionId) ?? []) walk(child, depth + 1);
+      };
+      for (const session of group.sessions) walk(session, 0);
       section.append(list);
     }
     host.append(section);
   }
+}
+
+/**
+ * One sidebar row. Deliberately minimal: a caret when the session has sub-agents,
+ * and the title. Everything else lives in the tooltip and the detail header, so the
+ * list stays scannable instead of carrying five badges per row.
+ */
+function renderSessionItem(session, depth, childrenOf) {
+  const children = childrenOf.get(session.sessionId) ?? [];
+  const expanded = state.expanded.has(session.sessionId);
+
+  const item = document.createElement('button');
+  item.type = 'button';
+  item.className = `session-item${session.parentSessionId ? ' is-sub' : ''}`;
+  item.style.paddingLeft = `${6 + depth * 14}px`;
+  if (session.sessionId === state.sessionId) item.setAttribute('aria-current', 'true');
+  item.title = [
+    session.title || '(无标题)',
+    `${session.agent ?? '?'} · ${session.sessionKind ?? ''}`,
+    session.branch ? `分支 ${session.branch}` : null,
+    session.workspaceDir,
+    session.parentSessionId ? `父会话 ${session.parentSessionId}` : null,
+    `更新于 ${fmtAge(session.updatedAtMs)}`,
+  ].filter(Boolean).join('\n');
+
+  if (children.length) {
+    const caret = icon(expanded ? 'caretDown' : 'caretRight', 'ic s-caret');
+    caret.addEventListener('click', (event) => {
+      event.stopPropagation();
+      if (state.expanded.has(session.sessionId)) state.expanded.delete(session.sessionId);
+      else state.expanded.add(session.sessionId);
+      writeExpanded();
+      renderSessions();
+    });
+    item.append(caret);
+  } else {
+    item.append(textNode('span', 's-caret-space'));
+  }
+
+  if (session.parentSessionId) item.append(textNode('span', 's-sub-dot'));
+  item.append(textNode('span', 's-title', session.title || '(无标题)'));
+  if (children.length) item.append(textNode('span', 's-child-count', String(children.length)));
+
+  item.addEventListener('click', () => selectSession(session.sessionId));
+  const li = document.createElement('li');
+  li.append(item);
+  return li;
 }
 
 /* ------------------------------------------------------------- capability */
@@ -1152,6 +1250,8 @@ async function selectSession(sessionId) {
   state.sessionId = sessionId;
   state.selected = null;
   closeInspector();
+  revealAncestors(sessionId);
+  renderSessions();
   await loadOverview();
 }
 
