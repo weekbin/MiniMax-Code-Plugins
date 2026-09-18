@@ -150,6 +150,33 @@ question and does not repeat another surface's answer:
 - A local runtime with the v2 SQLite projection, or v2 session artifacts for the fallback path.
 - A host browser capability for automatic panel opening; without it the panel URL still works.
 
+### Supported platforms
+
+- **Verified on Linux** (`x86_64`, Node.js 24.19.0, mcode 0.4.12) — all tests, the MCP handshake and
+  the Studio panel were exercised there.
+- **Windows and macOS are untested.** Nothing is written to be platform-specific: paths go through
+  `node:path`, `git` is invoked with `execFile` and an argument array rather than a shell, and the
+  SQLite driver is Node's built-in `node:sqlite`. Treat those platforms as expected-to-work but
+  unverified, and report anything that breaks.
+- `git` is optional. It is used only to group sessions by repository; without it, grouping falls
+  back to workspace paths.
+
+### Test evidence
+
+```bash
+npm run validate                                 # the repository validator
+cd plugins/weekbin/mcode-trajectory-studio
+node --test                                      # 31 Plugin tests
+node server/main.mjs --doctor                    # data-source diagnostics against this machine
+```
+
+The Plugin's own tests cover the SQLite reads, the JSONL fallback, the git grouping (including a
+real worktree merge), input provenance, the tool-call/task join, the agent definition lookup,
+redaction, and the MCP protocol surface. The panel was additionally driven end to end with a
+browser: session switching, tree expansion, timeline navigation, all inspector tabs, the theme
+toggle and the failure-evidence block, at five viewport widths. The repository suite (376 tests)
+runs the same validator CI runs.
+
 ## Install
 
 This repository hosts Plugins as source. Point MiniMax Code at this directory as a local Plugin, or

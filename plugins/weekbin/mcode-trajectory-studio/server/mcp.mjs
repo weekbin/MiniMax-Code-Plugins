@@ -13,7 +13,36 @@ import { SESSION_KINDS } from './store.mjs';
 export const SERVER_NAME = 'mcode-trajectory-studio';
 export const SERVER_VERSION = '0.1.0';
 
+/**
+ * Protocol versions this server implements, newest first.
+ *
+ * The initialize response must name a version the server actually supports. Echoing
+ * whatever the client asked for would claim support for versions whose behaviour was
+ * never implemented — and the two differ in ways that matter here, since JSON-RPC
+ * batching exists in 2024-11-05 but was removed in 2025-06-18.
+ */
+export const SUPPORTED_PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
+export const DEFAULT_PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS[0];
+
+export function negotiateProtocolVersion(requested) {
+  return typeof requested === 'string' && SUPPORTED_PROTOCOL_VERSIONS.includes(requested)
+    ? requested
+    : DEFAULT_PROTOCOL_VERSION;
+}
+
 const DETAIL_LEVELS = ['summary', 'full'];
+
+/**
+ * Every tool in this server only reads. Declaring that lets a client skip its own
+ * confirmation prompts for calls that cannot mutate anything.
+ */
+const READ_ONLY = Object.freeze({
+  readOnlyHint: true,
+  destructiveHint: false,
+  idempotentHint: true,
+  // Reading local session data is a closed-world operation: no outbound requests.
+  openWorldHint: false,
+});
 
 const obj = (properties, required = []) => ({
   type: 'object',
@@ -28,6 +57,7 @@ const int = (description, extra = {}) => ({ type: 'integer', description, ...ext
 export const TOOLS = [
   {
     name: 'trajectory_list',
+    annotations: READ_ONLY,
     description:
       'List recent local MiniMax Code sessions from the runtime SQLite projection, with non-content metadata only (no message text). Use this first to find a session ID, then call trajectory_summary or trajectory_get.',
     inputSchema: obj({
@@ -40,6 +70,7 @@ export const TOOLS = [
   },
   {
     name: 'trajectory_summary',
+    annotations: READ_ONLY,
     description:
       'Return per-session trajectory statistics for one MiniMax Code session: turns, steps, LLM/tool/decode wall-clock milliseconds, token totals, tool-call and failure counts, compactions, sub-agent tasks, assets, and the trigger-source breakdown. Equivalent to the dsh sessionStats projection. Omit sessionId to use the most recently updated session.',
     inputSchema: obj({
@@ -48,6 +79,7 @@ export const TOOLS = [
   },
   {
     name: 'trajectory_get',
+    annotations: READ_ONLY,
     description:
       'Return a page of trajectory records for one session, in insert order. Summary mode returns timing, token usage, roles, turn IDs and tool-call names only. Full mode additionally returns message text, thinking, tool arguments and tool results, redacted and length-bounded; request it only after explicit user consent.',
     inputSchema: obj({
@@ -60,6 +92,7 @@ export const TOOLS = [
   },
   {
     name: 'trajectory_search',
+    annotations: READ_ONLY,
     description:
       'Full-text search across local session titles, agent names, statuses and workspace paths using the runtime FTS5 index.',
     inputSchema: obj({
@@ -69,6 +102,7 @@ export const TOOLS = [
   },
   {
     name: 'trajectory_tasks',
+    annotations: READ_ONLY,
     description:
       'List the background tasks and sub-agent dispatches owned by one session, with status, wall-clock duration, the command or objective, the sub-agent name, and the child session ID when a sub-agent ran. This is the nested-tool view for a trajectory.',
     inputSchema: obj({
@@ -79,6 +113,7 @@ export const TOOLS = [
   },
   {
     name: 'trajectory_task_output',
+    annotations: READ_ONLY,
     description:
       'Read the tail of the captured output for one background task, bounded to the last 16 KiB by default. Use it to explain why a task failed without opening the session directory by hand.',
     inputSchema: obj({
@@ -88,6 +123,7 @@ export const TOOLS = [
   },
   {
     name: 'trajectory_studio',
+    annotations: READ_ONLY,
     description:
       'Start (or reuse) the local Trajectory Studio web panel bound to 127.0.0.1 and return its URL. Open that URL with the host built-in browser. The server is read-only, independent of the chat session, and never leaves the machine.',
     inputSchema: obj({
@@ -234,7 +270,7 @@ export function handleRpcMessage(handler, message) {
 
   if (method === 'initialize') {
     return rpcResult(id, {
-      protocolVersion: typeof params?.protocolVersion === 'string' ? params.protocolVersion : '2024-11-05',
+      protocolVersion: negotiateProtocolVersion(params?.protocolVersion),
       capabilities: { tools: { listChanged: false } },
       serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
       instructions:
