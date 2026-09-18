@@ -615,8 +615,22 @@ pre.block {
   overflow-y: auto;
 }
 
-.bars { display: flex; height: 7px; border-radius: var(--radius); overflow: hidden; margin: 6px 0 0; }
-.bars i { display: block; height: 100%; }
+/* Request-duration bar and its legend. The colours match the timeline's MODEL lane,
+   so one reading of 紫=思考 / 绿=输出 covers both surfaces. */
+.duration-bar { margin-top: 8px; }
+.bars { display: flex; height: 10px; border-radius: var(--radius); overflow: hidden; background: var(--bg-3); }
+.bar-seg { display: block; height: 100%; }
+.bar-seg.is-think { background: var(--think); }
+.bar-seg.is-out { background: var(--out); }
+.bar-seg.is-whole { background: color-mix(in srgb, var(--out) 55%, var(--bg-3)); }
+
+.bar-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 6px; font-size: 11px; font-family: var(--mono); }
+.bar-legend-item { display: inline-flex; align-items: center; gap: 5px; color: var(--fg); }
+.bar-legend-total { margin-left: auto; color: var(--fg-faint); }
+.bar-swatch { display: inline-block; width: 9px; height: 9px; border-radius: 2px; }
+.bar-swatch.is-think { background: var(--think); }
+.bar-swatch.is-out { background: var(--out); }
+.bar-note { margin-top: 5px; line-height: 1.5; }
 
 .banner {
   position: fixed;

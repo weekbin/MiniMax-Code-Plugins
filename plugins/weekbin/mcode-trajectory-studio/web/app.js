@@ -1352,19 +1352,74 @@ function renderTimingTab(body, event, call) {
   section.append(dt);
 
   if (event.requestDurationMs) {
-    const total = event.requestDurationMs;
-    const thinking = Math.min(event.thinkingDurationMs ?? 0, total);
-    const bars = textNode('div', 'bars');
-    const thinkBar = textNode('i');
-    thinkBar.style.width = `${(thinking / total) * 100}%`;
-    thinkBar.style.background = 'var(--think)';
-    const outBar = textNode('i');
-    outBar.style.width = `${((total - thinking) / total) * 100}%`;
-    outBar.style.background = 'var(--out)';
-    bars.append(thinkBar, outBar);
-    section.append(bars);
+    section.append(buildDurationBar(event));
+  } else {
+    // Say why there is no bar, so an empty area does not read as a broken panel.
+    section.append(textNode('p', 'bar-note muted small', call
+      ? '这条记录没有模型请求耗时（工具调用本身不产生模型请求），因此没有时长条；工具耗时见上方「工具耗时(实测)」。'
+      : '这条记录没有模型请求耗时（运行时未记录 request_duration_ms），因此没有时长条可画。'));
   }
   body.append(section);
+}
+
+/**
+ * The request-duration bar, with its own legend.
+ *
+ * Two segments share the axis: thinking, and everything after it. The runtime
+ * records the thinking duration but not the first-token instant, so the second
+ * segment is derived rather than measured — the legend and the note both say so,
+ * and when no thinking duration was recorded the bar is drawn as one honest span
+ * instead of inventing a split.
+ */
+function buildDurationBar(event) {
+  const wrap = textNode('div', 'duration-bar');
+  const total = event.requestDurationMs;
+  const hasThinking = event.thinkingDurationMs !== null && event.thinkingDurationMs !== undefined;
+  const recorded = hasThinking ? Math.max(0, event.thinkingDurationMs) : 0;
+  const thinking = Math.min(recorded, total);
+  const output = Math.max(0, total - thinking);
+  // The runtime's two timings disagree on a small share of records: the recorded
+  // thinking duration can equal or exceed the whole request. Clamping silently would
+  // draw a 0 ms output segment and imply a split that was never measured.
+  const overshoot = hasThinking && recorded > total;
+
+  const segments = [];
+  if (thinking > 0) segments.push({ cls: 'is-think', ms: thinking, label: '思考段' });
+  if (output > 0) segments.push({ cls: 'is-out', ms: output, label: hasThinking ? '输出段' : '全程' });
+  if (segments.length === 0) segments.push({ cls: 'is-out is-whole', ms: total, label: '全程' });
+
+  const bar = textNode('div', 'bars');
+  for (const segment of segments) {
+    const node = textNode('i', `bar-seg ${segment.cls}`);
+    node.style.width = `${(segment.ms / total) * 100}%`;
+    node.title = `${segment.label} ${fmtMs(segment.ms)}`;
+    bar.append(node);
+  }
+  wrap.append(bar);
+
+  const legend = textNode('div', 'bar-legend');
+  for (const segment of segments) {
+    const item = textNode('span', 'bar-legend-item');
+    item.append(textNode('i', `bar-swatch ${segment.cls.replace(' is-whole', '')}`));
+    const approximate = segment.cls.startsWith('is-out') && hasThinking && !overshoot ? '（近似）' : '';
+    item.append(textNode('span', '', `${segment.label} ${fmtMs(segment.ms)}${approximate}`));
+    legend.append(item);
+  }
+  legend.append(textNode('span', 'bar-legend-total', `合计 ${fmtMs(total)}`));
+  wrap.append(legend);
+
+  let note;
+  if (overshoot) {
+    note = `运行时为这条记录记下的思考耗时（${fmtMs(recorded)}）不小于请求耗时（${fmtMs(total)}），` +
+      '两个数值互相矛盾，因此只按思考段绘制，不推导输出段。';
+  } else if (hasThinking) {
+    note = '紫色＝思考段（运行时记录）；绿色＝输出段＝请求耗时 − 思考耗时。' +
+      '运行时不记录首 token 时刻，所以输出段是推导值，不是实测解码时间。';
+  } else {
+    note = '本条记录没有思考段（运行时未记录 thinking_duration_ms），整段按请求耗时绘制，不做拆分。';
+  }
+  wrap.append(textNode('p', 'bar-note muted small', note));
+  return wrap;
 }
 
 function renderSchemaTab(body, event, call) {
