@@ -10,8 +10,7 @@
 import { el, state, STREAM_PAGE, MAX_STREAM_ROWS } from './state.js';
 import { fmtMs, fmtTokens, oneLine, textNode, payloadPreview } from './format.js';
 import { parseResult, toolFailed } from './results.js';
-import { openInspector } from './inspector.js';
-import { selectSession } from './flow.js';
+import { openInspector, selectSession } from './intents.js';
 
 /** Flatten events into scannable rows: one per message, one per tool call. */
 function buildStream(events) {

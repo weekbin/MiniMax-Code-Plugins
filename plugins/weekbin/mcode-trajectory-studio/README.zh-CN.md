@@ -151,12 +151,13 @@ Studio 面板不是一摞行的堆叠，而是一段叙事。每个界面只回�
 ```bash
 npm run validate                                 # 仓库校验器
 cd plugins/weekbin/mcode-trajectory-studio
-node --test                                      # 31 个插件测试
+node --test                                      # 35 个插件测试
 node server/main.mjs --doctor                    # 针对本机的数据源诊断
 ```
 
 插件自身的测试覆盖 SQLite 读取、JSONL 兜底、git 分组（含真实 worktree 合并）、输入来源、
-工具调用/任务 join、agent 定义查找、脱敏，以及 MCP 协议面。面板另用浏览器做了端到端驱动：
+工具调用/任务 join、agent 定义查找、脱敏、MCP 协议面，以及模块图（无环、界面层不 import
+编排层、每个相对导入均可解析）。面板另用浏览器做了端到端驱动：
 会话切换、树展开、时间轴导航、全部检查器分页、主题切换与失败证据块，覆盖五档视口宽度。仓库
 测试套件（376 个测试）跑的正是 CI 所用的同一个校验器。
 
@@ -181,11 +182,14 @@ node server/main.mjs --serve    # 在 127.0.0.1 上独立运行 Studio 面板
   （支撑层），`sessions` · `stats` · `tasks` · `events` · `search` · `jsonl`（领域层），
   `store`（门面），再由 `mcp` · `http` · `main`（接口层）对外。领域层模块以 `Store`
   门面作为第一个参数，因此层间依赖图保持为无环 DAG。
-- `web/` —— `app.js` 只负责启动；各界面位于 `web/js/`：`state` · `api` · `format` ·
-  `icons` · `results` · `storage` · `theme` · `banner`（基础层），`sidebar` ·
-  `capability` · `stats` · `timeline` · `stream` · `inspector`（界面层），以及
-  `flow` · `wire`（编排层）。面板以 ES 模块方式提供服务。
-- `test/` —— `store.test.mjs`，覆盖数据层与 MCP 协议面的 31 个测试。
+- `web/` —— `app.js` 只负责启动；各界面位于 `web/js/`：`state` · `bus` · `format` ·
+  `icons` · `results`（叶子层），`api` · `storage` · `theme` · `banner` · `intents`
+  （基础层），`sidebar` · `capability` · `stats` · `timeline` · `stream` · `inspector`
+  （界面层），以及 `flow` · `controller` · `wire`（编排层）。界面层通过总线**广播意图**，
+  而不是 import 动作本身，因此前端依赖图同样**无环**——这一点由测试强制执行。面板以
+  ES 模块方式提供服务。
+- `test/` —— `store.test.mjs`（数据层与 MCP 协议面）与 `modules.test.mjs`（import 图
+  无环、且每个相对导入都能解析到真实文件）。
 
 ## 许可证
 

@@ -10,7 +10,7 @@
 import { el, state, LANE_ROW_PX, MAX_LANE_ROWS } from './state.js';
 import { fmtClock, fmtMs, textNode } from './format.js';
 import { banner } from './banner.js';
-import { locateRow, locateToolCall } from './flow.js';
+import { locateRow, locateToolCall } from './intents.js';
 
 function buildAxis(points, tasks) {
   const timed = points.filter((point) => Number.isFinite(point.at));

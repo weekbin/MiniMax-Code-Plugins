@@ -15,9 +15,13 @@
  *
  * This file only boots. The surfaces live in `./js/`:
  *
- *   state / api / format / icons / results / storage / theme / banner   foundations
- *   sidebar / capability / stats / timeline / stream / inspector        surfaces
- *   flow / wire                                                         orchestration
+ *   state / bus / format / icons / results                     leaves
+ *   api / storage / theme / banner / intents                   foundations
+ *   sidebar / capability / stats / timeline / stream / inspector   surfaces
+ *   flow / controller / wire                                   orchestration
+ *
+ * Surfaces announce intents; `controller.js` binds them to the actions in
+ * `flow.js`. Nothing imports a surface's caller, so the graph stays acyclic.
  */
 
 import { state, el } from './js/state.js';
@@ -25,12 +29,15 @@ import { api } from './js/api.js';
 import { banner } from './js/banner.js';
 import { applyTheme, readTheme } from './js/theme.js';
 import { hydrateSidebarState } from './js/storage.js';
+import { installController } from './js/controller.js';
 import { wire } from './js/wire.js';
 import { loadAgents, loadSessions, selectSession } from './js/flow.js';
 
 async function boot() {
   applyTheme(readTheme());
   hydrateSidebarState();
+  // Bind intents before anything can emit one.
+  installController();
   wire();
   el('inspector').setAttribute('data-open', 'false');
   document.body.dataset.inspector = 'false';

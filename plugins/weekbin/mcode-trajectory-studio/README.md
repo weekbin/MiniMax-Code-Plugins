@@ -168,13 +168,14 @@ question and does not repeat another surface's answer:
 ```bash
 npm run validate                                 # the repository validator
 cd plugins/weekbin/mcode-trajectory-studio
-node --test                                      # 31 Plugin tests
+node --test                                      # 35 Plugin tests
 node server/main.mjs --doctor                    # data-source diagnostics against this machine
 ```
 
 The Plugin's own tests cover the SQLite reads, the JSONL fallback, the git grouping (including a
 real worktree merge), input provenance, the tool-call/task join, the agent definition lookup,
-redaction, and the MCP protocol surface. The panel was additionally driven end to end with a
+redaction, the MCP protocol surface, and the module graph (that it is acyclic, that no client
+surface imports the orchestrator, and that every relative import resolves). The panel was additionally driven end to end with a
 browser: session switching, tree expansion, timeline navigation, all inspector tabs, the theme
 toggle and the failure-evidence block, at five viewport widths. The repository suite (376 tests)
 runs the same validator CI runs.
@@ -201,11 +202,14 @@ so that no file has to hold more than one concern:
   (services), `sessions` · `stats` · `tasks` · `events` · `search` · `jsonl` (domain),
   `store` (facade), then `mcp` · `http` · `main` (interface). Domain modules take the
   `Store` facade as their first argument, so the layer graph stays a DAG.
-- `web/` — `app.js` only boots; the surfaces live in `web/js/`: `state` · `api` ·
-  `format` · `icons` · `results` · `storage` · `theme` · `banner` (foundations),
-  `sidebar` · `capability` · `stats` · `timeline` · `stream` · `inspector` (surfaces),
-  and `flow` · `wire` (orchestration). The panel is served as ES modules.
-- `test/` — `store.test.mjs`, 31 tests over the data layer and the MCP surface.
+- `web/` — `app.js` only boots; the surfaces live in `web/js/`: `state` · `bus` ·
+  `format` · `icons` · `results` (leaves), `api` · `storage` · `theme` · `banner` ·
+  `intents` (foundations), `sidebar` · `capability` · `stats` · `timeline` · `stream` ·
+  `inspector` (surfaces), and `flow` · `controller` · `wire` (orchestration). Surfaces
+  announce an intent on the bus rather than importing the action, so the client graph
+  is acyclic too — a property a test enforces. The panel is served as ES modules.
+- `test/` — `store.test.mjs` (the data layer and the MCP surface) and
+  `modules.test.mjs` (the import graph is acyclic and every import resolves).
 
 ## License
 

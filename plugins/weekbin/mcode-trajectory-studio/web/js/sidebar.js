@@ -6,16 +6,16 @@
  * sessions nest recursively under the session that dispatched them. The whole row
  * toggles expansion, not just the caret.
  *
- * This module renders; the selection action it triggers lives in `flow.js`. The
- * two modules reference each other at call time only, which is safe for hoisted
- * function declarations.
+ * This module renders and announces the selection intent; it does not know who
+ * performs it. That keeps the dependency one-way — `flow.js` imports this module to
+ * render, and this module imports only the intent leaf.
  */
 
 import { el, state } from './state.js';
 import { fmtAge, textNode } from './format.js';
 import { icon } from './icons.js';
 import { writeCollapsed, writeExpanded } from './storage.js';
-import { selectSession } from './flow.js';
+import { selectSession } from './intents.js';
 
 export function visibleSessions() {
   const term = state.search.trim().toLowerCase();

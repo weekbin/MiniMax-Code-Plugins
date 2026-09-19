@@ -1,10 +1,11 @@
 /**
  * Data flow and navigation.
  *
- * Loading and rendering reference each other: a load renders a surface, and a
- * rendered surface can trigger a load (clicking a session, a timeline block, a
- * sub-session link). The references are resolved at call time, so the module cycle
- * between this file and the surfaces is safe.
+ * This is the only module that both loads data and renders surfaces, so it is the
+ * single place the dependency points "up" into the surfaces. Surfaces never import
+ * back: they announce an intent (`intents.js`) that `controller.js` binds to the
+ * actions here. The module graph is therefore acyclic — no surface can reach this
+ * file, directly or indirectly.
  */
 
 import { el, state, EVENT_PAGE } from './state.js';
