@@ -1,3 +1,5 @@
+**English** | [简体中文](README.zh-CN.md)
+
 # MCode Trajectory Studio
 
 > A read-only flight recorder for local MiniMax Code sessions, backed by the runtime's own
@@ -189,6 +191,21 @@ entry starts automatically.
 node server/main.mjs --doctor   # resolved data dir, SQLite/FTS availability, latest session stats
 node server/main.mjs --serve    # run the Studio panel standalone on 127.0.0.1
 ```
+
+## Code layout
+
+The Plugin ships no dependencies and no build step, and the source is split by layer
+so that no file has to hold more than one concern:
+
+- `server/` — `config` · `json` · `sqlite` · `fsutil` (foundations), `redact` · `git`
+  (services), `sessions` · `stats` · `tasks` · `events` · `search` · `jsonl` (domain),
+  `store` (facade), then `mcp` · `http` · `main` (interface). Domain modules take the
+  `Store` facade as their first argument, so the layer graph stays a DAG.
+- `web/` — `app.js` only boots; the surfaces live in `web/js/`: `state` · `api` ·
+  `format` · `icons` · `results` · `storage` · `theme` · `banner` (foundations),
+  `sidebar` · `capability` · `stats` · `timeline` · `stream` · `inspector` (surfaces),
+  and `flow` · `wire` (orchestration). The panel is served as ES modules.
+- `test/` — `store.test.mjs`, 31 tests over the data layer and the MCP surface.
 
 ## License
 

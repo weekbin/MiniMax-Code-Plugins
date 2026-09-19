@@ -18,18 +18,32 @@ const WEB_ROOT = new URL('../web/', import.meta.url);
 const CLIENT_HEADER = 'x-trajectory-client';
 
 const MIME = {
-  '/': 'text/html; charset=utf-8',
-  '/index.html': 'text/html; charset=utf-8',
-  '/app.js': 'text/javascript; charset=utf-8',
-  '/style.css': 'text/css; charset=utf-8',
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
 };
 
+/** Fixed entry points. Everything else is refused. */
 const STATIC_FILES = new Map([
   ['/', 'index.html'],
   ['/index.html', 'index.html'],
   ['/app.js', 'app.js'],
   ['/style.css', 'style.css'],
 ]);
+
+/**
+ * The client is split into ES modules under `/js/`. Serve them by a narrow name
+ * pattern rather than by enumerating files, so adding a module needs no change
+ * here, while anything outside the pattern stays denied by default.
+ */
+const CLIENT_MODULE = /^\/js\/[a-z0-9-]+\.js$/;
+
+function resolveStatic(pathname) {
+  const mapped = STATIC_FILES.get(pathname);
+  if (mapped) return mapped;
+  if (CLIENT_MODULE.test(pathname)) return pathname.slice(1);
+  return null;
+}
 
 const MAX_BODY_BYTES = 64 * 1024;
 
@@ -196,11 +210,11 @@ export function createRequestHandler({ store, homeDir, getFocus, setFocus }) {
       }
     }
 
-    const file = STATIC_FILES.get(url.pathname);
+    const file = resolveStatic(url.pathname);
     if (!file) return fail(res, 404, 'not_found');
     try {
       const body = await readFile(new URL(file, WEB_ROOT));
-      res.writeHead(200, securityHeaders({ 'Content-Type': MIME[url.pathname] ?? 'application/octet-stream' }));
+      res.writeHead(200, securityHeaders({ 'Content-Type': MIME[path.extname(file)] ?? 'application/octet-stream' }));
       res.end(req.method === 'HEAD' ? undefined : body);
     } catch {
       return fail(res, 500, 'static_unavailable');
