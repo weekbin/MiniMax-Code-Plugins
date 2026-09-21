@@ -19,7 +19,7 @@
  * indexed: <dataDir>/v2/sessions/YYYY/MM/DD/<stamp>-<sessionId>/messages.jsonl
  */
 
-import { tableColumns, tableExists, openReadOnlyProjection, resolveSqliteFile } from './sqlite.mjs';
+import { tableColumns, tableExists, ftsModuleAvailable, openReadOnlyProjection, resolveSqliteFile } from './sqlite.mjs';
 import { resolveDataDir, CACHE_ENTRIES } from './config.mjs';
 import { resolveSessionsRoot } from './fsutil.mjs';
 import * as sessions from './sessions.mjs';
@@ -40,7 +40,15 @@ export class Store {
       tasks: db ? tableColumns(db, 'local_runtime_background_tasks') : new Set(),
       assets: db ? tableColumns(db, 'local_runtime_session_assets') : new Set(),
     };
-    this.hasFts = Boolean(db) && tableExists(db, 'local_runtime_sessions_fts');
+    // FTS5 is a compile-time module of the SQLite the runtime bundles, not a
+    // property of the Node version: it is present from 22.19.0 and 24.0.0 but
+    // absent in 22.13.0–22.18.x and throughout 23.x. The virtual table exists in
+    // `sqlite_master` either way, so probing the table alone would claim search
+    // works and then fail on the first MATCH.
+    this.hasFts = Boolean(db) && tableExists(db, 'local_runtime_sessions_fts') && ftsModuleAvailable(db);
+    if (db && !this.hasFts) {
+      warnings.push('fts5_unavailable:trajectory_search will return no matches on this Node runtime');
+    }
     // Resolved once, because the session-artifact root is a different relative path
     // on some builds and every JSONL fallback read needs the one that really exists.
     const sessions = resolveSessionsRoot(dataDir);

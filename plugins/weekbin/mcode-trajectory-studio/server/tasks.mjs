@@ -8,10 +8,11 @@
  */
 
 import path from 'node:path';
-import { lstat, open } from 'node:fs/promises';
 
 import { num } from './json.mjs';
 import { tableExists } from './sqlite.mjs';
+import { openContainedRead } from './fsutil.mjs';
+import { redactText } from './redact.mjs';
 import { LIMITS, clamp, backgroundTasksRoot } from './config.mjs';
 
 /** Background tasks owned by a session, including sub-agent dispatches. */
@@ -53,8 +54,12 @@ export function listBackgroundTasks(store, sessionId, { limit = LIMITS.tasks.def
     taskId: row.task_id,
     kind: row.kind,
     status: row.status,
-    description: row.description ?? row.command ?? null,
-    command: row.command ?? null,
+    // A task's description is its command line for a `bash` task, which is where
+    // an inline credential actually lives. Redacting here rather than at each
+    // consumer means every surface — MCP, the panel, the full-detail event join —
+    // gets the scrubbed text and a new consumer cannot forget to ask for it.
+    description: redactText(row.description ?? row.command ?? null),
+    command: redactText(row.command ?? null),
     toolCallId: row.tool_call_id ?? null,
     agentName: row.agent_name ?? null,
     childSessionId: row.child_session_id ?? null,
@@ -87,43 +92,42 @@ export function taskIndex(store, sessionId) {
  * Read the tail of a background task's captured output.
  *
  * The path is rebuilt from the data directory and the task ID rather than taken
- * from the stored URI, the ID is validated against a strict shape, and symlinked
- * targets are refused, so a crafted task row cannot turn this into a file read.
+ * from the stored URI, the ID is validated against a strict shape, and the read
+ * goes through `openContainedRead`, which canonicalizes the whole path and refuses
+ * anything that resolves outside the data directory. Checking the shape of the ID
+ * alone is not enough: a symlinked task directory keeps the lexical path inside
+ * the data directory while the kernel resolves `output.log` outside it, which is
+ * how an earlier revision could be made to read an arbitrary file.
  */
 export async function readTaskOutput(store, taskId, { maxBytes = LIMITS.taskOutputBytes.default } = {}) {
   if (typeof taskId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(taskId)) {
     throw new Error('invalid_task_id');
   }
-  const root = backgroundTasksRoot(store.dataDir);
-  const file = path.join(root, taskId, 'output.log');
-  if (!file.startsWith(root + path.sep)) throw new Error('invalid_task_id');
+  const unavailable = { taskId, available: false, bytes: 0, truncated: false, text: '' };
+  // The data directory is the containment root, not `background-tasks`: that keeps
+  // a root which is itself a symlink from widening the approved area.
+  const opened = await openContainedRead(
+    store.dataDir,
+    path.join(backgroundTasksRoot(store.dataDir), taskId, 'output.log'),
+  );
+  if (!opened) return unavailable;
 
-  let info;
+  const { handle, size } = opened;
   try {
-    info = await lstat(file);
-  } catch {
-    return { taskId, available: false, bytes: 0, truncated: false, text: '' };
-  }
-  if (!info.isFile() || info.isSymbolicLink()) {
-    return { taskId, available: false, bytes: 0, truncated: false, text: '' };
-  }
-
-  const limit = clamp(maxBytes, LIMITS.taskOutputBytes);
-  const start = Math.max(0, info.size - limit);
-  const handle = await open(file, 'r');
-  try {
-    const length = info.size - start;
+    const limit = clamp(maxBytes, LIMITS.taskOutputBytes);
+    const start = Math.max(0, size - limit);
+    const length = size - start;
     const buffer = Buffer.alloc(length);
-    await handle.read(buffer, 0, length, start);
+    if (length > 0) await handle.read(buffer, 0, length, start);
     const text = buffer.toString('utf8');
     return {
       taskId,
       available: true,
-      bytes: info.size,
+      bytes: size,
       truncated: start > 0,
-      text: start > 0 ? `… [tail of ${info.size} bytes]\n${text}` : text,
+      text: start > 0 ? `… [tail of ${size} bytes]\n${text}` : text,
     };
   } finally {
-    await handle.close();
+    await handle.close().catch(() => {});
   }
 }

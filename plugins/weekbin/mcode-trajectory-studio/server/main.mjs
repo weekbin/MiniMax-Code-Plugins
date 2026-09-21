@@ -10,6 +10,7 @@
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
 
+import { isNodeSupported, isWithinVerifiedRange, nodeFloorMessage, NODE_FLOOR_TEXT, VERIFIED_RANGE_TEXT } from './node-version.mjs';
 import { openStore, resolveDataDir, resolveHomeDir } from './store.mjs';
 import { createHandler, serveStdio } from './mcp.mjs';
 import { createStudio } from './http.mjs';
@@ -34,10 +35,9 @@ export function bootstrap({ env = process.env, homeDir } = {}) {
   const home = resolveHomeDir(env, homeDir);
   const warnings = [];
   const store = openStore({ dataDir, warnings });
-  const pluginDataDir = typeof env.PLUGIN_DATA === 'string' && env.PLUGIN_DATA.trim()
-    ? path.resolve(env.PLUGIN_DATA.trim())
-    : null;
-  const studio = createStudio({ store, homeDir: home, pluginDataDir });
+  // Deliberately no PLUGIN_DATA: the panel keeps its capability in memory and
+  // writes nothing, so there is no per-plugin state to place on disk.
+  const studio = createStudio({ store, homeDir: home });
   const handler = createHandler({ store, studio, homeDir: home });
   return { dataDir, home, store, studio, handler, warnings };
 }
@@ -49,6 +49,8 @@ async function doctor(context) {
   const stats = latest ? store.getStats(latest.sessionId) : null;
   return {
     node: process.version,
+    nodeFloor: NODE_FLOOR_TEXT,
+    nodeVerifiedRange: VERIFIED_RANGE_TEXT,
     dataDir,
     // The file actually opened on this machine, not the canonical guess.
     sqlitePath: store.sqliteFile,
@@ -75,6 +77,22 @@ async function doctor(context) {
 }
 
 async function main() {
+  // Before anything else, so a too-old runtime gets a sentence rather than a
+  // module-resolution stack trace.
+  if (!isNodeSupported()) {
+    process.stderr.write(nodeFloorMessage());
+    process.exitCode = 1;
+    return;
+  }
+  if (!isWithinVerifiedRange()) {
+    // Not fatal: the Plugin degrades rather than refusing to run outside the host
+    // range it is tested against. A warning is honest about which that is.
+    process.stderr.write(
+      `[trajectory-studio] Node.js ${process.versions.node} is outside the verified range ` +
+      `${VERIFIED_RANGE_TEXT} (mcode's own engines field, and the range where the bundled ` +
+      `SQLite has FTS5). Continuing, with reduced fidelity.\n`);
+  }
+
   const args = parseArgs(process.argv.slice(2));
   const context = bootstrap();
 

@@ -85,6 +85,15 @@ export const LIMITS = Object.freeze({
 /** Per-session folded totals kept warm; browsing revisits sessions constantly. */
 export const CACHE_ENTRIES = 96;
 
+/**
+ * Ceiling for a single string in a swept outbound payload.
+ *
+ * Deliberately the largest bound any surface already applies, so the egress sweep
+ * can only ever redact. A smaller ceiling here would silently re-truncate content
+ * whose own limit is larger — the task-output tail, for instance.
+ */
+export const EGRESS_STRING_LIMIT = LIMITS.taskOutputBytes.max;
+
 /** Records fetched per MCP page and per web request. */
 export const DETAIL_LEVELS = Object.freeze(['summary', 'full']);
 

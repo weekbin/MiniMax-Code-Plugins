@@ -149,8 +149,11 @@ test('a store opens a projection that is not in the canonical location, and says
 });
 
 test('the data directory follows the environment, never a baked-in location', () => {
-  const home = path.join('/tmp', 'portable-home');
-  assert.equal(resolveDataDir({ MINIMAX_DATA_DIR: '/tmp/explicit' }), '/tmp/explicit');
+  // Resolved, not passed through: comparing against the literal only holds on a
+  // POSIX host, and this assertion is about the environment winning, not about the
+  // separator a host happens to use.
+  const home = path.resolve('/tmp', 'portable-home');
+  assert.equal(resolveDataDir({ MINIMAX_DATA_DIR: '/tmp/explicit' }), path.resolve('/tmp/explicit'));
   assert.equal(resolveDataDir({ USERPROFILE: home }), path.join(home, '.minimax'));
   assert.equal(resolveDataDir({ HOME: home }), path.join(home, '.minimax'));
 });

@@ -6,7 +6,22 @@
  * never hold a copy.
  */
 
-const API_HEADER = { 'x-trajectory-client': '1' };
+/**
+ * The panel's per-process capability, read from the URL fragment.
+ *
+ * Every API route requires it, and the server never sees the fragment: a fragment
+ * is not sent in the request line, so the capability stays out of request logs, out
+ * of `Referer` for any asset request, and out of the address the server logs. A URL
+ * whose `#t=…` was stripped loads the shell and no data, which is the intended
+ * failure — the page explains it rather than retrying.
+ *
+ * Returned as a header value rather than a query parameter for the same reason: a
+ * query parameter would travel to the server on every request.
+ */
+export function panelToken() {
+  const match = /(?:^|[#&])t=([A-Za-z0-9_-]+)/u.exec(window.location.hash);
+  return match ? match[1] : null;
+}
 
 /** Timeline lane packing. */
 const MAX_LANE_ROWS = 8;
@@ -56,4 +71,4 @@ const state = {
 
 const el = (id) => document.getElementById(id);
 
-export { API_HEADER, MAX_LANE_ROWS, LANE_ROW_PX, STREAM_PAGE, EVENT_PAGE, MAX_STREAM_ROWS, state, el };
+export { MAX_LANE_ROWS, LANE_ROW_PX, STREAM_PAGE, EVENT_PAGE, MAX_STREAM_ROWS, state, el };

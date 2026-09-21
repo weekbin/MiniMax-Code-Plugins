@@ -7,11 +7,12 @@
 
 import { createInterface } from 'node:readline';
 
-import { redactEvent, redactPath, redactText } from './redact.mjs';
+import { redactPayload, redactPath, redactText } from './redact.mjs';
+import { EGRESS_STRING_LIMIT } from './config.mjs';
 import { SESSION_KINDS } from './store.mjs';
 
 export const SERVER_NAME = 'mcode-trajectory-studio';
-export const SERVER_VERSION = '0.1.0';
+export const SERVER_VERSION = '0.1.1';
 
 /**
  * Protocol versions this server implements, newest first.
@@ -33,7 +34,7 @@ export function negotiateProtocolVersion(requested) {
 const DETAIL_LEVELS = ['summary', 'full'];
 
 /**
- * Every tool in this server only reads. Declaring that lets a client skip its own
+ * Every tool that only reads. Declaring that lets a client skip its own
  * confirmation prompts for calls that cannot mutate anything.
  */
 const READ_ONLY = Object.freeze({
@@ -41,6 +42,23 @@ const READ_ONLY = Object.freeze({
   destructiveHint: false,
   idempotentHint: true,
   // Reading local session data is a closed-world operation: no outbound requests.
+  openWorldHint: false,
+});
+
+/**
+ * `trajectory_studio` is not read-only, and claiming it was is a real hazard: a
+ * client that trusts `readOnlyHint` skips its confirmation prompt, and this call
+ * opens a listening socket and publishes a capability URL. It reads nothing that
+ * the other tools do not, but starting a listener is a side effect on the
+ * environment.
+ *
+ * It is idempotent — a second call while the panel runs returns the same URL and
+ * the same capability, rather than invalidating the page the caller already opened.
+ */
+const STUDIO = Object.freeze({
+  readOnlyHint: false,
+  destructiveHint: false,
+  idempotentHint: true,
   openWorldHint: false,
 });
 
@@ -123,12 +141,16 @@ export const TOOLS = [
   },
   {
     name: 'trajectory_studio',
-    annotations: READ_ONLY,
+    annotations: STUDIO,
     description:
-      'Start (or reuse) the local Trajectory Studio web panel bound to 127.0.0.1 and return its URL. Open that URL with the host built-in browser. The server is read-only, independent of the chat session, and never leaves the machine.',
+      'Start (or reuse) the local Trajectory Studio web panel bound to 127.0.0.1 and return its URL. ' +
+      'Open that URL with the host built-in browser, verbatim: the fragment carries a per-process ' +
+      'capability token that every API route requires, so a URL with the fragment stripped will not ' +
+      'load any data. Do not log or share the URL. The panel reads local session data only; starting ' +
+      'it opens a loopback listener.',
     inputSchema: obj({
       sessionId: str('Session to focus when the panel opens.'),
-      port: int('Preferred TCP port. Omit to reuse the last port or pick a free one.', { minimum: 1024, maximum: 65535 }),
+      port: int('Preferred TCP port. Omit to reuse the running panel or pick a free one.', { minimum: 1024, maximum: 65535 }),
       stop: { type: 'boolean', description: 'Stop the running panel instead of starting it. Default false.' },
     }),
   },
@@ -148,7 +170,7 @@ async function resolveSessionId(store, sessionId) {
 async function callTool(ctx, name, args = {}) {
   const { store, studio, homeDir, warnings } = ctx;
   const detailLevel = DETAIL_LEVELS.includes(args.detailLevel) ? args.detailLevel : 'summary';
-  const options = { maxLength: 4000 };
+  const options = { maxLength: 20000 };
 
   switch (name) {
     case 'trajectory_list': {
@@ -194,7 +216,7 @@ async function callTool(ctx, name, args = {}) {
         page = { ...page, total: page.events.length, nextOffset: null };
       }
       const events = detailLevel === 'full'
-        ? page.events.map((event) => redactEvent(event, options))
+        ? page.events.map((event) => redactPayload(event, options))
         : page.events;
       return {
         sessionId,
@@ -211,7 +233,15 @@ async function callTool(ctx, name, args = {}) {
     case 'trajectory_search': {
       const sessions = store.searchSessions({ query: args.query, limit: args.limit ?? 20 })
         .map((session) => ({ ...session, workspaceDir: redactPath(session.workspaceDir, { homeDir }) }));
-      return { query: args.query, returned: sessions.length, sessions };
+      // An empty result on a runtime whose SQLite lacks FTS5 looks identical to a
+      // query that matched nothing, so say which one it is.
+      return {
+        query: args.query,
+        returned: sessions.length,
+        ftsAvailable: store.hasFts,
+        ...(store.hasFts ? {} : { note: 'full-text search is unavailable on this Node runtime (bundled SQLite without FTS5)' }),
+        sessions,
+      };
     }
 
     case 'trajectory_tasks': {
@@ -242,8 +272,9 @@ async function callTool(ctx, name, args = {}) {
         port: started.port,
         reused: started.reused,
         sessionId: started.sessionId ?? null,
-        readOnly: true,
-        boundTo: '127.0.0.1',
+        boundTo: started.boundTo,
+        capabilityRequired: true,
+        note: 'Open the URL exactly as returned, including the #t= fragment. It is this process\'s capability for the panel; do not log it or share it.',
       };
     }
 
@@ -284,10 +315,16 @@ export function handleRpcMessage(handler, message) {
     const name = params?.name;
     const args = params?.arguments && typeof params.arguments === 'object' ? params.arguments : {};
     return handler.call(name, args).then(
-      (value) => rpcResult(id, {
-        content: [{ type: 'text', text: JSON.stringify(value, null, 2) }],
-        structuredContent: value,
-      }),
+      (value) => {
+        // One sweep on the way out, on top of the redaction each read already does,
+        // so a field added to a result later cannot leave unredacted. The ceiling is
+        // the largest per-field bound any tool applies, so this can only redact.
+        const safe = redactPayload(value, { maxLength: EGRESS_STRING_LIMIT });
+        return rpcResult(id, {
+          content: [{ type: 'text', text: JSON.stringify(safe, null, 2) }],
+          structuredContent: safe,
+        });
+      },
       (error) => rpcResult(id, {
         isError: true,
         content: [{ type: 'text', text: error instanceof Error ? error.message : String(error) }],

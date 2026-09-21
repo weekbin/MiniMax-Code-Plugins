@@ -12,18 +12,26 @@
 
 import { parseJson, num } from './json.mjs';
 import { tableExists } from './sqlite.mjs';
+import { redactText } from './redact.mjs';
 import { resolveWorkspaceIdentities } from './git.mjs';
 import { LIMITS, clamp } from './config.mjs';
 
 export const SESSION_KINDS = ['conversation', 'task', 'peek', 'channel', 'cron', 'unknown'];
 
-/** Normalise a `local_runtime_sessions` row into the shape consumers use. */
+/**
+ * Normalise a `local_runtime_sessions` row into the shape consumers use.
+ *
+ * A title is a person's own words, so it is kept — but it is also free text, and a
+ * title that happens to quote an API key or a bearer token must not carry it out
+ * of the process. Redacting the credential substring in place keeps the title
+ * searchable and the secret out.
+ */
 export function sessionSummary(row) {
   const record = parseJson(row.record_json) || {};
   const col = (name, fallback) => (row[name] === undefined || row[name] === null ? fallback : row[name]);
   return {
     sessionId: row.session_id,
-    title: col('title', record.title ?? null),
+    title: redactText(col('title', record.title ?? null), { maxLength: 1024 }),
     agent: col('agent_name', record.agentName ?? null),
     sessionKind: col('session_kind', record.sessionKind ?? 'unknown'),
     status: col('status', record.status ?? null),
@@ -33,7 +41,8 @@ export function sessionSummary(row) {
     createdAtMs: col('created_at_ms', record.createdAtMs ?? null),
     updatedAtMs: col('updated_at_ms', null),
     archived: Boolean(col('archived', 0)),
-    errorMessage: col('error_message', null),
+    // A failed session's error text routinely quotes the command that failed.
+    errorMessage: redactText(col('error_message', null)),
   };
 }
 

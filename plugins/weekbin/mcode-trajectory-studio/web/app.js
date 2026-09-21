@@ -25,7 +25,7 @@
  */
 
 import { state, el } from './js/state.js';
-import { api } from './js/api.js';
+import { api, UnauthorizedPanelError } from './js/api.js';
 import { banner } from './js/banner.js';
 import { applyTheme, readTheme } from './js/theme.js';
 import { hydrateSidebarState } from './js/storage.js';
@@ -55,8 +55,27 @@ async function boot() {
     document.body.dataset.state = 'ready';
   } catch (error) {
     document.body.dataset.state = 'error';
-    banner(`初始化失败：${error.message}`);
+    banner(
+      error instanceof UnauthorizedPanelError
+        // The capability lives in the fragment, so a truncated or hand-copied URL
+        // is the likely cause — say that instead of "HTTP 403".
+        ? '面板凭据无效：请用 agent 返回的完整 URL 打开（必须包含 `#t=…` 片段），该片段是本次进程的访问凭据。'
+        : `初始化失败：${error.message}`,
+    );
   }
 }
 
 boot();
+
+/**
+ * A fragment-only navigation does not re-run this module.
+ *
+ * That matters because the capability lives in the fragment: opening the bare URL
+ * and then pasting the full URL into the same tab is a same-document navigation, so
+ * `boot()` never runs again and the page keeps showing the credential error. Reload
+ * once the page is in an error state and the fragment has changed, and the panel
+ * recovers without the user having to know why.
+ */
+window.addEventListener('hashchange', () => {
+  if (document.body.dataset.state === 'error') window.location.reload();
+});

@@ -12,9 +12,12 @@ import { createRequestHandler } from '../server/http.mjs';
  * construction — the client only ever receives a code from a fixed set, and
  * anything unexpected is logged to stderr instead. These tests pin that, because
  * it is the kind of thing that silently comes back.
+ *
+ * Requests here carry the capability the real panel requires, so a fence test
+ * exercises the fence rather than failing on the credential check first.
  */
 
-const CLIENT_HEADER = 'x-trajectory-client';
+const TOKEN = 'test-capability-token-0123456789';
 const PORT = 7399;
 
 function makeRes() {
@@ -27,12 +30,17 @@ function makeRes() {
   };
 }
 
-function makeReq({ method = 'GET', url = '/api/meta', host, headers = {} } = {}) {
+/** Headers carrying the panel capability, plus whatever the case adds. */
+function authorized(extra = {}) {
+  return { 'x-trajectory-token': TOKEN, ...extra };
+}
+
+function makeReq({ method = 'GET', url = '/api/meta', host, headers = authorized(), remoteAddress = '127.0.0.1' } = {}) {
   return {
     method,
     url,
     headers: { host: host ?? `127.0.0.1:${PORT}`, ...headers },
-    socket: { localPort: PORT },
+    socket: { localPort: PORT, remoteAddress },
   };
 }
 
@@ -60,9 +68,10 @@ function makeStore(overrides = {}) {
 
 const handler = (store) => createRequestHandler({
   store,
-  homeDir: '/home/tester',
+  homeDir: '/tmp/trajectory-fixture-home',
   getFocus: () => null,
   setFocus: () => {},
+  getToken: () => TOKEN,
 });
 
 async function request(store, req, { captureStderr = false } = {}) {
@@ -83,7 +92,7 @@ async function jsonBody(res) {
 }
 
 test('an unknown API route answers with a fixed code, not the route', async () => {
-  const { res } = await request(makeStore(), makeReq({ url: '/api/definitely-not-a-route', headers: { [CLIENT_HEADER]: '1' } }));
+  const { res } = await request(makeStore(), makeReq({ url: '/api/definitely-not-a-route' }));
   assert.equal(res.status, 404);
   const body = await jsonBody(res);
   assert.equal(body.error, 'unknown_route');
@@ -94,7 +103,7 @@ test('an unknown API route answers with a fixed code, not the route', async () =
 test('the search endpoint does not echo the query back', async () => {
   const { res } = await request(
     makeStore(),
-    makeReq({ url: `/api/search?q=${encodeURIComponent('<script>alert(1)</script>')}`, headers: { [CLIENT_HEADER]: '1' } }),
+    makeReq({ url: `/api/search?q=${encodeURIComponent('<script>alert(1)</script>')}` }),
   );
   assert.equal(res.status, 200);
   assert.equal(res.body.includes('<script>'), false, `response reflected the query: ${res.body}`);
@@ -104,7 +113,7 @@ test('the search endpoint does not echo the query back', async () => {
 test('an unexpected error is a generic code, and its detail goes to stderr', async () => {
   const detail = '/api/internal-detail-that-must-not-ship';
   const store = makeStore({ listSessions: () => { throw new Error(detail); } });
-  const { res, stderr } = await request(store, makeReq({ url: '/api/sessions', headers: { [CLIENT_HEADER]: '1' } }), { captureStderr: true });
+  const { res, stderr } = await request(store, makeReq({ url: '/api/sessions' }), { captureStderr: true });
   assert.equal(res.status, 500);
   assert.equal((await jsonBody(res)).error, 'internal_error');
   assert.equal(res.body.includes(detail), false, `response leaked the error message: ${res.body}`);
@@ -113,60 +122,75 @@ test('an unexpected error is a generic code, and its detail goes to stderr', asy
 });
 
 test('a missing session is a bad request, not a server fault', async () => {
-  const { res } = await request(makeStore(), makeReq({ url: '/api/events', headers: { [CLIENT_HEADER]: '1' } }));
+  const { res } = await request(makeStore(), makeReq({ url: '/api/events' }));
   assert.equal(res.status, 400);
   assert.equal((await jsonBody(res)).error, 'session_required');
 });
 
 test('a rejected task id is reported as a bad request', async () => {
   const store = makeStore({ readTaskOutput: async () => { throw new Error('invalid_task_id'); } });
-  const { res } = await request(
-    store,
-    makeReq({ url: '/api/task-output?taskId=..%2Fetc%2Fpasswd', headers: { [CLIENT_HEADER]: '1' } }),
-  );
+  const { res } = await request(store, makeReq({ url: '/api/task-output?taskId=..%2Fetc%2Fpasswd' }));
   assert.equal(res.status, 400);
   assert.equal((await jsonBody(res)).error, 'invalid_task_id');
   assert.equal(res.body.includes('passwd'), false, 'response must not reflect the supplied id');
 });
 
 test('an unknown session is a not-found, without naming the id', async () => {
-  const { res } = await request(
-    makeStore(),
-    makeReq({ url: '/api/overview?id=mvs_injected-value', headers: { [CLIENT_HEADER]: '1' } }),
-  );
+  const { res } = await request(makeStore(), makeReq({ url: '/api/overview?id=mvs_injected-value' }));
   assert.equal(res.status, 404);
   assert.equal((await jsonBody(res)).error, 'session_not_found');
   assert.equal(res.body.includes('mvs_injected-value'), false, 'response must not reflect the supplied id');
 });
 
 test('every response carries the hardening headers', async () => {
-  const { res } = await request(makeStore(), makeReq({ url: '/api/meta', headers: { [CLIENT_HEADER]: '1' } }));
+  const { res } = await request(makeStore(), makeReq({ url: '/api/meta' }));
   assert.equal(res.status, 200);
   assert.match(res.headers['Content-Type'], /^application\/json/);
   assert.equal(res.headers['X-Content-Type-Options'], 'nosniff');
   assert.match(res.headers['Content-Security-Policy'], /default-src 'none'/);
+  assert.match(res.headers['Content-Security-Policy'], /script-src 'self'/);
 });
 
 test('the request fences still hold', async () => {
-  const wrongHost = await request(makeStore(), makeReq({ url: '/api/meta', host: 'evil.example:7399', headers: { [CLIENT_HEADER]: '1' } }));
+  const wrongHost = await request(makeStore(), makeReq({ url: '/api/meta', host: 'evil.example:7399' }));
   assert.equal(wrongHost.res.status, 403);
   assert.equal((await jsonBody(wrongHost.res)).error, 'forbidden_host');
 
-  const wrongOrigin = await request(makeStore(), makeReq({ url: '/api/meta', headers: { origin: 'http://evil.example', [CLIENT_HEADER]: '1' } }));
+  const wrongOrigin = await request(makeStore(), makeReq({ url: '/api/meta', headers: authorized({ origin: 'http://evil.example' }) }));
   assert.equal(wrongOrigin.res.status, 403);
   assert.equal((await jsonBody(wrongOrigin.res)).error, 'forbidden_origin');
 
-  const noHeader = await request(makeStore(), makeReq({ url: '/api/meta' }));
-  assert.equal(noHeader.res.status, 403);
-  assert.equal((await jsonBody(noHeader.res)).error, 'missing_client_header');
+  const noCredential = await request(makeStore(), makeReq({ url: '/api/meta', headers: {} }));
+  assert.equal(noCredential.res.status, 403);
+  assert.equal((await jsonBody(noCredential.res)).error, 'forbidden_token');
 
-  const crossSite = await request(makeStore(), makeReq({ url: '/api/meta', headers: { 'sec-fetch-site': 'cross-site', [CLIENT_HEADER]: '1' } }));
+  const crossSite = await request(makeStore(), makeReq({ url: '/api/meta', headers: authorized({ 'sec-fetch-site': 'cross-site' }) }));
   assert.equal(crossSite.res.status, 403);
   assert.equal((await jsonBody(crossSite.res)).error, 'cross_site');
 
-  const wrongMethod = await request(makeStore(), makeReq({ method: 'POST', url: '/api/meta', headers: { [CLIENT_HEADER]: '1' } }));
+  const wrongMethod = await request(makeStore(), makeReq({ method: 'POST', url: '/api/meta' }));
   assert.equal(wrongMethod.res.status, 405);
 
-  const outsideApi = await request(makeStore(), makeReq({ url: '/../package.json' }));
+  const outsideApi = await request(makeStore(), makeReq({ url: '/../package.json', headers: {} }));
   assert.equal(outsideApi.res.status, 404);
+});
+
+test('a static asset needs no capability, and an API route always does', async () => {
+  const asset = await request(makeStore(), makeReq({ url: '/style.css', headers: {} }));
+  assert.equal(asset.res.status, 200);
+  assert.match(asset.res.headers['Content-Type'], /^text\/css/);
+
+  const api = await request(makeStore(), makeReq({ url: '/api/meta', headers: {} }));
+  assert.equal(api.res.status, 403);
+});
+
+test('the API response is swept for credentials on the way out', async () => {
+  const secret = 'ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+  const store = makeStore({
+    listSessions: () => [{ sessionId: 's1', title: `deploy with ${secret} today`, workspaceDir: '/tmp/trajectory-fixture-home/ws' }],
+  });
+  const { res } = await request(store, makeReq({ url: '/api/sessions' }));
+  assert.equal(res.status, 200);
+  assert.equal(res.body.includes(secret), false, `the sweep missed a credential: ${res.body}`);
+  assert.equal(res.body.includes('deploy with'), true, 'the sweep destroyed the title text');
 });

@@ -322,15 +322,59 @@ plugins/weekbin/mcode-trajectory-studio/
 7. **搜索** — 走 FTS5
 8. 长历史分页 + 只渲染可见行
 
-### 6.5 安全基线（对齐先例）
+### 6.5 安全基线（对齐先例，并按 review 修正）
 
-- 绑定 `127.0.0.1`，仅本机
-- `Host` 头必须等于监听 authority；带 `Origin` 时校验同源
-- API 要求自定义头，强制跨站请求走被拒的 CORS preflight
-- CSP `default-src 'self'`；无远程字体/脚本/样式；无外网请求
-- `X-Content-Type-Options: nosniff`、`Cache-Control: no-store`、`Referrer-Policy: no-referrer`
-- SQLite 一律只读打开；不写入任何会话产物
-- 拒绝 symlink 的输出目录；单行/单响应大小上限
+监听与网络隔离：
+
+- **仅绑定 `127.0.0.1`**，且地址是常量，无任何覆盖途径（环境变量/参数/配置都改不动）
+- 请求级再挡一道：`req.socket.remoteAddress` 不是回环（含 `::1`、`::ffff:127.0.0.1`、`127.0.0.0/8`）
+  直接 403 `forbidden_remote`
+- `Host` 头必须等于监听 authority；带 `Origin` 时校验同源；`Sec-Fetch-Site` 为 cross-site / same-site 时拒绝
+- 测试断言「所有非回环本地地址上都连不通」
+
+授权（**不是** CSRF 栅栏）：
+
+- 每个 MCP 进程启动面板时用 CSPRNG 生成 256 位 capability token，放在 URL fragment（`#t=…`）
+- 每个 `/api/*` 都要求 `x-trajectory-token`，用 `timingSafeEqual` 等长比较；重复头/非字符串一律拒绝
+- token 只在内存、不落盘、`stop()` 即失效；重启面板换新 token
+- fragment 不发往服务端 → 不进请求日志、不进静态资源 Referer
+- 进程隔离：mcode 每会话一个 MCP 进程 → 每会话一个面板一份 token，A 的 token 打不开 B 的面板
+- 保留 Host/Origin/Sec-Fetch 校验作为纵深，但不把它们当授权
+
+文件读取的包含性（唯一不变式）：
+
+- 任何读取的 canonical（realpath）结果必须落在 canonical `dataDir` 之内
+- 末段组件不得是 symlink；用 `O_NOFOLLOW` 关闭 realpath→open 之间的窗口
+- 用已打开 fd 做 fstat 取 size、做 stream 读 → 检查与读取是同一个 inode（无 TOCTOU）
+- 每次目录遍历逐层用 `isDirectory()` 过滤（dirent 对 symlink 目录返回既非文件也非目录）
+- canary 测试覆盖：目录 symlink / 两级跳转 / 相对 symlink / 末段文件 symlink / 根自身是 symlink，
+  且每条都配正向对照
+
+脱敏（覆盖凭据在磁盘上的真实形态）：
+
+- 规则**有序**：私钥块 → 连接串内联凭据 → 整个 Authorization 头（含 scheme）→ 裸 scheme+token
+  → provider key → AWS key id → 键值对
+- 键值对允许 key 与分隔符之间夹引号（`{"api_key":"…"}`），替换时保留引号形状 → 结果仍是合法 JSON
+- 规则幂等（源头发过一次、出口再 sweep 一次不会二次破坏）
+- 结构化键用**精确名**判定（保住 `inputTokens` 等计数），自由文本用**带分隔符的包含**判定
+- 任务 description/command 在数据源头脱敏；会话 title 就地替换凭据子串、保留其余文本
+- 每个出口（MCP tool result、HTTP API response）整体 sweep 一次，上限取各面已有的最大上限
+  （只脱敏、不额外截断），因此日后新增字段不会漏
+
+渲染层：
+
+- 客户端零 `innerHTML` / `insertAdjacentHTML` / `outerHTML` / `document.write` / `srcdoc` / `eval` /
+  `new Function` / `javascript:`，且 `setAttribute` 的名字必须是字面量
+- 全部节点用 `createElement` 构建、用 `textContent` 写入 → 会话正文永远是文本
+- CSP `default-src 'none'` + `script-src 'self'`（无内联脚本、无远程源）
+- 上方 sink 清单由**带变异自检**的静态扫描守住（扫描器先证明自己抓得到，再扫真实资源）
+
+其余：
+
+- SQLite 一律只读打开（`readOnly: true`）；不写入任何会话产物
+- 插件不创建任何文件：不写 PLUGIN_DATA、不写端口文件（面板端口只出现在工具返回值与 stdout）
+- 单行 / 单响应大小上限；JSONL 单行 2 MiB 上限
+- 错误响应只回闭集内的固定码，非预期错误只写 stderr
 
 ### 6.6 校验器合规清单（`scripts/validate.mjs`）
 

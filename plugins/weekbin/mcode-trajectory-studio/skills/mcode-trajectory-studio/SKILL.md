@@ -4,7 +4,7 @@ description: Inspect and visualize MiniMax Code session trajectories from the lo
 license: Apache-2.0
 metadata:
   author: weekbin
-  version: 0.1.0
+  version: 0.1.1
 ---
 
 # MiniMax Code Trajectory Studio
@@ -72,14 +72,40 @@ Never widen to `full` on your own. The user's session content is theirs; ask bef
 
 When the user wants to browse a trajectory themselves:
 
-1. Call `trajectory_studio` with the `sessionId` to focus. It returns a `url` on `127.0.0.1`.
+1. Call `trajectory_studio` with the `sessionId` to focus. It returns a `url` on `127.0.0.1` whose
+   **fragment carries a capability token** (`#t=…`).
+   - Open that URL **verbatim, including the `#t=` fragment**. Do not strip the fragment, do not
+     re-encode it, do not "clean up" the URL, and do not hand-edit the port. The token is the only
+     thing that lets the page read anything: without it every API route answers `403` and the panel
+     loads an empty shell.
+   - It is a **per-process credential, not a public link.** Do not write it into a log, a commit, an
+     issue, a chat message, or any file. If the user needs the panel again in a later session, call
+     `trajectory_studio` again — a new call in a new process returns a new token, and a URL from a
+     previous process will be refused.
+   - Two sessions get two panels with two separate tokens. One session's URL cannot open another's
+     panel; if the user is looking at the wrong panel, start one for the session they mean.
 2. Find the host's browser skill in the current Skill catalog — for example
    `browser-use:control-in-app-browser` only if that exact name is listed. Load it, then open the
    returned URL with the host's browser tool.
-3. Confirm the page actually rendered before reporting success. If no browser capability is
-   available, give the user the URL and say the panel is running locally.
-4. The panel is read-only, bound to loopback, and stops when the MCP connection closes. Call
-   `trajectory_studio` with `stop: true` only if the user asks to shut it down.
+3. Confirm the page actually rendered before reporting success. If the page shows the
+   "面板凭据无效" banner, the URL lost its fragment — call `trajectory_studio` again and open the
+   fresh URL. If no browser capability is available, give the user the URL and say the panel is
+   running locally.
+4. The panel only reads session data, but starting it **opens a loopback listener**: `trajectory_studio`
+   is the one tool here that is not read-only, so do not present it as a pure read. It bound to
+   `127.0.0.1` and stops when the MCP connection closes. Call `trajectory_studio` with `stop: true`
+   only if the user asks to shut it down.
+
+## Secrets
+
+- Everything returned by these tools has already been through the redactor, but treat it as
+  sensitive anyway: `full` detail is message text, tool arguments and tool results, and those
+  routinely quote credentials even after redaction.
+- Prefer `summary` detail. Ask before requesting `full` detail, and never paste a `full` payload into
+  a file, a commit, or a message that leaves the machine.
+- If you notice a credential that survived redaction, report the string to the user as a redaction
+  gap rather than working around it — do not quietly ignore it, and do not reproduce the secret more
+  widely than the user already has it.
 
 ## Data source notes
 

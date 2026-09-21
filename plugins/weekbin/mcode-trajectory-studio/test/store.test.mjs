@@ -10,6 +10,24 @@ import { openStore, resolveDataDir, resolveHomeDir, encodeFtsQuery } from '../se
 import { resolveWorkspaceIdentity } from '../server/git.mjs';
 import { redactValue, redactText, redactPath } from '../server/redact.mjs';
 import { TOOLS, handleRpcMessage } from '../server/mcp.mjs';
+import { ftsModuleAvailable } from '../server/sqlite.mjs';
+
+/**
+ * Whether this runtime's bundled SQLite has FTS5.
+ *
+ * The runtime's own index is an FTS5 virtual table, so a fixture that builds one
+ * cannot be created without the module. A runtime without FTS5 is a *supported*
+ * configuration rather than a failure — Node 22.13.0 through 22.18.x and every 23.x
+ * bundle a SQLite without it — so the fixture omits the index there and the search
+ * test skips itself, which leaves the rest of this suite free to prove that every
+ * other read still works on those releases.
+ */
+const FTS5 = (() => {
+  const probe = new DatabaseSync(':memory:');
+  const available = ftsModuleAvailable(probe);
+  probe.close();
+  return available;
+})();
 
 /* ------------------------------------------------------------- fixtures -- */
 
@@ -51,11 +69,11 @@ async function makeDataDir({ withSqlite = true, withJsonl = true } = {}) {
       CREATE TABLE local_runtime_session_agent_definitions (
         session_id TEXT PRIMARY KEY, definition_json TEXT NOT NULL
       );
-      CREATE VIRTUAL TABLE local_runtime_sessions_fts USING fts5(
+      ${FTS5 ? `CREATE VIRTUAL TABLE local_runtime_sessions_fts USING fts5(
         session_id UNINDEXED, session_id_terms, agent_name_terms, title_terms,
         workspace_dir_terms, purpose_terms, status_terms, session_type_terms,
         tokenize = 'unicode61'
-      );
+      );` : ''}
     `);
 
     const session = (id, title, agent, updated, parent = null) => db.prepare(`
@@ -71,7 +89,7 @@ async function makeDataDir({ withSqlite = true, withJsonl = true } = {}) {
 
     // The FTS columns store `c<hex codepoint>` tokens.
     const encode = (text) => [...text].map((ch) => `c${ch.codePointAt(0).toString(16)}`).join(' ');
-    for (const [id, title, agent] of [['sess-a', 'Alpha task', 'mavis'], ['sess-b', 'Beta subtask', 'explore']]) {
+    for (const [id, title, agent] of (FTS5 ? [['sess-a', 'Alpha task', 'mavis'], ['sess-b', 'Beta subtask', 'explore']] : [])) {
       db.prepare(`
         INSERT INTO local_runtime_sessions_fts
           (session_id, session_id_terms, agent_name_terms, title_terms, workspace_dir_terms, purpose_terms, status_terms, session_type_terms)
@@ -170,18 +188,26 @@ async function makeDataDir({ withSqlite = true, withJsonl = true } = {}) {
 /* ------------------------------------------------------------- data dir -- */
 
 test('the data directory resolves from env, then HOME, then USERPROFILE', () => {
+  // The contract is that a configured directory is *resolved*, not passed through
+  // verbatim, so every expectation is resolved the same way. Comparing against the
+  // literal only holds on a POSIX host, where resolving is the identity.
+  const home = path.resolve(FIXTURE_HOME);
+  const under = (dir) => path.join(dir, '.minimax');
   // An explicit environment variable wins, MINIMAX before MAVIS.
-  assert.equal(resolveDataDir({ MINIMAX_DATA_DIR: '/tmp/a' }, FIXTURE_HOME), '/tmp/a');
-  assert.equal(resolveDataDir({ MAVIS_DATA_DIR: '/tmp/b' }, FIXTURE_HOME), '/tmp/b');
-  assert.equal(resolveDataDir({ MINIMAX_DATA_DIR: '/tmp/a', MAVIS_DATA_DIR: '/tmp/b' }, FIXTURE_HOME), '/tmp/a');
+  assert.equal(resolveDataDir({ MINIMAX_DATA_DIR: '/tmp/a' }, FIXTURE_HOME), path.resolve('/tmp/a'));
+  assert.equal(resolveDataDir({ MAVIS_DATA_DIR: '/tmp/b' }, FIXTURE_HOME), path.resolve('/tmp/b'));
+  assert.equal(
+    resolveDataDir({ MINIMAX_DATA_DIR: '/tmp/a', MAVIS_DATA_DIR: '/tmp/b' }, FIXTURE_HOME),
+    path.resolve('/tmp/a'),
+  );
   // Then the home directory from the environment, then the passed one.
-  assert.equal(resolveDataDir({ HOME: FIXTURE_HOME }), path.join(FIXTURE_HOME, '.minimax'));
-  assert.equal(resolveDataDir({}, FIXTURE_HOME), path.join(FIXTURE_HOME, '.minimax'));
+  assert.equal(resolveDataDir({ HOME: FIXTURE_HOME }), under(home));
+  assert.equal(resolveDataDir({}, FIXTURE_HOME), under(home));
   // USERPROFILE is what Windows actually sets, so it has to work on its own.
-  assert.equal(resolveDataDir({ USERPROFILE: FIXTURE_HOME }), path.join(FIXTURE_HOME, '.minimax'));
-  assert.equal(resolveHomeDir({ USERPROFILE: FIXTURE_HOME }), FIXTURE_HOME);
+  assert.equal(resolveDataDir({ USERPROFILE: FIXTURE_HOME }), under(home));
+  assert.equal(resolveHomeDir({ USERPROFILE: FIXTURE_HOME }), home);
   // A blank value is not a value.
-  assert.equal(resolveDataDir({ MINIMAX_DATA_DIR: '   ', USERPROFILE: FIXTURE_HOME }), path.join(FIXTURE_HOME, '.minimax'));
+  assert.equal(resolveDataDir({ MINIMAX_DATA_DIR: '   ', USERPROFILE: FIXTURE_HOME }), path.join(path.resolve(FIXTURE_HOME), '.minimax'));
   assert.equal(resolveHomeDir({ HOME: '  ' }), null);
   assert.throws(() => resolveDataDir({}, ''), /MINIMAX_DATA_DIR|HOME/);
 });
@@ -196,9 +222,14 @@ test('encodeFtsQuery mirrors the runtime token encoding', () => {
 
 test('listSessions hides archived rows and reports metadata', async (t) => {
   const dataDir = await makeDataDir();
-  t.after(() => rm(dataDir, { recursive: true, force: true }));
   const store = openStore({ dataDir });
-  t.after(() => store.close());
+  t.after(async () => {
+    // Close before removing. Windows refuses to unlink a file that is still open,
+    // so registering the removal first passed on POSIX and failed on every other
+    // platform with EBUSY.
+    store.close();
+    await rm(dataDir, { recursive: true, force: true });
+  });
 
   const sessions = store.listSessions({ limit: 10 });
   assert.deepEqual(sessions.map((s) => s.sessionId), ['sess-a', 'sess-b']);
@@ -210,9 +241,14 @@ test('listSessions hides archived rows and reports metadata', async (t) => {
 
 test('getStats folds the dsh sessionStats fields', async (t) => {
   const dataDir = await makeDataDir();
-  t.after(() => rm(dataDir, { recursive: true, force: true }));
   const store = openStore({ dataDir });
-  t.after(() => store.close());
+  t.after(async () => {
+    // Close before removing. Windows refuses to unlink a file that is still open,
+    // so registering the removal first passed on POSIX and failed on every other
+    // platform with EBUSY.
+    store.close();
+    await rm(dataDir, { recursive: true, force: true });
+  });
 
   const stats = store.getStats('sess-a');
   assert.equal(stats.turns, 4, 'four distinct turn IDs');
@@ -237,9 +273,14 @@ test('getStats folds the dsh sessionStats fields', async (t) => {
 
 test('tool wall-clock is summed from background tasks', async (t) => {
   const dataDir = await makeDataDir();
-  t.after(() => rm(dataDir, { recursive: true, force: true }));
   const store = openStore({ dataDir });
-  t.after(() => store.close());
+  t.after(async () => {
+    // Close before removing. Windows refuses to unlink a file that is still open,
+    // so registering the removal first passed on POSIX and failed on every other
+    // platform with EBUSY.
+    store.close();
+    await rm(dataDir, { recursive: true, force: true });
+  });
 
   const tasks = store.listBackgroundTasks('sess-a');
   assert.equal(tasks.length, 2);
@@ -249,9 +290,14 @@ test('tool wall-clock is summed from background tasks', async (t) => {
 
 test('tasks carry description, agent, child session and output availability', async (t) => {
   const dataDir = await makeDataDir();
-  t.after(() => rm(dataDir, { recursive: true, force: true }));
   const store = openStore({ dataDir });
-  t.after(() => store.close());
+  t.after(async () => {
+    // Close before removing. Windows refuses to unlink a file that is still open,
+    // so registering the removal first passed on POSIX and failed on every other
+    // platform with EBUSY.
+    store.close();
+    await rm(dataDir, { recursive: true, force: true });
+  });
 
   const tasks = store.listBackgroundTasks('sess-a');
   const bash = tasks.find((task) => task.taskId === 't1');
@@ -273,9 +319,14 @@ test('tasks carry description, agent, child session and output availability', as
 
 test('task output is read as a bounded tail and rejects unsafe ids', async (t) => {
   const dataDir = await makeDataDir();
-  t.after(() => rm(dataDir, { recursive: true, force: true }));
   const store = openStore({ dataDir });
-  t.after(() => store.close());
+  t.after(async () => {
+    // Close before removing. Windows refuses to unlink a file that is still open,
+    // so registering the removal first passed on POSIX and failed on every other
+    // platform with EBUSY.
+    store.close();
+    await rm(dataDir, { recursive: true, force: true });
+  });
 
   const output = await store.readTaskOutput('t1');
   assert.equal(output.available, true);
@@ -296,9 +347,14 @@ test('task output is read as a bounded tail and rejects unsafe ids', async (t) =
 
 test('child sessions are listed for drill-down', async (t) => {
   const dataDir = await makeDataDir();
-  t.after(() => rm(dataDir, { recursive: true, force: true }));
   const store = openStore({ dataDir });
-  t.after(() => store.close());
+  t.after(async () => {
+    // Close before removing. Windows refuses to unlink a file that is still open,
+    // so registering the removal first passed on POSIX and failed on every other
+    // platform with EBUSY.
+    store.close();
+    await rm(dataDir, { recursive: true, force: true });
+  });
 
   assert.deepEqual(store.listChildSessions('sess-a').map((session) => session.sessionId), ['sess-b']);
   assert.deepEqual(store.listChildSessions('sess-b'), []);
@@ -306,9 +362,14 @@ test('child sessions are listed for drill-down', async (t) => {
 
 test('getEvents omits content in summary mode and includes it in full mode', async (t) => {
   const dataDir = await makeDataDir();
-  t.after(() => rm(dataDir, { recursive: true, force: true }));
   const store = openStore({ dataDir });
-  t.after(() => store.close());
+  t.after(async () => {
+    // Close before removing. Windows refuses to unlink a file that is still open,
+    // so registering the removal first passed on POSIX and failed on every other
+    // platform with EBUSY.
+    store.close();
+    await rm(dataDir, { recursive: true, force: true });
+  });
 
   const summary = store.getEvents({ sessionId: 'sess-a', detailLevel: 'summary' });
   assert.equal(summary.total, 6);
@@ -331,9 +392,14 @@ test('getEvents omits content in summary mode and includes it in full mode', asy
 
 test('getEvents paginates and filters by turn', async (t) => {
   const dataDir = await makeDataDir();
-  t.after(() => rm(dataDir, { recursive: true, force: true }));
   const store = openStore({ dataDir });
-  t.after(() => store.close());
+  t.after(async () => {
+    // Close before removing. Windows refuses to unlink a file that is still open,
+    // so registering the removal first passed on POSIX and failed on every other
+    // platform with EBUSY.
+    store.close();
+    await rm(dataDir, { recursive: true, force: true });
+  });
 
   const first = store.getEvents({ sessionId: 'sess-a', limit: 2 });
   assert.equal(first.events.length, 2);
@@ -351,9 +417,14 @@ test('getEvents paginates and filters by turn', async (t) => {
 
 test('compaction records carry their metadata', async (t) => {
   const dataDir = await makeDataDir();
-  t.after(() => rm(dataDir, { recursive: true, force: true }));
   const store = openStore({ dataDir });
-  t.after(() => store.close());
+  t.after(async () => {
+    // Close before removing. Windows refuses to unlink a file that is still open,
+    // so registering the removal first passed on POSIX and failed on every other
+    // platform with EBUSY.
+    store.close();
+    await rm(dataDir, { recursive: true, force: true });
+  });
 
   const full = store.getEvents({ sessionId: 'sess-a', detailLevel: 'full' });
   const compaction = full.events.find((event) => event.kind === 'compaction');
@@ -361,11 +432,16 @@ test('compaction records carry their metadata', async (t) => {
   assert.equal(compaction.metadata.tokensBefore, 90000);
 });
 
-test('searchSessions uses the runtime token encoding', async (t) => {
+test('searchSessions uses the runtime token encoding', { skip: FTS5 ? false : 'this runtime\'s SQLite has no FTS5' }, async (t) => {
   const dataDir = await makeDataDir();
-  t.after(() => rm(dataDir, { recursive: true, force: true }));
   const store = openStore({ dataDir });
-  t.after(() => store.close());
+  t.after(async () => {
+    // Close before removing. Windows refuses to unlink a file that is still open,
+    // so registering the removal first passed on POSIX and failed on every other
+    // platform with EBUSY.
+    store.close();
+    await rm(dataDir, { recursive: true, force: true });
+  });
 
   assert.equal(store.hasFts, true);
   assert.deepEqual(store.searchSessions({ query: 'Alpha' }).map((s) => s.sessionId), ['sess-a']);
@@ -375,9 +451,14 @@ test('searchSessions uses the runtime token encoding', async (t) => {
 
 test('a missing SQLite projection degrades instead of throwing', async (t) => {
   const dataDir = await makeDataDir({ withSqlite: false });
-  t.after(() => rm(dataDir, { recursive: true, force: true }));
   const store = openStore({ dataDir });
-  t.after(() => store.close());
+  t.after(async () => {
+    // Close before removing. Windows refuses to unlink a file that is still open,
+    // so registering the removal first passed on POSIX and failed on every other
+    // platform with EBUSY.
+    store.close();
+    await rm(dataDir, { recursive: true, force: true });
+  });
 
   assert.equal(store.db, null);
   assert.equal(store.hasFts, false);
@@ -390,9 +471,14 @@ test('a missing SQLite projection degrades instead of throwing', async (t) => {
 
 test('jsonl fallback reads a session the projection does not index', async (t) => {
   const dataDir = await makeDataDir({ withSqlite: true, withJsonl: true });
-  t.after(() => rm(dataDir, { recursive: true, force: true }));
   const store = openStore({ dataDir });
-  t.after(() => store.close());
+  t.after(async () => {
+    // Close before removing. Windows refuses to unlink a file that is still open,
+    // so registering the removal first passed on POSIX and failed on every other
+    // platform with EBUSY.
+    store.close();
+    await rm(dataDir, { recursive: true, force: true });
+  });
 
   const dir = await store.findSessionDir('sess-jsonl');
   assert.ok(dir, 'session directory is located by suffix');
@@ -411,9 +497,14 @@ test('jsonl fallback reads a session the projection does not index', async (t) =
 
 test('session directory lookup rejects traversal attempts', async (t) => {
   const dataDir = await makeDataDir();
-  t.after(() => rm(dataDir, { recursive: true, force: true }));
   const store = openStore({ dataDir });
-  t.after(() => store.close());
+  t.after(async () => {
+    // Close before removing. Windows refuses to unlink a file that is still open,
+    // so registering the removal first passed on POSIX and failed on every other
+    // platform with EBUSY.
+    store.close();
+    await rm(dataDir, { recursive: true, force: true });
+  });
 
   assert.equal(await store.findSessionDir('../../etc/passwd'), null);
   assert.equal(await store.findSessionDir('a/b'), null);
@@ -424,9 +515,14 @@ test('session directory lookup rejects traversal attempts', async (t) => {
 
 test('human input is distinguished from harness-injected context', async (t) => {
   const dataDir = await makeDataDir();
-  t.after(() => rm(dataDir, { recursive: true, force: true }));
   const store = openStore({ dataDir });
-  t.after(() => store.close());
+  t.after(async () => {
+    // Close before removing. Windows refuses to unlink a file that is still open,
+    // so registering the removal first passed on POSIX and failed on every other
+    // platform with EBUSY.
+    store.close();
+    await rm(dataDir, { recursive: true, force: true });
+  });
 
   const events = store.getEvents({ sessionId: 'sess-a', detailLevel: 'full' }).events;
   const byId = new Map(events.map((event) => [event.msgId, event]));
@@ -441,9 +537,14 @@ test('human input is distinguished from harness-injected context', async (t) => 
 
 test('tool calls are joined to their measured task duration', async (t) => {
   const dataDir = await makeDataDir();
-  t.after(() => rm(dataDir, { recursive: true, force: true }));
   const store = openStore({ dataDir });
-  t.after(() => store.close());
+  t.after(async () => {
+    // Close before removing. Windows refuses to unlink a file that is still open,
+    // so registering the removal first passed on POSIX and failed on every other
+    // platform with EBUSY.
+    store.close();
+    await rm(dataDir, { recursive: true, force: true });
+  });
 
   const events = store.getEvents({ sessionId: 'sess-a', detailLevel: 'full' }).events;
   const call = events.find((event) => event.msgId === 'm2').toolCalls[0];
@@ -463,9 +564,14 @@ test('tool calls are joined to their measured task duration', async (t) => {
 
 test('agent definition exposes model, capabilities and prompt', async (t) => {
   const dataDir = await makeDataDir();
-  t.after(() => rm(dataDir, { recursive: true, force: true }));
   const store = openStore({ dataDir });
-  t.after(() => store.close());
+  t.after(async () => {
+    // Close before removing. Windows refuses to unlink a file that is still open,
+    // so registering the removal first passed on POSIX and failed on every other
+    // platform with EBUSY.
+    store.close();
+    await rm(dataDir, { recursive: true, force: true });
+  });
 
   const agent = store.getAgentDefinition('sess-a');
   assert.equal(agent.ownerName, 'worker');
@@ -526,9 +632,14 @@ test('workspaces group by git repository so worktrees merge', async (t) => {
 
 test('annotateWorkspaces labels every session with its group', async (t) => {
   const dataDir = await makeDataDir();
-  t.after(() => rm(dataDir, { recursive: true, force: true }));
   const store = openStore({ dataDir });
-  t.after(() => store.close());
+  t.after(async () => {
+    // Close before removing. Windows refuses to unlink a file that is still open,
+    // so registering the removal first passed on POSIX and failed on every other
+    // platform with EBUSY.
+    store.close();
+    await rm(dataDir, { recursive: true, force: true });
+  });
 
   const annotated = await store.annotateWorkspaces(store.listSessions({ limit: 10 }));
   assert.equal(annotated.length, 2);
@@ -541,9 +652,14 @@ test('annotateWorkspaces labels every session with its group', async (t) => {
 
 test('turn summaries are folded server-side for the whole session', async (t) => {
   const dataDir = await makeDataDir();
-  t.after(() => rm(dataDir, { recursive: true, force: true }));
   const store = openStore({ dataDir });
-  t.after(() => store.close());
+  t.after(async () => {
+    // Close before removing. Windows refuses to unlink a file that is still open,
+    // so registering the removal first passed on POSIX and failed on every other
+    // platform with EBUSY.
+    store.close();
+    await rm(dataDir, { recursive: true, force: true });
+  });
 
   const turns = store.getTurnSummaries('sess-a');
   assert.deepEqual(turns.map((turn) => turn.turnId), ['turn-1', 'turn-2', 'turn-3', 'turn-4']);
@@ -559,9 +675,14 @@ test('turn summaries never come back with a null turn id', async (t) => {
   // expression to that same name makes the driver return the column instead and
   // silently yields nulls, which broke the "第 N 轮" ordinal in the UI.
   const dataDir = await makeDataDir();
-  t.after(() => rm(dataDir, { recursive: true, force: true }));
   const store = openStore({ dataDir });
-  t.after(() => store.close());
+  t.after(async () => {
+    // Close before removing. Windows refuses to unlink a file that is still open,
+    // so registering the removal first passed on POSIX and failed on every other
+    // platform with EBUSY.
+    store.close();
+    await rm(dataDir, { recursive: true, force: true });
+  });
 
   const turns = store.getTurnSummaries('sess-a');
   assert.ok(turns.length > 0);
@@ -573,9 +694,14 @@ test('turn summaries never come back with a null turn id', async (t) => {
 
 test('timeline points keep their json role and source, not the shadowed columns', async (t) => {
   const dataDir = await makeDataDir();
-  t.after(() => rm(dataDir, { recursive: true, force: true }));
   const store = openStore({ dataDir });
-  t.after(() => store.close());
+  t.after(async () => {
+    // Close before removing. Windows refuses to unlink a file that is still open,
+    // so registering the removal first passed on POSIX and failed on every other
+    // platform with EBUSY.
+    store.close();
+    await rm(dataDir, { recursive: true, force: true });
+  });
 
   const points = store.getTimeline('sess-a');
   assert.equal(points.length, 6);
@@ -591,9 +717,14 @@ test('timeline points keep their json role and source, not the shadowed columns'
 
 test('agent options are read from the data, not hard-coded', async (t) => {
   const dataDir = await makeDataDir();
-  t.after(() => rm(dataDir, { recursive: true, force: true }));
   const store = openStore({ dataDir });
-  t.after(() => store.close());
+  t.after(async () => {
+    // Close before removing. Windows refuses to unlink a file that is still open,
+    // so registering the removal first passed on POSIX and failed on every other
+    // platform with EBUSY.
+    store.close();
+    await rm(dataDir, { recursive: true, force: true });
+  });
 
   const agents = store.listAgents();
   assert.deepEqual(agents, [{ name: 'mavis', count: 2 }, { name: 'explore', count: 1 }],
@@ -602,9 +733,14 @@ test('agent options are read from the data, not hard-coded', async (t) => {
 
 test('a single session can be looked up by id for the highlight', async (t) => {
   const dataDir = await makeDataDir();
-  t.after(() => rm(dataDir, { recursive: true, force: true }));
   const store = openStore({ dataDir });
-  t.after(() => store.close());
+  t.after(async () => {
+    // Close before removing. Windows refuses to unlink a file that is still open,
+    // so registering the removal first passed on POSIX and failed on every other
+    // platform with EBUSY.
+    store.close();
+    await rm(dataDir, { recursive: true, force: true });
+  });
 
   const session = store.getSession('sess-b');
   assert.equal(session.sessionId, 'sess-b');
@@ -653,9 +789,14 @@ test('tools are declared with the expected names and bounded schemas', () => {
 
 test('handleRpcMessage answers initialize, tools/list and tool calls', async (t) => {
   const dataDir = await makeDataDir();
-  t.after(() => rm(dataDir, { recursive: true, force: true }));
   const store = openStore({ dataDir });
-  t.after(() => store.close());
+  t.after(async () => {
+    // Close before removing. Windows refuses to unlink a file that is still open,
+    // so registering the removal first passed on POSIX and failed on every other
+    // platform with EBUSY.
+    store.close();
+    await rm(dataDir, { recursive: true, force: true });
+  });
   const studio = { start: async () => ({ url: 'http://127.0.0.1:1/', port: 1, reused: false }), stop: async () => true };
   const handler = { call: (name, args) => callHandlerForTest({ store, studio }, name, args) };
 
@@ -681,9 +822,14 @@ test('handleRpcMessage answers initialize, tools/list and tool calls', async (t)
 
 test('full detail over MCP is redacted', async (t) => {
   const dataDir = await makeDataDir();
-  t.after(() => rm(dataDir, { recursive: true, force: true }));
   const store = openStore({ dataDir });
-  t.after(() => store.close());
+  t.after(async () => {
+    // Close before removing. Windows refuses to unlink a file that is still open,
+    // so registering the removal first passed on POSIX and failed on every other
+    // platform with EBUSY.
+    store.close();
+    await rm(dataDir, { recursive: true, force: true });
+  });
   const studio = { start: async () => ({ url: 'http://127.0.0.1:1/', port: 1, reused: false }), stop: async () => true };
   const handler = { call: (name, args) => callHandlerForTest({ store, studio }, name, args) };
 

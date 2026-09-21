@@ -1,21 +1,59 @@
 /**
  * Local Trajectory Studio web panel.
  *
- * Bound to 127.0.0.1 only. Requests are fenced by an authority check, an origin
- * check, and a required custom header on every API call, so a page loaded from
- * anywhere else cannot read local session data. Static assets are served with a
- * deny-by-default CSP and no remote origins are reachable from the page.
+ * Bound to `127.0.0.1` only — the address is a constant with no override, because
+ * a configurable bind address is one environment variable away from publishing
+ * every session's tool arguments to the network.
+ *
+ * Authorization is a per-process capability, not a fence. A Host check, an Origin
+ * check and a fixed custom header are all cross-site request forgery defences:
+ * they stop a *web page* from reaching the API and none of them stops a local
+ * *process*, which can send any header it likes. Each start therefore mints a
+ * random capability, hands it to the caller in the URL's fragment, and requires it
+ * on every API route. The fragment never travels to the server, so the token stays
+ * out of request logs, out of `Referer`, and out of any asset request.
+ *
+ * The capability lives in memory for the life of this process and nothing about
+ * the panel is written to disk. That is also what keeps concurrent sessions apart:
+ * mcode spawns one MCP server per session, so two sessions get two panels with two
+ * capabilities, and one session's URL cannot open the other's panel.
  */
 
 import http from 'node:http';
 import path from 'node:path';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
-import { redactEvent, redactPath, redactText } from './redact.mjs';
+import { redactPayload, redactPath, redactText } from './redact.mjs';
+import { EGRESS_STRING_LIMIT } from './config.mjs';
 
 const WEB_ROOT = new URL('../web/', import.meta.url);
-const CLIENT_HEADER = 'x-trajectory-client';
+const TOKEN_HEADER = 'x-trajectory-token';
+
+/**
+ * The only address the panel may listen on. Not configurable on purpose: an
+ * environment variable here would be a one-character path to exposing every
+ * session on the network.
+ */
+const LISTEN_ADDRESS = '127.0.0.1';
+
+/** A peer address that is loopback, including the IPv4-mapped IPv6 form. */
+function isLoopbackPeer(address) {
+  if (typeof address !== 'string') return false;
+  return address === '::1' || address === '::ffff:127.0.0.1' || /^127\./u.test(address);
+}
+
+/** Constant-time capability comparison that tolerates any supplied shape. */
+function tokenMatches(expected, provided) {
+  if (typeof expected !== 'string' || expected.length === 0) return false;
+  // A repeated header arrives as an array; refuse it rather than pick a winner.
+  if (typeof provided !== 'string') return false;
+  const a = Buffer.from(expected, 'utf8');
+  const b = Buffer.from(provided, 'utf8');
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -44,8 +82,6 @@ function resolveStatic(pathname) {
   if (CLIENT_MODULE.test(pathname)) return pathname.slice(1);
   return null;
 }
-
-const MAX_BODY_BYTES = 64 * 1024;
 
 /**
  * An error whose code is safe to send to the client.
@@ -89,18 +125,30 @@ function securityHeaders(extra = {}) {
 
 /* ----------------------------------------------------------------- studio -- */
 
-export function createStudio({ store, homeDir, pluginDataDir = null }) {
+export function createStudio({ store, homeDir }) {
   let server = null;
   let port = null;
+  let token = null;
   let focusSessionId = null;
 
   async function start({ sessionId, port: requested } = {}) {
     if (sessionId) focusSessionId = sessionId;
     if (server && port) {
-      return { url: `http://127.0.0.1:${port}/`, port, reused: true, sessionId: focusSessionId };
+      // Reuse the running panel, capability included: minting a new one would
+      // invalidate the URL the caller already has open.
+      return { url: panelUrl(port, token), port, reused: true, sessionId: focusSessionId, boundTo: LISTEN_ADDRESS };
     }
+    // 256 bits from the CSPRNG, minted per process and never derived from anything
+    // an observer could read — not the pid, not PLUGIN_ROOT, not the port.
+    if (!token) token = randomBytes(32).toString('base64url');
 
-    const handler = createRequestHandler({ store, homeDir, getFocus: () => focusSessionId, setFocus: (id) => { focusSessionId = id; } });
+    const handler = createRequestHandler({
+      store,
+      homeDir,
+      getFocus: () => focusSessionId,
+      setFocus: (id) => { focusSessionId = id; },
+      getToken: () => token,
+    });
     server = http.createServer((req, res) => {
       handler(req, res).catch((error) => {
         // The detail goes to the operator's stderr, never into the response.
@@ -113,22 +161,22 @@ export function createStudio({ store, homeDir, pluginDataDir = null }) {
     });
     server.keepAliveTimeout = 5000;
 
-    const preferred = Number.isInteger(requested) ? requested : (await readPersistedPort(pluginDataDir));
-    const bound = await listenOnFreePort(server, preferred);
-    if (Number.isInteger(preferred) && preferred >= 1024 && bound !== preferred) {
+    port = await listenOnFreePort(server, Number.isInteger(requested) ? requested : null);
+    if (Number.isInteger(requested) && requested >= 1024 && port !== requested) {
       // Silently moving to another port hides the real problem: something else is
       // already serving the requested one, so the old panel keeps answering and the
       // reader is looking at stale code.
       process.stderr.write(
-        `[trajectory-studio] port ${preferred} is in use; listening on ${bound} instead. ` +
-        `Another instance is still serving ${preferred}.\n`);
+        `[trajectory-studio] port ${requested} is in use; listening on ${port} instead. ` +
+        `Another instance is still serving ${requested}.\n`);
     }
-    port = bound;
-    await persistPort(pluginDataDir, port);
-    return { url: `http://127.0.0.1:${port}/`, port, reused: false, sessionId: focusSessionId };
+    return { url: panelUrl(port, token), port, reused: false, sessionId: focusSessionId, boundTo: LISTEN_ADDRESS };
   }
 
   async function stop() {
+    // The capability dies with the listener: a URL from a previous panel must not
+    // come back to life when a later one reuses the port.
+    token = null;
     if (!server) return false;
     const closing = new Promise((resolve) => server.close(() => resolve()));
     server.closeAllConnections?.();
@@ -142,9 +190,20 @@ export function createStudio({ store, homeDir, pluginDataDir = null }) {
     start,
     stop,
     get status() {
-      return { running: Boolean(server), port, sessionId: focusSessionId };
+      return { running: Boolean(server), port, sessionId: focusSessionId, boundTo: LISTEN_ADDRESS };
     },
   };
+}
+
+/**
+ * The panel URL, with the capability in the fragment.
+ *
+ * A fragment rather than a query parameter on purpose: the browser never sends it
+ * to the server, so it stays out of request logs and out of the `Referer` of any
+ * asset request. The page reads it from `location.hash` and sends it as a header.
+ */
+function panelUrl(port, capability) {
+  return `http://${LISTEN_ADDRESS}:${port}/#t=${capability}`;
 }
 
 function listenOnFreePort(server, preferred) {
@@ -152,7 +211,7 @@ function listenOnFreePort(server, preferred) {
     const onError = (error) => {
       if (error.code === 'EADDRINUSE') {
         server.removeListener('error', onError);
-        server.listen(0, '127.0.0.1', () => {
+        server.listen(0, LISTEN_ADDRESS, () => {
           server.removeListener('error', reject);
           resolve(server.address().port);
         });
@@ -162,40 +221,16 @@ function listenOnFreePort(server, preferred) {
     };
     server.once('error', onError);
     const target = Number.isInteger(preferred) && preferred >= 1024 && preferred <= 65535 ? preferred : 0;
-    server.listen(target, '127.0.0.1', () => {
+    server.listen(target, LISTEN_ADDRESS, () => {
       server.removeListener('error', onError);
       resolve(server.address().port);
     });
   });
 }
 
-function portFile(pluginDataDir) {
-  return path.join(pluginDataDir, 'studio-port.json');
-}
-
-async function readPersistedPort(pluginDataDir) {
-  if (!pluginDataDir) return null;
-  try {
-    const value = JSON.parse(await readFile(portFile(pluginDataDir), 'utf8'));
-    return Number.isInteger(value?.port) ? value.port : null;
-  } catch {
-    return null;
-  }
-}
-
-async function persistPort(pluginDataDir, port) {
-  if (!pluginDataDir) return;
-  try {
-    await mkdir(pluginDataDir, { recursive: true });
-    await writeFile(portFile(pluginDataDir), JSON.stringify({ port }), 'utf8');
-  } catch {
-    /* the panel still works without a persisted port */
-  }
-}
-
 /* ---------------------------------------------------------------- request -- */
 
-export function createRequestHandler({ store, homeDir, getFocus, setFocus }) {
+export function createRequestHandler({ store, homeDir, getFocus, setFocus, getToken = () => null }) {
   const json = (res, value, status = 200) => {
     res.writeHead(status, securityHeaders({ 'Content-Type': 'application/json; charset=utf-8' }));
     res.end(JSON.stringify(value));
@@ -203,8 +238,12 @@ export function createRequestHandler({ store, homeDir, getFocus, setFocus }) {
   const fail = (res, status, message) => json(res, { error: message }, status);
 
   return async function handle(req, res) {
+    // First, before anything is read: the listener is bound loopback-only, so a
+    // non-loopback peer means the socket was reached some other way.
+    if (!isLoopbackPeer(req.socket.remoteAddress)) return fail(res, 403, 'forbidden_remote');
+
     const host = req.headers.host;
-    const authority = `127.0.0.1:${req.socket.localPort}`;
+    const authority = `${LISTEN_ADDRESS}:${req.socket.localPort}`;
     if (host !== authority && host !== `localhost:${req.socket.localPort}`) {
       return fail(res, 403, 'forbidden_host');
     }
@@ -217,13 +256,15 @@ export function createRequestHandler({ store, homeDir, getFocus, setFocus }) {
     const url = new URL(req.url, `http://${authority}`);
 
     if (url.pathname.startsWith('/api/')) {
-      // A custom header cannot be set cross-origin without a CORS preflight, which
-      // this server never approves.
-      if (req.headers[CLIENT_HEADER] !== '1') return fail(res, 403, 'missing_client_header');
+      // The capability. Without it the panel answers with nothing but the code, so
+      // a local process that has not been handed the URL learns no session data.
+      if (!tokenMatches(getToken(), req.headers[TOKEN_HEADER])) return fail(res, 403, 'forbidden_token');
       if (['cross-site', 'same-site'].includes(req.headers['sec-fetch-site'])) return fail(res, 403, 'cross_site');
       try {
         const payload = await api(store, homeDir, url, { getFocus, setFocus });
-        return json(res, payload ?? { ok: true });
+        // One sweep at the boundary, on top of the per-field redaction each read
+        // already applies, so a field added later cannot leave unredacted.
+        return json(res, redactPayload(payload ?? { ok: true }, { maxLength: EGRESS_STRING_LIMIT }));
       } catch (error) {
         if (error instanceof ApiError) return fail(res, error.status, error.code);
         process.stderr.write(`[trajectory-studio] ${error?.stack ?? String(error)}\n`);
@@ -254,7 +295,7 @@ async function api(store, homeDir, url, { getFocus, setFocus }) {
       sqliteAvailable: Boolean(store.db),
       ftsAvailable: store.hasFts,
       readOnly: true,
-      boundTo: '127.0.0.1',
+      boundTo: LISTEN_ADDRESS,
       focusSessionId: getFocus() ?? null,
       warnings: store.warnings,
     };
@@ -339,7 +380,7 @@ async function api(store, homeDir, url, { getFocus, setFocus }) {
       page = { ...page, total: page.events.length, nextOffset: null };
     }
     const events = detailLevel === 'full'
-      ? page.events.map((event) => redactEvent(event, { maxLength: 20000 }))
+      ? page.events.map((event) => redactPayload(event, { maxLength: 20000 }))
       : page.events;
     return {
       detailLevel,
@@ -377,3 +418,5 @@ function overview(store, homeDir, sessionId) {
 
 export const STUDIO_STATIC_FILES = [...STATIC_FILES.keys()];
 export const webRootPath = fileURLToPath(WEB_ROOT);
+export const studioListenAddress = LISTEN_ADDRESS;
+export const studioTokenHeader = TOKEN_HEADER;
