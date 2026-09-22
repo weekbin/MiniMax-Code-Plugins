@@ -2,10 +2,12 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { Readable } from 'node:stream';
 import test from 'node:test';
 
 import { readTaskOutput } from '../server/tasks.mjs';
-import { findSessionDir, readJsonlEvents } from '../server/jsonl.mjs';
+import { findSessionDir, foldJsonl, readJsonlEvents } from '../server/jsonl.mjs';
+import { isWithin, openContainedRead, openedPathAllowed, openedRealPath } from '../server/fsutil.mjs';
 import { openStore } from '../server/store.mjs';
 
 /**
@@ -191,4 +193,142 @@ test('the positive control still reads a messages.jsonl inside the data director
   assert.equal(result.source, 'jsonl');
   assert.equal(result.events.length, 1);
   assert.equal(result.events[0].content, 'legitimate message body');
+});
+
+/* --------------------------------------------- bounded JSONL line buffer -- */
+
+/**
+ * The line buffer is capped *incrementally*.
+ *
+ * The previous revision appended a chunk and only then checked the 2 MiB line
+ * limit, so a single line with no newline grew the buffer to the size of the whole
+ * file before the check ever ran — unbounded memory from a bounded read. The cap
+ * now runs per chunk, and `droppedOversized` proves the oversized line took the
+ * discard path instead of being retained.
+ */
+const JSONL_CANARY = 'CANARY-OVERSIZED-LINE-4b27';
+
+test('a large unterminated line is discarded instead of buffered whole', async () => {
+  const huge = `${'A'.repeat(8 * 1024 * 1024)}${JSONL_CANARY}`;
+  const valid = JSON.stringify({
+    message_id: 'ok-1', turn_id: 't1',
+    message: { role: 'user', content: [{ type: 'text', text: 'legitimate body' }] },
+  });
+  const out = await foldJsonl(Readable.from([huge, '\n', valid, '\n']), { limit: 100, detailLevel: 'full' });
+  assert.equal(out.droppedOversized, 1, 'the oversized line did not take the discard path');
+  assert.equal(JSON.stringify(out).includes(JSONL_CANARY), false, 'the oversized record leaked');
+  assert.equal(out.events.length, 1, 'the record after the oversized line was lost');
+  assert.equal(out.events[0].content, 'legitimate body');
+});
+
+test('a small line that arrives right after an oversized one is still folded', async () => {
+  // The discard state has to clear on the next newline, or one corrupt line silently
+  // swallows every record after it.
+  const huge = 'B'.repeat(4 * 1024 * 1024);
+  const first = JSON.stringify({ message_id: 'a', message: { role: 'user', content: [{ type: 'text', text: 'one' }] } });
+  const second = JSON.stringify({ message_id: 'b', message: { role: 'user', content: [{ type: 'text', text: 'two' }] } });
+  const out = await foldJsonl(Readable.from([huge, '\n', first, '\n', second, '\n']), { limit: 100, detailLevel: 'full' });
+  assert.equal(out.droppedOversized, 1);
+  assert.deepEqual(out.events.map((event) => event.content), ['one', 'two']);
+});
+
+test('an oversized line that arrives with its newline is still counted', async () => {
+  // The count must not depend on where the chunk boundary fell. Delivered as a single
+  // chunk, an oversized line never crosses the pending-buffer cap, so it takes the
+  // per-line discard rather than the overflow discard — and that path used to drop it
+  // silently while the docs promise that dropped lines are reported.
+  const line = (id, text) => JSON.stringify({ message_id: id, message: { role: 'user', content: [{ type: 'text', text }] } });
+  const cap = 200;
+  const oversized = 'C'.repeat(400);
+  const delivered = [
+    ['one chunk', [ `${oversized}\n${line('after', 'still here')}\n` ]],
+    ['two chunks', [ oversized, `\n${line('after', 'still here')}\n` ]],
+  ];
+  for (const [label, chunks] of delivered) {
+    const out = await foldJsonl(Readable.from(chunks), { limit: 10, detailLevel: 'full', maxLineBytes: cap });
+    assert.equal(out.droppedOversized, 1, `${label}: the oversized line was not counted`);
+    assert.deepEqual(out.events.map((event) => event.content), ['still here'], `${label}: the following line was not folded`);
+  }
+});
+
+test('a normal file is unaffected by the incremental cap', async () => {
+  const line = (id, text) => JSON.stringify({ message_id: id, message: { role: 'user', content: [{ type: 'text', text }] } });
+  const body = [line('1', 'alpha'), line('2', 'beta'), line('3', 'gamma')].join('\n') + '\n';
+  const out = await foldJsonl(Readable.from([body]), { limit: 100, detailLevel: 'full' });
+  assert.equal(out.droppedOversized, 0);
+  assert.deepEqual(out.events.map((event) => event.content), ['alpha', 'beta', 'gamma']);
+});
+
+test('a real file with a huge no-newline record is read through the capped path', async () => {
+  // The synthetic-stream test above feeds the huge line as one chunk; the real read
+  // path uses `createReadStream`, which delivers it in many chunks. This exercises
+  // the per-chunk cap and asserts the discard is counted once per line, not once per
+  // chunk that happens to cross the cap.
+  const f = await makeFixture();
+  const dir = f.sessionDir('20260102-hugeeeee');
+  await mkdir(dir, { recursive: true });
+  const valid = JSON.stringify({
+    message_id: 'ok', turn_id: 't1',
+    message: { role: 'user', content: [{ type: 'text', text: 'after the huge line' }] },
+  });
+  await writeFile(
+    path.join(dir, 'messages.jsonl'),
+    `${'Z'.repeat(9 * 1024 * 1024)}${JSONL_CANARY}\n${valid}\n`,
+    'utf8',
+  );
+  const store = storeFor(f.dataDir);
+  const result = await readJsonlEvents(store, { sessionId: 'hugeeeee', ...approx });
+  assert.equal(result.source, 'jsonl');
+  assert.equal(result.droppedOversized, 1, `expected one discarded line, got ${result.droppedOversized}`);
+  assert.equal(JSON.stringify(result).includes(JSONL_CANARY), false, 'the oversized record leaked');
+  assert.equal(result.events.length, 1);
+  assert.equal(result.events[0].content, 'after the huge line');
+});
+
+/* ------------------------------------------------- post-open verification -- */
+
+/**
+ * The residual `realpath`→`open` race, and its accepted boundary.
+ *
+ * Pre-open canonicalization plus `O_NOFOLLOW` close the static-symlink cases above
+ * and the final-component race. What remained was an *intermediate directory*
+ * swapped between `realpath` and `open`. On Linux the opened descriptor's own path
+ * (`/proc/self/fd/<fd>`) is authoritative and is now checked against the root; where
+ * `/proc` is absent that race is the documented, accepted limit rather than an
+ * unstated one, and the gate says so explicitly.
+ */
+test('a descriptor that resolves outside the root is refused', () => {
+  assert.equal(openedPathAllowed('/base/data', '/base/outside/output.log'), false);
+  assert.equal(openedPathAllowed('/base/data', '/base/data/ok.log'), true);
+  assert.equal(openedPathAllowed('/base/data', '/base/data'), true);
+});
+
+test('the containment test is not fooled by a sibling sharing a name prefix', () => {
+  assert.equal(isWithin('/base/data', '/base/data-evil/x'), false);
+  assert.equal(isWithin('/base/data', '/base/data/x'), true);
+  assert.equal(isWithin('/base/data', '/base/dat'), false);
+});
+
+test('an unavailable /proc path falls back to the documented boundary', () => {
+  // macOS and Windows have no `/proc`, so `openedRealPath` returns null and the
+  // pre-open canonical check is the only evidence. The gate accepts that evidence
+  // rather than silently pretending the extra check ran.
+  assert.equal(openedPathAllowed('/base/data', null), true);
+  assert.equal(openedPathAllowed('/base/data', ''), true);
+});
+
+test('the post-open check is active where /proc exists', async () => {
+  const f = await makeFixture();
+  await mkdir(f.taskDir('legit-proc'), { recursive: true });
+  await writeFile(path.join(f.taskDir('legit-proc'), 'output.log'), 'inside\n', 'utf8');
+  const opened = await openContainedRead(f.dataDir, path.join(f.taskDir('legit-proc'), 'output.log'));
+  assert.ok(opened, 'a legitimate read was refused');
+  try {
+    const real = await openedRealPath(opened.handle);
+    if (real === null) return; // no /proc on this platform: the boundary is documented
+    // The descriptor names the file actually opened, and it stays inside the root.
+    assert.equal(isWithin(await realpath(f.dataDir), real), true, `opened path escaped: ${real}`);
+  } finally {
+    await opened.handle.close();
+  }
 });

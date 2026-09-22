@@ -339,3 +339,25 @@ test('the page loads no remote origin and permits no inline script', async () =>
     'index.html references a remote origin');
   assert.equal(/<script(?![^>]*\bsrc=)/u.test(html), false, 'index.html carries an inline script');
 });
+
+test('the panel opens content-free and the toggle cannot disagree with the state', async () => {
+  // The documented posture is that message text, tool arguments and tool results are
+  // loaded only when the reader asks. The markup used to open with the toggle
+  // `checked` while the state defaulted to `full`, so the panel fetched content the
+  // control said it was not fetching — a privacy default that existed in the design
+  // note and nowhere in the code.
+  const dir = path.join(import.meta.dirname, '..', 'web');
+  const html = await readFile(path.join(dir, 'index.html'), 'utf8');
+  const toggle = /<input[^>]*id="full-detail"[^>]*>/u.exec(html);
+  assert.ok(toggle, 'the detail toggle is gone from index.html');
+  assert.equal(/\bchecked\b/u.test(toggle[0]), false, 'the toggle ships checked, so the panel fetches content unasked');
+
+  const state = await readFile(path.join(dir, 'js', 'state.js'), 'utf8');
+  assert.match(state, /detailLevel:\s*'summary'/u, 'the state default is not summary');
+
+  // The control must be driven from the state, not the other way round, or the two
+  // can drift apart again.
+  const wire = await readFile(path.join(dir, 'js', 'wire.js'), 'utf8');
+  assert.match(wire, /el\('full-detail'\)\.checked\s*=\s*state\.detailLevel/u,
+    'wire.js does not derive the toggle from state.detailLevel');
+});

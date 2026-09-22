@@ -72,7 +72,7 @@ export function listSessions(store, { limit = LIMITS.sessions.default, agent, ki
   try {
     rows = store.db.prepare(sql).all(...params);
   } catch (error) {
-    store.warnings.push(`session_list_failed:${error.message}`);
+    store.warn(`session_list_failed:${error.message}`);
     return [];
   }
   return rows.map(sessionSummary);

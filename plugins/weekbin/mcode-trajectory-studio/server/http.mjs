@@ -25,8 +25,10 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
-import { redactPayload, redactPath, redactText } from './redact.mjs';
-import { EGRESS_STRING_LIMIT } from './config.mjs';
+import { boundPayloadList, redactEvent, redactPayload, redactPath, redactText } from './redact.mjs';
+import {
+  EGRESS_MAX_DEPTH, EGRESS_MAX_ENTRIES, EGRESS_STRING_LIMIT, EGRESS_TOTAL_BYTES,
+} from './config.mjs';
 
 const WEB_ROOT = new URL('../web/', import.meta.url);
 const TOKEN_HEADER = 'x-trajectory-token';
@@ -125,7 +127,7 @@ function securityHeaders(extra = {}) {
 
 /* ----------------------------------------------------------------- studio -- */
 
-export function createStudio({ store, homeDir }) {
+export function createStudio({ store, homeDir, redactRoots = [] }) {
   let server = null;
   let port = null;
   let token = null;
@@ -145,6 +147,7 @@ export function createStudio({ store, homeDir }) {
     const handler = createRequestHandler({
       store,
       homeDir,
+      redactRoots,
       getFocus: () => focusSessionId,
       setFocus: (id) => { focusSessionId = id; },
       getToken: () => token,
@@ -230,7 +233,7 @@ function listenOnFreePort(server, preferred) {
 
 /* ---------------------------------------------------------------- request -- */
 
-export function createRequestHandler({ store, homeDir, getFocus, setFocus, getToken = () => null }) {
+export function createRequestHandler({ store, homeDir, redactRoots = [], getFocus, setFocus, getToken = () => null }) {
   const json = (res, value, status = 200) => {
     res.writeHead(status, securityHeaders({ 'Content-Type': 'application/json; charset=utf-8' }));
     res.end(JSON.stringify(value));
@@ -261,10 +264,22 @@ export function createRequestHandler({ store, homeDir, getFocus, setFocus, getTo
       if (!tokenMatches(getToken(), req.headers[TOKEN_HEADER])) return fail(res, 403, 'forbidden_token');
       if (['cross-site', 'same-site'].includes(req.headers['sec-fetch-site'])) return fail(res, 403, 'cross_site');
       try {
-        const payload = await api(store, homeDir, url, { getFocus, setFocus });
+        const payload = await api(store, homeDir, redactRoots, url, { getFocus, setFocus });
         // One sweep at the boundary, on top of the per-field redaction each read
-        // already applies, so a field added later cannot leave unredacted.
-        return json(res, redactPayload(payload ?? { ok: true }, { maxLength: EGRESS_STRING_LIMIT }));
+        // already applies, so a field added later cannot leave unredacted. It is
+        // home-aware, so an absolute home path embedded anywhere — a warning, a
+        // workspace field, a tool argument — is collapsed to `~` here even when the
+        // read that produced it did not know about the home directory.
+        //
+        // `pii` stays off on this surface: the panel is the reader's own screen, and
+        // masking an address there would destroy the answer they opened it for.
+        return json(res, redactPayload(payload ?? { ok: true }, {
+          maxLength: EGRESS_STRING_LIMIT,
+          maxDepth: EGRESS_MAX_DEPTH,
+          maxEntries: EGRESS_MAX_ENTRIES,
+          homeDir,
+          roots: redactRoots,
+        }));
       } catch (error) {
         if (error instanceof ApiError) return fail(res, error.status, error.code);
         process.stderr.write(`[trajectory-studio] ${error?.stack ?? String(error)}\n`);
@@ -286,8 +301,9 @@ export function createRequestHandler({ store, homeDir, getFocus, setFocus, getTo
 
 /* -------------------------------------------------------------------- api -- */
 
-async function api(store, homeDir, url, { getFocus, setFocus }) {
+async function api(store, homeDir, redactRoots, url, { getFocus, setFocus }) {
   const route = url.pathname;
+  const fold = (value) => redactPath(value, { homeDir, roots: redactRoots });
 
   if (route === '/api/meta') {
     return {
@@ -298,6 +314,9 @@ async function api(store, homeDir, url, { getFocus, setFocus }) {
       boundTo: LISTEN_ADDRESS,
       focusSessionId: getFocus() ?? null,
       warnings: store.warnings,
+      // The list is bounded; say so when entries were dropped rather than letting a
+      // truncated list read as a complete one.
+      ...(store.warningsDropped > 0 ? { warningsDropped: store.warningsDropped } : {}),
     };
   }
 
@@ -315,7 +334,7 @@ async function api(store, homeDir, url, { getFocus, setFocus }) {
           includeArchived: url.searchParams.get('includeArchived') === '1',
         });
     const sessions = (await store.annotateWorkspaces(raw))
-      .map((session) => ({ ...session, workspaceDir: redactPath(session.workspaceDir, { homeDir }) }));
+      .map((session) => ({ ...session, workspaceDir: fold(session.workspaceDir) }));
     return { sessions };
   }
 
@@ -329,7 +348,7 @@ async function api(store, homeDir, url, { getFocus, setFocus }) {
     const query = url.searchParams.get('q') || '';
     const raw = store.searchSessions({ query, limit: Number(url.searchParams.get('limit')) || 50 });
     const sessions = (await store.annotateWorkspaces(raw))
-      .map((session) => ({ ...session, workspaceDir: redactPath(session.workspaceDir, { homeDir }) }));
+      .map((session) => ({ ...session, workspaceDir: fold(session.workspaceDir) }));
     // The query is not echoed: the client already has what it typed, and echoing a
     // request value back through the response body is a reflection surface.
     return { sessions };
@@ -340,10 +359,10 @@ async function api(store, homeDir, url, { getFocus, setFocus }) {
     if (!sessionId) {
       const [latest] = store.listSessions({ limit: 1 });
       if (!latest) return { session: null, stats: null, events: [], tasks: [] };
-      return overview(store, homeDir, latest.sessionId);
+      return overview(store, fold, latest.sessionId);
     }
     setFocus?.(sessionId);
-    return overview(store, homeDir, sessionId);
+    return overview(store, fold, sessionId);
   }
 
   if (route === '/api/timeline') {
@@ -364,7 +383,11 @@ async function api(store, homeDir, url, { getFocus, setFocus }) {
       // request, not a server fault.
       throw new ApiError(400, 'invalid_task_id');
     }
-    return { ...output, text: redactText(output.text, { maxLength: 262144 }) };
+    // The task output is a credential surface in its own right — a `bash` task's
+    // captured stdout is where an inline secret actually lands — so the sweep here
+    // knows the home directory too, rather than leaving the folding entirely to the
+    // boundary pass.
+    return { ...output, text: redactText(output.text, { maxLength: 262144, homeDir, roots: redactRoots }) };
   }
 
   if (route === '/api/events') {
@@ -380,15 +403,20 @@ async function api(store, homeDir, url, { getFocus, setFocus }) {
       page = { ...page, total: page.events.length, nextOffset: null };
     }
     const events = detailLevel === 'full'
-      ? page.events.map((event) => redactPayload(event, { maxLength: 20000 }))
+      ? page.events.map((event) => redactEvent(event, { maxLength: 20000, homeDir, roots: redactRoots }))
       : page.events;
+    // Per-string limits do not bound the response: trim the record list to a byte
+    // budget and report it, so a 1000-record full page cannot return tens of MB.
+    const bounded = boundPayloadList(events, { maxBytes: EGRESS_TOTAL_BYTES });
     return {
       detailLevel,
       source: page.source,
       offset,
       total: page.total,
       nextOffset: page.nextOffset,
-      events,
+      truncated: bounded.truncated,
+      omitted: bounded.omitted,
+      events: bounded.items,
     };
   }
 
@@ -396,7 +424,7 @@ async function api(store, homeDir, url, { getFocus, setFocus }) {
   throw new ApiError(404, 'unknown_route');
 }
 
-function overview(store, homeDir, sessionId) {
+function overview(store, fold, sessionId) {
   const session = store.getSession(sessionId);
   if (!session) throw new ApiError(404, 'session_not_found');
   const stats = store.getStats(sessionId);
@@ -406,11 +434,14 @@ function overview(store, homeDir, sessionId) {
   // actually render. Fetching them here only to discard them was the single
   // largest waste in a session switch.
   return {
-    session: { ...session, workspaceDir: redactPath(session.workspaceDir, { homeDir }) },
-    stats,
+    session: { ...session, workspaceDir: fold(session.workspaceDir) },
+    // `stats` carries the session's workspace path again, so it needs the same
+    // treatment: returning it raw leaked the absolute user path that the `session`
+    // field right above it had just collapsed to `~`.
+    stats: stats ? { ...stats, workspaceDir: fold(stats.workspaceDir) } : stats,
     turns: store.getTurnSummaries(sessionId),
     agent: agent
-      ? { ...agent, systemPrompt: agent.systemPrompt ? redactText(agent.systemPrompt, { maxLength: 20000 }) : null }
+      ? { ...agent, systemPrompt: agent.systemPrompt ? redactText(agent.systemPrompt, { maxLength: 20000, homeDir, roots: redactRoots }) : null }
       : null,
     tasks,
   };

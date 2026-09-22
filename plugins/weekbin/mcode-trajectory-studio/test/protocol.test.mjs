@@ -27,6 +27,24 @@ const CALL_TIMEOUT_MS = 10_000;
 /** A credential planted in the fixture; it must never appear in a response. */
 const SECRET = 'ghp_qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq';
 
+/**
+ * A structured credential that has no provider prefix and no marker in its value.
+ *
+ * The key name is the only signal, so a value-only rule cannot catch it — which is
+ * exactly the case the previous exact-name key set leaked.
+ */
+const STRUCTURED_SECRET = 'CANARY-STRUCTURED-MCP-31ab';
+
+/**
+ * A credential inside a tool *result*.
+ *
+ * `tool_call_result_data` is a string in the runtime's schema and holds JSON text,
+ * so a credential inside it reaches the redactor escaped — `{\"api_key\":\"…\"}`.
+ * That is the shape 109k of the 118k rows in a real projection use, and a key/value
+ * rule that insists the key and its separator be adjacent never fires on it.
+ */
+const ESCAPED_SECRET = 'CANARY-ESCAPED-TOOL-RESULT-7f21';
+
 async function makeFixture() {
   const dataDir = await mkdtemp(path.join(tmpdir(), 'trajectory-protocol-'));
   const projection = await createFixtureProjection(dataDir);
@@ -48,8 +66,19 @@ async function makeFixture() {
       usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15, request_duration_ms: 100 },
       tool_calls: [{
         tool_call_id: 'call-1', tool_name: 'bash',
-        tool_call_args: { command: `export TOKEN=${SECRET}` },
+        tool_call_args: {
+          command: `export TOKEN=${SECRET}`,
+          clientSecret: STRUCTURED_SECRET,
+          refreshToken: STRUCTURED_SECRET,
+          xApiKey: STRUCTURED_SECRET,
+        },
         tool_call_result_data: 'ok', tool_call_status: 2,
+      }, {
+        tool_call_id: 'call-2', tool_name: 'read_file',
+        tool_call_args: { path: 'config.json' },
+        // Stored the way the runtime stores it: JSON text inside a JSON string.
+        tool_call_result_data: JSON.stringify({ status: 'ok', auth: { api_key: ESCAPED_SECRET } }),
+        tool_call_status: 2,
       }],
     },
   });
@@ -223,6 +252,96 @@ test('full detail over the wire is redacted and still carries the payload', asyn
     assert.match(serialized, /used a credential/u);
     assert.match(serialized, /sess-protocol/u);
   });
+});
+
+test('structured credential keys are redacted over the MCP wire', async (t) => {
+  await withClient(t, async (client) => {
+    await client.request(1, 'initialize', {});
+    const { result } = await client.request(2, 'tools/call', {
+      name: 'trajectory_get',
+      arguments: { sessionId: 'sess-protocol', detailLevel: 'full', limit: 50 },
+    });
+    const serialized = JSON.stringify(result);
+    // A value with no provider prefix and no marker in it: only the key name can
+    // catch it, so an exact-name key set that misses `clientSecret` leaks here.
+    assert.equal(serialized.includes(STRUCTURED_SECRET), false, 'a structured secret crossed the wire');
+    assert.equal(serialized.includes('clientSecret":"[redacted]'), true, serialized);
+    // The tool call itself has to survive the sweep.
+    assert.match(serialized, /"bash"/u);
+  });
+});
+
+test('a credential inside a tool result is redacted even though it arrives escaped', async (t) => {
+  await withClient(t, async (client) => {
+    await client.request(1, 'initialize', {});
+    const { result } = await client.request(2, 'tools/call', {
+      name: 'trajectory_get',
+      arguments: { sessionId: 'sess-protocol', detailLevel: 'full', limit: 50 },
+    });
+    const serialized = JSON.stringify(result);
+    assert.equal(serialized.includes(ESCAPED_SECRET), false, 'an escaped tool-result credential crossed the wire');
+    // Positive control: the record itself survives, so the fix is not "drop records".
+    assert.match(serialized, /read_file/u);
+    assert.match(serialized, /config\.json/u);
+  });
+});
+
+test('the MCP error branch is swept like the success branch', async (t) => {
+  // An egress swept only on success is not a boundary. A rejected call carries a
+  // Plugin-authored code, but the code embeds the caller's session id, so the
+  // channel has to go through the same redactor as a result does.
+  await withClient(t, async (client) => {
+    await client.request(1, 'initialize', {});
+    const { result } = await client.request(2, 'tools/call', {
+      name: 'trajectory_summary',
+      arguments: { sessionId: `absent-${SECRET}` },
+    });
+    assert.equal(result.isError, true, 'expected the call to be rejected');
+    assert.equal(JSON.stringify(result).includes(SECRET), false, 'the error branch leaked a credential');
+    // The actionable part of the message survives: a client still learns what failed.
+    assert.match(result.content[0].text, /session_not_found/u);
+  });
+});
+
+test('the reply is bounded by total bytes, not only per string', async (t) => {
+  // A single `trajectory_get` with `limit: 1000` of full detail used to serialise to
+  // tens of MB. The record list is now trimmed to an aggregate budget and the drop
+  // is reported, so a client can page rather than assume it received everything.
+  const dataDir = await mkdtemp(path.join(tmpdir(), 'trajectory-budget-'));
+  const projection = await createFixtureProjection(dataDir);
+  const now = 1_700_000_000_000;
+  projection.session({ id: 'sess-big', title: 'Big fixture', updatedAtMs: now });
+  const filler = 'y'.repeat(20000);
+  for (let i = 0; i < 400; i += 1) {
+    projection.row({
+      sessionId: 'sess-big', msgId: `m${i}`, role: 'assistant', turnId: 'turn-1', createdAtMs: now - i,
+      data: {
+        msg_id: `m${i}`, role: 'assistant', source: 'api', msg_type: 2, turn_id: 'turn-1',
+        msg_content: `${filler}-${i}`,
+      },
+    });
+  }
+  projection.close();
+
+  const client = createClient(dataDir);
+  t.after(async () => {
+    await client.kill();
+    await rm(dataDir, { recursive: true, force: true });
+  });
+  await client.request(1, 'initialize', {});
+  const { result } = await client.request(2, 'tools/call', {
+    name: 'trajectory_get',
+    arguments: { sessionId: 'sess-big', detailLevel: 'full', limit: 1000 },
+  });
+  const payload = result.structuredContent;
+  assert.equal(payload.truncated, true, 'the reply was not reported as truncated');
+  assert.ok(payload.omitted > 0, 'nothing was reported as omitted');
+  assert.ok(payload.returned < 400, `the reply was not trimmed: ${payload.returned}`);
+  // The frame carries the payload twice — text and structuredContent — so the
+  // whole reply must still fit inside the frame budget, not twice it.
+  const size = Buffer.byteLength(JSON.stringify(result), 'utf8');
+  assert.ok(size <= 4 * 1024 * 1024 + 64 * 1024, `the reply exceeded its budget: ${size} bytes`);
+  assert.equal(payload.events[0].index, 0, 'the first record must survive so paging stays coherent');
 });
 
 test('an unknown tool is an error result, not a dropped request', async (t) => {

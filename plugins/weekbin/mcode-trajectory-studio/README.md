@@ -166,14 +166,81 @@ silently, and `--doctor` prints the path that was actually opened on this machin
   (`script-src 'self'`, no inline script, no remote origin) and every node the page renders is built
   with `createElement` and written with `textContent` — a session body is text, never markup.
 - `summary` detail returns no message text, thinking, tool arguments, or tool results.
-- `full` detail is opt-in and passes through a secret redactor that handles the encodings credentials
-  actually take on disk — JSON object forms such as `{"api_key":"…"}`, `Authorization: Bearer …`
-  headers, provider key formats, private key blocks, credentials in connection strings — plus depth,
-  breadth, and length bounds. Task descriptions and commands are redacted at the data source, and
-  session titles have credential substrings removed in place while the rest of the title survives.
-  Every outbound payload is swept once more at the boundary, so a field added later cannot escape
-  redaction. Home-directory prefixes are collapsed to `~`.
+- `full` detail is opt-in and passes through a **two-tier** secret redactor. The shape a credential
+  actually takes on disk is a JSON document stored inside a JSON string — tool results live in
+  `tool_call_result_data` as *text* (109,462 of 118,109 rows in a real projection) — so it reaches the
+  redactor escaped, as `{\"api_key\":\"…\"}`:
+  - **Tier A (structured).** A string value that parses as JSON is walked again as structured data and
+    judged by key name. The string is rewritten only when a redaction actually fired, so the JSON tool
+    results in the panel are never reformatted to protect nothing.
+  - **Tier B (escape-aware text rules).** The key/value rule tolerates any number of backslashes on
+    either delimiter and re-emits them, so it also fires on text that is not valid JSON at all
+    (truncated, or interleaved with prose).
+- The text rules cover private key blocks, credentials inline in a connection string (including a
+  password that itself contains `@`), the whole `Authorization` header, a bare scheme and token,
+  provider-prefixed keys (`sk-`, `ghp_`, `glpat-`, `xox*` …), length-anchored tokens (`github_pat_`,
+  `npm_`, `hf_`, Google `AIza`, `ya29.`), AWS key ids, an Azure `AccountKey=`, an unlabelled JWT, and
+  key/value pairs.
+- Credential *keys* are matched by word boundary rather than by an exact name list, so camelCase
+  variants such as `clientSecret`, `refreshToken`, `accessToken`, `authToken`, `apiSecret` and
+  `xApiKey` are redacted too, while counters (`inputTokens`) and addressing identifiers (`sessionId`)
+  survive. Task descriptions and commands are redacted at the data source, and session titles have
+  credential substrings removed in place. Every outbound payload is swept once more at the boundary,
+  and the MCP **error branch goes through that same sweep** — an egress that is only redacted when it
+  succeeds is not a boundary.
+- The rules are **idempotent**: text swept three times (data source, per record, egress) equals text
+  swept once, so a marker cannot grow a character per pass.
+- **Personal data is masked only on the egress that leaves the machine.** An MCP result reaches a model
+  context, so that sweep also masks e-mail addresses and phone numbers. The panel is the reader's own
+  screen, where masking a customer's address would destroy the answer they opened it for, so the panel
+  stays faithful.
+- **Path folding.** The home directory, the data directory (`MINIMAX_DATA_DIR`, including a deployment
+  that places it outside the home directory) and any extra root named in
+  `MCODE_TRAJECTORY_REDACT_ROOTS` are collapsed to `~` **wherever they appear** — inside a warning
+  string, and in the doubled-backslash form a Windows path takes inside a JSON column. Another
+  account's home keeps its shape and loses the name (`/home/<user>/…`). That setting can only fold
+  more, never less, so it is not a configuration surface that can weaken anything.
+- Responses are **bounded by total size, not only per string**: an event page is trimmed to a byte
+  budget and reports `truncated`/`omitted` so the client pages on `nextOffset` instead of assuming it
+  received everything. The SQLite read also has a **per-row ceiling** (8 MiB): a row past it is
+  reported as `oversized` with its byte count rather than parsed into the process or silently dropped.
+  A JSONL record with no newline can never grow the read buffer past the 2 MiB line cap — the buffer is
+  capped as chunks arrive, not after the fact.
+- Diagnostics are bounded too: `warnings` keeps the most recent 64 entries and reports how many were
+  dropped in `warningsDropped`.
+- Filesystem containment canonicalizes every traversed component, refuses a symlinked final
+  component, and — on Linux — re-verifies the opened descriptor via `/proc/self/fd` so an intermediate
+  directory swapped between canonicalization and open is refused. Where `/proc` is unavailable
+  (macOS, Windows) that residual race is the documented, accepted limit: it needs a same-UID process
+  to win a microsecond window, and such a process can already read the file directly.
+- The one place the Plugin runs an external command is `git rev-parse` (used to fold one repository's
+  worktrees into a single group). It receives an **allowlisted environment** rather than the whole
+  `process.env`, so no credential the host exports is inherited, and `core.fsmonitor` and the
+  credential helper are fixed off. (Measured: an `alias.rev-parse` planted in a repository's own
+  `.git/config` cannot shadow the builtin.)
 - Nothing is uploaded anywhere; there are no network destinations and no telemetry.
+
+### Known limits
+
+Stated plainly, rather than left to look covered:
+
+- The redactor recognises credential **shapes** and credential-named **keys**. A high-entropy string
+  with no label and no provider shape is not a credential to it.
+- PII masking covers e-mail addresses and phone numbers only, and only on the MCP egress. Names,
+  postal addresses and customer names are out of pattern range.
+- An absolute path under a root you did not configure (say `/mnt/customers/<account>/…`) is returned
+  verbatim — including `workspaceDir` in `summary` detail. Add it to `MCODE_TRAJECTORY_REDACT_ROOTS`
+  to fold it.
+- **The panel capability travels into the session transcript with the tool result.**
+  `trajectory_studio` returns the URL carrying `#t=…`, the runtime persists tool results in session
+  storage, and the context is sent to the model service on later turns. What contains it is that the
+  capability is **process-scoped** (it exists only in that MCP server's memory) and the panel is
+  loopback-only, so it is unreachable once the process ends. If you want no capability in a model
+  context at all, start the panel yourself with `node server/main.mjs --serve` — the URL is then
+  printed only to your terminal.
+- `--doctor` prints the data directory and the database path verbatim on purpose: it is the diagnostic
+  you read and decide whether to share, and folding those paths would remove what makes it useful.
+
 
 ## Requirements
 
@@ -224,10 +291,12 @@ silently, and `--doctor` prints the path that was actually opened on this machin
   POSIX-only assertion about a resolved data directory, and a temporary directory removed while
   SQLite still held the file open (`EBUSY` on Windows, harmless on POSIX).
 - The Node matrix above was measured by running the Plugin's own suite on each release, not inferred
-  from release notes. The suite result tracks it exactly: **115 pass / 0 fail** on 22.19.0, 22.21.1,
-  24.0.0, 24.16.0 and 24.19.0, and **114 pass / 0 fail / 1 skipped** on 22.13.0, 22.15.0, 23.4.0 and
-  23.11.0 — the single skip being the FTS5 search test, which reports itself as skipped rather than
-  failing. That is why the floor and the FTS5 boundary are stated as two separate numbers.
+  from release notes. Those runs reported **115 pass / 0 fail** on 22.19.0, 22.21.1, 24.0.0, 24.16.0
+  and 24.19.0, and **114 pass / 0 fail / 1 skipped** on 22.13.0, 22.15.0, 23.4.0 and 23.11.0 — the
+  single skip being the FTS5 search test, which reports itself as skipped rather than failing. That is
+  why the floor and the FTS5 boundary are stated as two separate numbers. The suite has since grown to
+  166 cases (see the table below); the *capability* boundaries these rows establish are unaffected,
+  because they are properties of the runtime rather than of the tests.
   `tools/compat-matrix.mjs` re-checks this table on demand and asserts it rather than printing it.
   The moving `22.x` and `24.x` lines are not pinned here because they resolve to a new release
   several times a year; they were 22.23.2 / SQLite 3.51.3 and 24.20.0 / SQLite 3.53.4 when this
@@ -255,9 +324,18 @@ exit 1 — so a green run means something.
 
 | Verified with | Result |
 |---|---|
-| `compat-matrix` on Node `22.13.0` | 115 tests, 114 pass, 0 fail, 1 skipped (FTS5 absent, SQLite 3.47.2) |
-| `compat-matrix` on Node `22.19.0`, `22.23.2`, `24.0.0`, `24.20.0` | 115 tests, 115 pass, 0 fail, 0 skipped |
-| `node --test` on `windows-latest` and `macos-latest` | 115 tests, 0 fail on both |
+| `compat-matrix` on Node `24.19.0` (latest run) | 166 tests, 166 pass, 0 fail, 0 skipped (FTS5 present, SQLite 3.53.3) |
+| `compat-matrix` on Node `22.13.0` (previous revision) | 115 tests, 114 pass, 0 fail, 1 skipped (FTS5 absent, SQLite 3.47.2) |
+| `compat-matrix` on Node `22.19.0`, `22.23.2`, `24.0.0`, `24.20.0` (previous revision) | 115 tests, 115 pass, 0 fail, 0 skipped |
+| `node --test` on `windows-latest` and `macos-latest` (previous revision) | 115 tests, 0 fail on both |
+| `node server/main.mjs --doctor` on Node `22.12.0` | refuses to start, naming the floor and `node:sqlite` |
+
+Rows marked "previous revision" are the numbers actually measured then and are left as they were. The
+suite has grown from 115 in those rows to 166 as the fixes' canaries were added; the latest pass
+contributed 28 cases — escaped-form redaction and idempotence, the MCP error branch and its own sweep,
+the per-row and warning bounds, the git child environment, root parsing, the panel's privacy default,
+and the JSONL drop-count case. Re-measured green on Node `24.19.0`. The other Node releases and the
+Windows/macOS runners have not been re-run since, so the next CI run covers them.
 | `node server/main.mjs --doctor` on Node `22.12.0` | refuses to start, naming the floor and `node:sqlite` |
 
 The last three rows were run on Windows and macOS for the first time during this review round, and
@@ -288,10 +366,25 @@ each one is written so that "refuse everything" cannot pass it:
   symlinked task directory, a two-hop link, a relative link, a symlinked `output.log`, a symlinked
   session directory, and a symlinked `messages.jsonl`. Every case asserts the canary is absent *and*
   that the read is reported unavailable, with a positive control alongside that must still succeed.
+  It also pins the resource behaviour: a large unterminated JSONL line takes the incremental buffer
+  cap's discard path (`droppedOversized`), a line after it still folds, and the post-open gate refuses
+  a descriptor that resolves outside the root while falling back to the documented boundary where
+  `/proc` is absent.
 - **`redact.test.mjs`** pins each encoding that used to escape: JSON object forms, nested envelopes,
-  `Authorization: Bearer …`, `Basic`, `proxy-authorization`, a header inside a shell command, and a
-  tool-call description. Each asserts the secret is gone *and* that the surrounding payload survives,
-  and that the identifiers the API is keyed on (`sessionId`) are not mistaken for credentials.
+  the **escaped** form (`{\"api_key\":\"…\"}` — the runtime stores tool results as JSON text, so this
+  is what a credential actually looks like on disk), double escaping, `Authorization: Bearer …`,
+  `Basic`, `proxy-authorization`, a header inside a shell command, a tool-call description, and the
+  camelCase credential keys (`clientSecret`, `refreshToken`, `accessToken`, `authToken`, `apiSecret`,
+  `xApiKey`) that an exact-name set leaked. Each asserts the secret is gone *and* that the surrounding
+  payload survives, that the identifiers the API is keyed on (`sessionId`) and the usage counters
+  (`inputTokens`) are not mistaken for credentials, that a home path is collapsed wherever it appears,
+  and that the depth and aggregate-byte bounds hold. Four assertions are properties rather than
+  examples: idempotence (`redact(redact(x)) === redact(x)`) over the whole corpus × four option sets,
+  that no sweep ever grows a marker a bracket at a time, that a truncation marker is stable across
+  sweeps, and that a JSON string with nothing to redact is returned **byte-identical** — tier A must
+  not reflow the reader's data to protect nothing. Over-redaction is pinned too: `npm_config_registry`
+  and `HF_HOME` must survive, a 13-digit epoch must not be read as a phone number, and a connection
+  string whose password contains `@` must not leak the tail the earlier rule left behind.
 - **`panel-security.test.mjs`** covers the capability (the old fixed header alone is now 403, a
   wrong-length value is refused without throwing, a repeated header is refused, the right one is
   accepted and not echoed), process isolation (one panel's capability does not open another's), the
@@ -299,10 +392,14 @@ each one is written so that "refuse everything" cannot pass it:
   mutation-checked scan that fails if any shipped asset ever uses a markup injection sink.
 - **`protocol.test.mjs`** spawns the real MCP server over stdio, the way mcode does, and drives it as
   a client: version negotiation, the seven declared tools and their annotations, a call against a
-  fixture projection, full detail redacted on the wire, unknown tool and unknown method, a
-  notification left unanswered, `--doctor`, and the lifecycle — closing stdin has to end the process
-  *with the panel running*, because a listener left behind leaks a port on every session. Every wait
-  is bounded, so a server that stops answering fails the suite instead of hanging it.
+  fixture projection, full detail redacted on the wire (including structured credential keys that only
+  the key name can catch, and a credential hidden inside a tool *result* — stored, as the runtime
+  stores it, as JSON text behind an escaped key), **the failure branch swept through the same path as
+  the success branch**, a reply trimmed to its byte budget with `truncated`/`omitted` reported,
+  unknown tool and unknown method, a notification left unanswered, `--doctor`, and the lifecycle —
+  closing stdin has to end the process *with the panel running*, because a listener left behind leaks
+  a port on every session. Every wait is bounded, so a server that stops answering fails the suite
+  instead of hanging it.
 - **`node-version.test.mjs`** asserts the floor and the verified range, that the FTS5 claim matches an
   actual `CREATE VIRTUAL TABLE … USING fts5` on whatever runtime is executing, that all four
   declarations state the same numbers, and that no native module is pulled in.
@@ -312,6 +409,18 @@ timeline navigation, all inspector tabs, the theme toggle and the failure-eviden
 viewport widths, and a session seeded with `<img src=x onerror=…>` in its body and tool arguments to
 confirm it renders as text with no script execution. The repository suite runs the same validator CI
 runs.
+
+The security hardening re-checked the affected surface in a real browser (`tools/panel-e2e.mjs` driven
+by a browser, with `<img src=x onerror=…>`, `<svg onload=…>` and `"><script>…</script>` planted in the
+session): at the default `summary` detail the first paint fetches **no message text at all** (the
+toggle is unchecked and no payload is in the DOM); after ticking 显示正文 all three payloads render as
+**literal text**, the DOM holds **zero** `on*` inline handlers, zero `javascript:` URLs, no `<img>` and
+no `<svg onload>`, and the console stays clean; a credential is already `[redacted]` by the time it
+reaches the page (a `ghp_…` in the session title arrives as `[redacted]`); no token in `localStorage`
+and no cookie; and the response headers are the `default-src 'none'` CSP plus `no-referrer`. The
+five-viewport matrix and the theme/timeline items are from the earlier round and were not re-run. The
+checklist `tools/panel-e2e.mjs` prints was updated for the new `summary` default — left as it was, it
+would suggest the payload should be visible on load.
 
 ## Install
 

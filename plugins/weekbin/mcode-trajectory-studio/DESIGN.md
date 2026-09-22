@@ -187,7 +187,7 @@ turn_mu6wnx9w_ee64qg   2042       457       90
 | 库 2.5 GB 且运行时正在写（WAL 17 MB） | 一律 `file:…?mode=ro` 只读打开，绝不写；不开 exclusive |
 | 表名 `local_runtime_*`、列 `columnar_version` 属内部实现，可能变 | 用 `json_extract` 宽松读取 + 缺字段降级；不依赖固定列序；schema 探测失败即降级到 fallback |
 | 大结果集 | 强制分页 + 行数上限；按 `session_id, id` 索引走 |
-| 隐私（会话含敏感内容） | 本地 127.0.0.1 绑定 + Host/Origin 校验 + CSP + 无外网；不做任何上传 |
+| 隐私（会话含敏感内容） | 本地 127.0.0.1 绑定 + Host/Origin 校验 + CSP + 每进程 capability token + 两层脱敏 + 无外网；不做任何上传 |
 | 只读打开时运行时正在 checkpoint | `mode=ro` 下 SQLite 用 WAL 只读快照，安全 |
 
 ---
@@ -270,6 +270,11 @@ turn_mu6wnx9w_ee64qg   2042       457       90
 
 ### 6.2 目录结构（双布局，兼容 0.3.x 与 0.4.0+）
 
+> 下面这份清单是**设计时的快照**（表内版本 `0.1.0` 即当时的值），保留是为了记录当初的双布局意图；
+> 当前版本以 `plugin.json` 为准，实际的服务端模块见 `server/`：`config` · `json` · `sqlite` · `fsutil`
+> · `redact` · `git` · `store` · `sessions` · `stats` · `tasks` · `events` · `search` · `jsonl` · `http`
+> · `mcp` · `node-version` · `main`。
+
 ```
 plugins/weekbin/mcode-trajectory-studio/
 ├── README.md
@@ -283,10 +288,10 @@ plugins/weekbin/mcode-trajectory-studio/
 │   └── mcode-trajectory-studio/
 │       └── SKILL.md              # 字节一致副本（0.3.x & 校验器）
 ├── server/
-│   ├── main.mjs                  # 入口：--stdio / --http
+│   ├── main.mjs                  # 入口：--stdio（默认） / --serve / --doctor
 │   ├── mcp.mjs                   # MCP JSON-RPC（stdio）
 │   ├── store.mjs                 # 数据层：SQLite 只读 + JSONL fallback
-│   ├── schema.mjs                # schema 探测/降级
+│   ├── sqlite.mjs                # schema 探测 / 只读打开 / FTS5 探测
 │   ├── http.mjs                  # 本地 HTTP + API + 静态资源
 │   └── redact.mjs                # 脱敏 + 长度封顶
 ├── web/
@@ -345,21 +350,89 @@ plugins/weekbin/mcode-trajectory-studio/
 
 - 任何读取的 canonical（realpath）结果必须落在 canonical `dataDir` 之内
 - 末段组件不得是 symlink；用 `O_NOFOLLOW` 关闭 realpath→open 之间的窗口
+- **打开后再校验一次**：Linux 上读 `/proc/self/fd/<fd>` 拿到真正被打开的 inode 路径，再对 `dataDir`
+  校验 → 关闭「中间目录在 realpath 与 open 之间被替换」的窗口。无 `/proc` 的平台（macOS / Windows）
+  该竞态不在防护范围内，且这是**明确写进文档的**接受边界，不是隐含假设
 - 用已打开 fd 做 fstat 取 size、做 stream 读 → 检查与读取是同一个 inode（无 TOCTOU）
 - 每次目录遍历逐层用 `isDirectory()` 过滤（dirent 对 symlink 目录返回既非文件也非目录）
 - canary 测试覆盖：目录 symlink / 两级跳转 / 相对 symlink / 末段文件 symlink / 根自身是 symlink，
-  且每条都配正向对照
+  且每条都配正向对照；另加 `/proc` 后校验的机制测试与「同名前缀兄弟目录不算在内」测试
 
 脱敏（覆盖凭据在磁盘上的真实形态）：
 
 - 规则**有序**：私钥块 → 连接串内联凭据 → 整个 Authorization 头（含 scheme）→ 裸 scheme+token
-  → provider key → AWS key id → 键值对
-- 键值对允许 key 与分隔符之间夹引号（`{"api_key":"…"}`），替换时保留引号形状 → 结果仍是合法 JSON
-- 规则幂等（源头发过一次、出口再 sweep 一次不会二次破坏）
-- 结构化键用**精确名**判定（保住 `inputTokens` 等计数），自由文本用**带分隔符的包含**判定
+  → provider 前缀 key → 定长 provider token → AWS key id → Azure AccountKey → 无标签 JWT
+  → 转义 JSON 键值对 → 普通键值对 → PII（受开关控制）
+- **两层，缺一不可**。凭据在磁盘上的真实形态是「JSON 文档存在 JSON 字符串里」：`tool_call_result_data`
+  是 TEXT 字段（真实投影 118,109 行中 109,462 行如此），所以到达脱敏器时是 `{\"api_key\":\"…\"}`。
+  - A 层：字符串值若能 `JSON.parse` 成对象/数组，就按结构化数据再走一遍按键名判定；**只有真的改动了
+    才重写该字符串**，否则原样返回（否则面板里每个 JSON 工具结果都会被重新排版而什么也没保护到）。
+    深度上限 4 层、单值上限 512 KiB。
+  - B 层：键值规则的分隔符允许带任意层反斜杠并原样回填，因此对**不是合法 JSON** 的文本（截断、
+    与散文混排）同样命中。规则的值**不允许跨越转义引号**——否则转义文档里的外层非敏感键会先把整段
+    吃掉（回调看到无害的 key、返回原样，而扫描指针已经越过内层敏感对），内层凭据就此漏网。这条
+    边界是实测出来的，测试里有专门的反例。
+- 键值对允许 key 与分隔符之间夹引号（`{"api_key":"…"}`），替换时保留引号形状 → 结果仍是合法 JSON；
+  连接串的 userinfo 段用贪婪匹配到**最后一个** `@`，因此密码本身含 `@` 时不会只脱一半而漏出尾巴
+- **规则幂等**，且这是可测的性质而不是声明：`redact.test.mjs` 对整份语料 ×4 组选项断言
+  `redact(redact(x)) === redact(x)`。三处实现细节是它成立的原因——未加引号的值字符类拒收 `]`，
+  因此 `alreadyRedacted()` 额外接受缺右括号的 `[redacted`；`alreadyRedacted()` 还接受标记的**任意
+  前缀**，否则小 `maxLength` 把标记截成 `[re` 后会被当作新值重新脱敏，标记逐轮变长；截断标记自身
+  也被识别，避免第二次 sweep 去截断第一次的标记、让 omitted 计数漂移
+- 定长 provider token 用长度锚定而不是只看前缀：`npm_config_registry` / `HF_HOME` 是普通环境变量，
+  只按 `npm_` / `hf_` 前缀匹配会把它们一起脱掉，毁掉用户打开面板想看的东西
+- 结构化键与自由文本都用**带词边界的包含**判定，`session[_-]?id` 例外（它是寻址标识不是凭据），
+  因此 `clientSecret` / `refreshToken` / `accessToken` / `authToken` / `apiSecret` / `xApiKey` 这类
+  camelCase 变体一律命中，而 `inputTokens` / `total_tokens` 等计数与 `sessionId` 等标识符原样保留
 - 任务 description/command 在数据源头脱敏；会话 title 就地替换凭据子串、保留其余文本
-- 每个出口（MCP tool result、HTTP API response）整体 sweep 一次，上限取各面已有的最大上限
-  （只脱敏、不额外截断），因此日后新增字段不会漏
+- 每个出口（MCP tool result、HTTP API response）整体 sweep 一次，带上边界、深度、广度上限；
+  **MCP 的错误分支走同一条 sweep**——只在成功时才脱敏的出口不算边界
+- **路径折叠**：家目录、数据目录（`MINIMAX_DATA_DIR`，覆盖家目录在容器/CI 里被放到别处的情况）、
+  以及 `MCODE_TRAJECTORY_REDACT_ROOTS` 追加的根，在**任意位置**折叠为 `~`，并同时折叠 Windows 路径
+  在 JSON 列里双反斜杠的形态；**其他账号**的家目录保留形状、去掉账号名（`/home/<user>/…`）。
+  该开关只可能多折叠、不可能少折叠，因此它与监听地址不同：它不是一条能削弱防护的配置面
+- **PII（邮箱 / 电话）只在 MCP 出口打码**：MCP 结果会进入模型上下文，面板是读者自己的屏幕。两个
+  出口共用一套规则、只有一个开关不同，这个区别在代码里是一处显式传参，不是隐含行为
+
+数据量与进程卫生：
+
+- SQLite 侧与 JSONL 侧都有**单行上限**：JSONL 2 MiB（缓冲区随分块即时封顶），SQLite `data_json`
+  8 MiB。超限行以 `oversized` + 字节数上报——既不是整行读进内存，也不是静默丢弃；写 SQL 时用
+  `CASE WHEN length(data_json) <= ?` 让判定在 SQL 内侧完成，超限值根本不进 JS 字符串
+- 诊断列表有上限（`WARNINGS_MAX = 64`），并回传 `warningsDropped`；长驻 MCP server 每次读失败都会
+  追加一条，无上限即慢泄漏，而这份列表每次 `trajectory_list` 都会整体回传
+- 唯一执行外部命令的地方是 `git rev-parse`：传**白名单环境变量**而不是整个 `process.env`
+  （宿主导出的凭据不会被继承），固定 `-c core.fsmonitor=false -c credential.helper=`，并关掉
+  `GIT_ASKPASS` / `SSH_ASKPASS` / 分页器。用户自己的 `~/.gitconfig` **故意保留**：`safe.directory`
+  在那里，切断它会让所有非本用户 checkout 静默退化为按路径分组；探针不从中读取任何值
+  （`rev-parse` 无 hooks、无分页器、不查凭据），且**实测**仓库自带 `.git/config` 里的
+  `alias.rev-parse` 无法劫持内置命令
+
+### 6.6 威胁模型与已知限制
+
+写清楚哪些是防护、哪些是接受边界：
+
+| 威胁 | 处置 |
+|---|---|
+| 网页（CSRF / DNS rebinding）读取本机面板 | Host 精确等于监听 authority + Origin 同源 + `Sec-Fetch-Site`；Host 精确比对天然免疫 rebinding |
+| **本机其他进程**读取面板 | 每进程 capability token（256 位 CSPRNG，只在 fragment，内存态）。栅栏挡不住进程，凭据才是授权 |
+| 凭据随 `full` 明细走出本机 | A+B 两层脱敏 + 出口 sweep + 出口 PII；实测覆盖全投影中所有转义形态的敏感键值对 |
+| 会话数据被上传 | 无网络目的地、无遥测；唯一的出口是 MCP 结果进入模型上下文，故 PII 只在这一侧打码 |
+| 恶意 symlink 把读操作引到 dataDir 之外 | canonical 化全路径 + `O_NOFOLLOW` + `/proc/self/fd` 复核；无 `/proc` 平台的残余竞态为文档化边界 |
+| 超大行/超大响应耗尽内存 | 单行上限 + 单串上限 + 单响应字节预算，超限一律上报而不是静默丢弃 |
+| 仓库自带 git 配置劫持探针 | 白名单 env + 固定 `-c`；alias 劫持内置命令已实测不可行 |
+
+已知限制（**不是**待办，是边界）：
+
+- 脱敏器认的是凭据的**形状**与**凭据名**；既无标签、也不符合任何 provider 形状的高熵字符串不在
+  识别范围内。这是拒绝「用启发式去猜一切」的自觉选择：过度脱敏会连带毁掉读者要看的内容
+- PII 只覆盖邮箱与电话，且只在 MCP 出口；姓名/地址/客户名不在模式范围
+- 未列入折叠根的绝对路径原样返回（`summary` 的 `workspaceDir` 亦然），需要用户显式加根
+- **面板 capability 会随工具结果进入会话记录**：运行时把工具结果落盘，并在后续轮次把上下文发给模型
+  服务。缓解是它**随进程消亡**且面板只监听回环。希望凭据完全不入模型上下文时，用
+  `node server/main.mjs --serve` 在终端自行启动即可（URL 只打印在终端）
+- `--doctor` 原样打印数据目录与库路径：它是给人看、由人决定是否分享的诊断面
+
 
 渲染层：
 
@@ -373,10 +446,14 @@ plugins/weekbin/mcode-trajectory-studio/
 
 - SQLite 一律只读打开（`readOnly: true`）；不写入任何会话产物
 - 插件不创建任何文件：不写 PLUGIN_DATA、不写端口文件（面板端口只出现在工具返回值与 stdout）
-- 单行 / 单响应大小上限；JSONL 单行 2 MiB 上限
+- 单行 / **单响应**大小上限：JSONL 单行 2 MiB；事件列表按序列化字节裁剪到 4 MiB（MCP 因一次结果
+  同时带 text 与 structuredContent，取一半预算），并回传 `truncated` / `omitted` 让客户端翻页
+- JSONL 读入的缓冲区**逐块**封顶：单行无换行符时不会先累积到整文件再判断，而是超过 2 MiB 即丢弃
+  该行并跳过到下一个换行
+- 出口 sweep 同时限制深度（64）与广度（10000），避免深嵌套 `data_json` 造成栈耗尽
 - 错误响应只回闭集内的固定码，非预期错误只写 stderr
 
-### 6.6 校验器合规清单（`scripts/validate.mjs`）
+### 6.7 校验器合规清单（`scripts/validate.mjs`）
 
 - [ ] 目录名 = `plugin.json.name`，符合 `PLUGIN_NAME`，≤64 字符
 - [ ] 全目录**无 symlink**

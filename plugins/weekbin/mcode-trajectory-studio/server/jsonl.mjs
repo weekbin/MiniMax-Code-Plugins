@@ -69,25 +69,52 @@ export async function readJsonlEvents(store, { sessionId, limit = 1000, detailLe
   // and on a mid-stream error alike — is what releases the handle.
   const stream = opened.handle.createReadStream({ encoding: 'utf8' });
   try {
-    return { events: await foldJsonl(stream, { limit, detailLevel }), source: 'jsonl' };
+    const folded = await foldJsonl(stream, { limit, detailLevel });
+    return { events: folded.events, source: 'jsonl', droppedOversized: folded.droppedOversized };
   } finally {
     stream.destroy();
   }
 }
 
-/** Project one artifact stream into the SQLite-shaped event list. */
-async function foldJsonl(stream, { limit, detailLevel }) {
+/**
+ * Project one artifact stream into the SQLite-shaped event list.
+ *
+ * The buffer is capped *incrementally*. The earlier revision appended a chunk and
+ * only then tested the line size, so a single line with no newline — a truncated
+ * write, a corrupt file, a hostile artifact — grew the buffer to the size of the
+ * whole file before the check ever ran, which is unbounded memory from a bounded
+ * read. Instead, once the pending bytes exceed the line cap the partial line can
+ * never be accepted, so it is dropped and everything up to the next newline is
+ * discarded without being retained. `droppedOversized` reports how many such lines
+ * were seen, which is what lets a test prove the cap path actually ran.
+ *
+ * Exported so the buffer accounting can be tested against a synthetic stream.
+ */
+export async function foldJsonl(stream, { limit, detailLevel, maxLineBytes = LIMITS.jsonlLineBytes }) {
   const events = [];
   let turnCursor = null;
   let index = 0;
   let buffer = '';
+  let bytes = 0;
+  let discarding = false;
+  let droppedOversized = 0;
   for await (const chunk of stream) {
     buffer += chunk;
+    bytes += Buffer.byteLength(chunk, 'utf8');
     let newline;
     while ((newline = buffer.indexOf('\n')) !== -1) {
       const line = buffer.slice(0, newline);
       buffer = buffer.slice(newline + 1);
-      if (!line.trim() || Buffer.byteLength(line) > LIMITS.jsonlLineBytes) continue;
+      bytes -= Buffer.byteLength(line, 'utf8') + 1; // the '\n' is one byte
+      if (discarding) { discarding = false; continue; }
+      if (!line.trim()) continue;
+      // Counted here as well as on the pending-buffer path below, because which of the
+      // two a line takes depends only on where the chunk boundary fell: an oversized
+      // line delivered complete with its newline never crosses the pending cap, and
+      // used to be discarded without being reported. The two paths cannot both count
+      // one line — the discarding branch consumes the overflowing line's newline and
+      // returns before this test.
+      if (Buffer.byteLength(line) > maxLineBytes) { droppedOversized += 1; continue; }
       if (events.length >= limit) continue;
       const record = parseJson(line);
       if (!record) continue;
@@ -157,19 +184,16 @@ async function foldJsonl(stream, { limit, detailLevel }) {
       }
       events.push(event);
     }
+    // No newline arrived within the cap: the pending line is already unacceptable,
+    // so stop retaining it and discard until the next newline instead of buffering
+    // the rest of the file. The counter is incremented once per line — a line
+    // arrives in many chunks, so only the transition into discarding counts.
+    if (bytes > maxLineBytes) {
+      if (!discarding) droppedOversized += 1;
+      buffer = '';
+      bytes = 0;
+      discarding = true;
+    }
   }
-  return events;
-}
-
-/** Read a session's `manifest.json`, if the artifact directory has one. */
-export async function readManifest(store, sessionDir) {
-  const opened = await openContainedRead(store.dataDir, path.join(sessionDir, 'manifest.json'));
-  if (!opened) return null;
-  try {
-    return parseJson(await opened.handle.readFile('utf8'));
-  } catch {
-    return null;
-  } finally {
-    await opened.handle.close().catch(() => {});
-  }
+  return { events, droppedOversized };
 }

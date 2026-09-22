@@ -97,7 +97,7 @@ function rowAggregate(store, sessionId) {
   try {
     base = store.db.prepare(sql).get(sessionId) || {};
   } catch (error) {
-    store.warnings.push(`row_aggregate_failed:${error.message}`);
+    store.warn(`row_aggregate_failed:${error.message}`);
     base = {};
   }
 

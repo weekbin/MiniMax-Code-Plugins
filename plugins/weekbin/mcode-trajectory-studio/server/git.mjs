@@ -21,14 +21,56 @@ const MAX_CACHE_ENTRIES = 4096;
 /** dir -> identity, so repeated renders do not re-spawn git. */
 const identityCache = new Map();
 
+/**
+ * The environment variables `git` legitimately needs from this process.
+ *
+ * The full `process.env` used to be handed to the child, so every credential the
+ * host exports — provider keys, API tokens, cloud sessions — was inherited by a
+ * process spawned on a directory that came out of session data. `git rev-parse`
+ * needs none of them, so it gets an allowlist. HOME/USERPROFILE stay because git
+ * reads them to locate its own configuration, and the platform variables stay
+ * because Windows needs them to resolve the binary and its DLLs.
+ *
+ * The user's `~/.gitconfig` is deliberately still honoured: that is where
+ * `safe.directory` lives, and cutting it would turn every foreign-owned checkout
+ * into a silent grouping fallback. Only *system* config is refused. The probe reads
+ * no value out of either — `rev-parse` is a plumbing command with no hooks, no pager
+ * and no credential lookup — and a repository-local alias cannot shadow a builtin,
+ * which was measured against a `.git/config` carrying `alias.rev-parse`.
+ */
+const GIT_ENV_ALLOWLIST = [
+  'PATH', 'HOME', 'USERPROFILE', 'SystemRoot', 'SystemDrive', 'ComSpec', 'PATHEXT',
+  'WINDIR', 'LANG', 'LC_ALL',
+];
+
+export function gitChildEnv() {
+  const env = {};
+  for (const key of GIT_ENV_ALLOWLIST) {
+    const value = process.env[key];
+    if (typeof value === 'string' && value) env[key] = value;
+  }
+  return {
+    ...env,
+    GIT_TERMINAL_PROMPT: '0',
+    GIT_CONFIG_NOSYSTEM: '1',
+    GIT_OPTIONAL_LOCKS: '0',
+    // No prompt helper and no interactive fallback: this probe must never block.
+    GIT_ASKPASS: '',
+    SSH_ASKPASS: '',
+    GIT_PAGER: 'cat',
+  };
+}
+
+/** Switches that must hold regardless of what any config file says. */
+const GIT_HARDENING = ['-c', 'core.fsmonitor=false', '-c', 'credential.helper='];
+
 function runGit(dir, args) {
   return new Promise((resolve) => {
-    execFile('git', ['-C', dir, ...args], {
+    execFile('git', ['-C', dir, ...GIT_HARDENING, ...args], {
       timeout: GIT_TIMEOUT_MS,
       windowsHide: true,
       maxBuffer: 64 * 1024,
-      // Never let a repository's own config inject helpers into this probe.
-      env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_NOSYSTEM: '1', GIT_OPTIONAL_LOCKS: '0' },
+      env: gitChildEnv(),
     }, (error, stdout) => {
       if (error) resolve(null);
       else resolve(String(stdout).trim());

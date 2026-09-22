@@ -7,7 +7,8 @@ import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
 
 import { openStore, resolveDataDir, resolveHomeDir, encodeFtsQuery } from '../server/store.mjs';
-import { resolveWorkspaceIdentity } from '../server/git.mjs';
+import { WARNINGS_MAX, resolveRedactRoots } from '../server/config.mjs';
+import { resolveWorkspaceIdentity, gitChildEnv } from '../server/git.mjs';
 import { redactValue, redactText, redactPath } from '../server/redact.mjs';
 import { TOOLS, handleRpcMessage } from '../server/mcp.mjs';
 import { ftsModuleAvailable } from '../server/sqlite.mjs';
@@ -630,6 +631,45 @@ test('workspaces group by git repository so worktrees merge', async (t) => {
   assert.equal((await resolveWorkspaceIdentity('')).kind, 'path');
 });
 
+test('the git probe receives an allowlisted environment, not the whole process', () => {
+  // The probe runs on a directory that came out of session data. Handing it the whole
+  // `process.env` passed every credential the host exports into a child process that
+  // needs none of them — so the test plants two and asserts neither arrives, then
+  // pins the exact key set so a future `...process.env` cannot creep back in.
+  const SYNTHETIC = 'TRAJECTORY_CANARY_TOKEN';
+  const previous = { [SYNTHETIC]: process.env[SYNTHETIC], AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY };
+  process.env[SYNTHETIC] = 'CANARY-git-env-9f31';
+  process.env.AWS_SECRET_ACCESS_KEY = 'CANARY-aws-secret-9f31';
+  try {
+    const env = gitChildEnv();
+    assert.equal(SYNTHETIC in env, false, 'the child inherited an arbitrary environment variable');
+    assert.equal('AWS_SECRET_ACCESS_KEY' in env, false, 'the child inherited a credential');
+
+    const expected = new Set([
+      'PATH', 'HOME', 'USERPROFILE', 'SystemRoot', 'SystemDrive', 'ComSpec', 'PATHEXT',
+      'WINDIR', 'LANG', 'LC_ALL',
+      'GIT_TERMINAL_PROMPT', 'GIT_CONFIG_NOSYSTEM', 'GIT_OPTIONAL_LOCKS',
+      'GIT_ASKPASS', 'SSH_ASKPASS', 'GIT_PAGER',
+    ]);
+    for (const key of Object.keys(env)) {
+      assert.ok(expected.has(key), `unexpected key in the git child environment: ${key}`);
+    }
+    // Fixed regardless of any config file, and never inherited from the host.
+    assert.equal(env.GIT_TERMINAL_PROMPT, '0');
+    assert.equal(env.GIT_CONFIG_NOSYSTEM, '1');
+    assert.equal(env.GIT_ASKPASS, '');
+    assert.equal(env.SSH_ASKPASS, '');
+    // PATH has to survive or `git` cannot be resolved at all; the worktree test above
+    // is the positive control that the restricted environment still runs real git.
+    assert.ok(env.PATH, 'PATH was dropped, so git could not be found');
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
 test('annotateWorkspaces labels every session with its group', async (t) => {
   const dataDir = await makeDataDir();
   const store = openStore({ dataDir });
@@ -771,6 +811,70 @@ test('redactValue scrubs nested secrets by key name', () => {
 test('redactPath collapses the home prefix', () => {
   assert.equal(redactPath(`${FIXTURE_WORKSPACE}/x`, { homeDir: FIXTURE_HOME }), '~/ws/x');
   assert.equal(redactPath('/opt/other', { homeDir: '/home/tester' }), '/opt/other');
+});
+
+/* ---------------------------------------------------------------- bounds -- */
+
+test('a row past the per-record byte cap is reported, not parsed whole', async (t) => {
+  // The JSONL fallback has always had a per-line cap; the SQLite read had none, so
+  // one multi-megabyte row was materialised as a string and parsed. The bound is
+  // exercised at 512 bytes here rather than 8 MiB, because the property under test
+  // is the accounting, not the constant.
+  const dataDir = await makeDataDir();
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const huge = JSON.stringify({
+    msg_id: 'm-huge', role: 'assistant', source: 'api', msg_type: 2,
+    turn_id: 'turn-1', msg_content: 'y'.repeat(4096),
+  });
+  const writable = new DatabaseSync(path.join(dataDir, 'v2', 'sqlite', 'runtime-state.sqlite'));
+  writable.prepare(
+    `INSERT INTO local_runtime_message_rows (session_id, msg_id, role, turn_id, created_at_ms, data_json, source)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).run('sess-a', 'm-huge', 'assistant', 'turn-1', 5000, huge, 'api');
+  writable.close();
+
+  const store = openStore({ dataDir });
+  t.after(() => store.close());
+  const page = store.getEvents({ sessionId: 'sess-a', limit: 500, maxJsonBytes: 2048 });
+  const oversized = page.events.find((event) => event.oversized === true);
+  assert.ok(oversized, `no record was reported as oversized: ${JSON.stringify(page.events.map((e) => e.rowId))}`);
+  assert.equal(oversized.bytes, huge.length);
+  assert.equal(oversized.msgId, null, 'an oversized row must not pretend to have content');
+  // The row still occupies its slot, so indices and `total` keep lining up.
+  assert.equal(page.events.length, page.total);
+  assert.equal(page.events.filter((event) => event.oversized).length, 1);
+  // The ordinary rows are untouched by the presence of one oversized sibling.
+  assert.ok(page.events.some((event) => event.contentLength > 0), 'the other records lost their summary');
+  assert.ok(store.warnings.some((entry) => entry.startsWith('events_oversized:')), 'no warning was recorded');
+});
+
+test('the warning list is bounded and reports what it dropped', async (t) => {
+  const dataDir = await makeDataDir();
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const store = openStore({ dataDir });
+  t.after(() => store.close());
+  const before = store.warnings.length;
+  const total = WARNINGS_MAX * 3;
+  for (let index = 0; index < total; index += 1) store.warn(`synthetic_${index}`);
+  assert.equal(store.warnings.length, WARNINGS_MAX, 'the list grew without bound');
+  assert.equal(store.warnings.at(-1), `synthetic_${total - 1}`, 'the newest warning was dropped');
+  assert.equal(store.warningsDropped, before + total - WARNINGS_MAX, 'the drop was not accounted for');
+});
+
+test('the folded roots always include the data directory, and parse the extra list', () => {
+  // A deployment that puts the data directory outside the home directory — a
+  // container, a CI runner, a mounted volume — would otherwise have its one
+  // deliberately-named absolute path leave verbatim in `/api/meta` and in the
+  // `sqlite_discovered:` warning.
+  const dataDir = path.join(tmpdir(), 'roots-data');
+  const extra = ['', '/one', '  /two  '].join(path.delimiter);
+  assert.deepEqual(resolveRedactRoots({ MCODE_TRAJECTORY_REDACT_ROOTS: extra }, dataDir), [dataDir, '/one', '/two']);
+
+  // A root that is a single separator would rewrite every path separator in a
+  // payload, so it is refused rather than folded.
+  assert.deepEqual(resolveRedactRoots({}, '/'), []);
+  assert.deepEqual(resolveRedactRoots({ MCODE_TRAJECTORY_REDACT_ROOTS: '/' }, undefined), []);
+  assert.deepEqual(resolveRedactRoots({}, undefined), []);
 });
 
 /* ------------------------------------------------------------------- mcp -- */

@@ -4,7 +4,7 @@ description: Inspect and visualize MiniMax Code session trajectories from the lo
 license: Apache-2.0
 metadata:
   author: weekbin
-  version: 0.1.1
+  version: 0.1.2
 ---
 
 # MiniMax Code Trajectory Studio
@@ -82,6 +82,12 @@ When the user wants to browse a trajectory themselves:
      issue, a chat message, or any file. If the user needs the panel again in a later session, call
      `trajectory_studio` again — a new call in a new process returns a new token, and a URL from a
      previous process will be refused.
+   - Note that the URL arrives inside a tool result, and the runtime persists tool results and sends
+     the context on later turns — so the token is in the transcript whether or not you repeat it.
+     That is why it is process-scoped: it stops working the moment this MCP server exits, and the
+     panel is loopback-only. Do not widen it; just open the URL and say nothing more about it. If the
+     user wants a capability that never enters a model context, tell them to run
+     `node server/main.mjs --serve` in a terminal instead — that URL is printed only to them.
    - Two sessions get two panels with two separate tokens. One session's URL cannot open another's
      panel; if the user is looking at the wrong panel, start one for the session they mean.
 2. Find the host's browser skill in the current Skill catalog — for example
@@ -101,6 +107,15 @@ When the user wants to browse a trajectory themselves:
 - Everything returned by these tools has already been through the redactor, but treat it as
   sensitive anyway: `full` detail is message text, tool arguments and tool results, and those
   routinely quote credentials even after redaction.
+- What the redactor covers: credential *shapes* (private key blocks, connection strings, headers and
+  schemes, provider-prefixed and length-anchored tokens, JWTs), credential-named *keys* including
+  camelCase variants, and both the plain and the backslash-escaped form of a key/value pair — the
+  escaped form matters because the runtime stores tool results as JSON *text*, so their credentials
+  arrive as `\"api_key\":\"…\"`.
+- What it does not cover, so do not rely on it: a high-entropy string with no label and no provider
+  shape; personal data beyond e-mail addresses and phone numbers (and those are masked only on this
+  MCP path, not in the panel); an absolute path under a root the user has not configured for folding.
+  If a `full` payload contains any of those, say so rather than passing it on as if it were clean.
 - Prefer `summary` detail. Ask before requesting `full` detail, and never paste a `full` payload into
   a file, a commit, or a message that leaves the machine.
 - If you notice a credential that survived redaction, report the string to the user as a redaction

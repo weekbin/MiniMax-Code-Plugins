@@ -40,6 +40,12 @@ export function classifyInput(source, originType) {
 
 /**
  * Read trajectory records in stable insert order, grouped by turn.
+ *
+ * `maxJsonBytes` bounds one row's `data_json`. The JSONL fallback has always had a
+ * per-line cap; the SQLite read had none, so a single multi-megabyte row was parsed
+ * into the process whole. A row past the bound comes back as an `oversized` record
+ * carrying its byte count instead of its content — reported rather than dropped, so
+ * `total` and the record indices still line up and the reader learns the row exists.
  */
 export function getEvents(store, {
   sessionId,
@@ -48,10 +54,12 @@ export function getEvents(store, {
   detailLevel = 'summary',
   turnId,
   withTasks = true,
+  maxJsonBytes = LIMITS.eventJsonBytes,
 } = {}) {
   if (!store.db) return { events: [], total: 0, nextOffset: null, source: 'unavailable' };
   const safeLimit = clamp(limit, LIMITS.events);
   const safeOffset = Math.max(0, offset);
+  const cap = Number.isFinite(maxJsonBytes) && maxJsonBytes > 0 ? maxJsonBytes : LIMITS.eventJsonBytes;
 
   const where = ['session_id = ?'];
   const params = [sessionId];
@@ -72,20 +80,40 @@ export function getEvents(store, {
 
   let rows = [];
   try {
+    // The size test runs in SQL so an oversized value is never materialised as a
+    // JavaScript string; `length()` on TEXT counts characters, which is close
+    // enough for a bound whose job is to refuse the extreme case.
     rows = store.db.prepare(`
-      SELECT id, role, created_at_ms, turn_id, source, data_json
+      SELECT
+        id, role, created_at_ms, turn_id, source,
+        CASE WHEN length(data_json) <= ? THEN data_json ELSE NULL END AS data_json,
+        length(data_json) AS data_bytes
       FROM local_runtime_message_rows
       WHERE ${where.join(' AND ')}
       ORDER BY id ASC
       LIMIT ? OFFSET ?
-    `).all(...params, safeLimit, safeOffset);
+    `).all(cap, ...params, safeLimit, safeOffset);
   } catch (error) {
-    store.warnings.push(`event_read_failed:${error.message}`);
+    store.warn(`event_read_failed:${error.message}`);
     return { events: [], total: 0, nextOffset: null, source: 'error' };
   }
 
   const taskByCall = withTasks ? taskIndex(store, sessionId) : new Map();
-  const events = rows.map((row, index) => projectEvent(row, safeOffset + index, detailLevel, taskByCall));
+  let oversized = 0;
+  const events = rows.map((row, index) => {
+    const position = safeOffset + index;
+    if (row.data_json === null && num(row.data_bytes) !== null && row.data_bytes > cap) {
+      oversized += 1;
+      const stub = projectEvent({ ...row, data_json: '{}' }, position, 'summary', taskByCall);
+      stub.oversized = true;
+      stub.bytes = num(row.data_bytes);
+      return stub;
+    }
+    return projectEvent(row, position, detailLevel, taskByCall);
+  });
+  if (oversized > 0) {
+    store.warn(`events_oversized:${oversized} record(s) exceeded ${cap} bytes and were returned as metadata only`);
+  }
   const consumed = safeOffset + rows.length;
   return {
     events,
@@ -214,7 +242,7 @@ function computeTurnSummaries(store, sessionId) {
       outputTokens: num(row.output_tokens) ?? 0,
     }));
   } catch (error) {
-    store.warnings.push(`turn_summary_failed:${error.message}`);
+    store.warn(`turn_summary_failed:${error.message}`);
     return [];
   }
 }
@@ -257,7 +285,7 @@ export function getTimeline(store, sessionId, { cap = LIMITS.timeline } = {}) {
       thinkingMs: num(row.thinking_ms),
     }));
   } catch (error) {
-    store.warnings.push(`timeline_failed:${error.message}`);
+    store.warn(`timeline_failed:${error.message}`);
     return [];
   }
 }

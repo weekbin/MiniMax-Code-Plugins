@@ -39,7 +39,12 @@ const state = {
   turns: new Map(),
   tasks: [],
   agent: null,
-  detailLevel: 'full',
+  // Content-free by default. The plugin's documented posture is that message text,
+  // tool arguments and tool results are loaded only when the reader asks for them —
+  // `summary` still carries roles, turn ids, timings, token usage and tool names,
+  // which is everything the structural views need. `wire.js` drives the toggle from
+  // this field so the control and the state cannot disagree.
+  detailLevel: 'summary',
   agentFilter: '',
   rowFilter: 'all',
   turnQuery: '',

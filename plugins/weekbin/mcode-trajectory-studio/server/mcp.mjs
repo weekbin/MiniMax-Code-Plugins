@@ -7,12 +7,12 @@
 
 import { createInterface } from 'node:readline';
 
-import { redactPayload, redactPath, redactText } from './redact.mjs';
-import { EGRESS_STRING_LIMIT } from './config.mjs';
+import { boundPayloadList, redactEvent, redactPayload, redactPath, redactText } from './redact.mjs';
+import { EGRESS_MAX_DEPTH, EGRESS_MAX_ENTRIES, EGRESS_STRING_LIMIT, EGRESS_TOTAL_BYTES_MCP } from './config.mjs';
 import { SESSION_KINDS } from './store.mjs';
 
 export const SERVER_NAME = 'mcode-trajectory-studio';
-export const SERVER_VERSION = '0.1.1';
+export const SERVER_VERSION = '0.1.2';
 
 /**
  * Protocol versions this server implements, newest first.
@@ -156,9 +156,12 @@ export const TOOLS = [
   },
 ];
 
-export function createHandler({ store, studio, homeDir }) {
-  const warnings = [];
-  return { call: (name, args) => callTool({ store, studio, homeDir, warnings }, name, args), warnings };
+export function createHandler({ store, studio, homeDir, redactRoots = [] }) {
+  return {
+    homeDir,
+    redactRoots,
+    call: (name, args) => callTool({ store, studio, homeDir, redactRoots }, name, args),
+  };
 }
 
 async function resolveSessionId(store, sessionId) {
@@ -168,9 +171,20 @@ async function resolveSessionId(store, sessionId) {
 }
 
 async function callTool(ctx, name, args = {}) {
-  const { store, studio, homeDir, warnings } = ctx;
+  const { store, studio, homeDir, redactRoots } = ctx;
   const detailLevel = DETAIL_LEVELS.includes(args.detailLevel) ? args.detailLevel : 'summary';
-  const options = { maxLength: 20000 };
+  // The MCP surface is the one egress that leaves the machine, so its sweep masks
+  // personal data as well as credentials. The panel keeps `pii` off: it is the
+  // reader's own screen, and masking a customer's address there would destroy the
+  // answer they opened it for.
+  const options = {
+    maxLength: 20000,
+    maxDepth: EGRESS_MAX_DEPTH,
+    maxEntries: EGRESS_MAX_ENTRIES,
+    homeDir,
+    roots: redactRoots,
+    pii: true,
+  };
 
   switch (name) {
     case 'trajectory_list': {
@@ -182,14 +196,17 @@ async function callTool(ctx, name, args = {}) {
         includeArchived: Boolean(args.includeArchived),
       }).map((session) => ({
         ...session,
-        workspaceDir: redactPath(session.workspaceDir, { homeDir }),
+        workspaceDir: redactPath(session.workspaceDir, { homeDir, roots: redactRoots }),
       }));
       return {
         dataDir: store.dataDir,
         sqlite: Boolean(store.db),
         returned: sessions.length,
         sessions,
-        warnings: [...store.warnings, ...warnings],
+        warnings: store.warnings,
+        // The list is bounded, so say when entries were dropped rather than letting
+        // a truncated list read as a complete one.
+        ...(store.warningsDropped > 0 ? { warningsDropped: store.warningsDropped } : {}),
       };
     }
 
@@ -198,7 +215,7 @@ async function callTool(ctx, name, args = {}) {
       if (!sessionId) throw new Error('no_sessions_available');
       const stats = store.getStats(sessionId);
       if (!stats) throw new Error(`session_not_found:${sessionId}`);
-      return { ...stats, workspaceDir: redactPath(stats.workspaceDir, { homeDir }) };
+      return { ...stats, workspaceDir: redactPath(stats.workspaceDir, { homeDir, roots: redactRoots }) };
     }
 
     case 'trajectory_get': {
@@ -216,23 +233,30 @@ async function callTool(ctx, name, args = {}) {
         page = { ...page, total: page.events.length, nextOffset: null };
       }
       const events = detailLevel === 'full'
-        ? page.events.map((event) => redactPayload(event, options))
+        ? page.events.map((event) => redactEvent(event, options))
         : page.events;
+      // Per-record limits do not bound one reply: trim the list to a byte budget and
+      // report it, so `limit: 1000` of full detail cannot return tens of megabytes.
+      // The budget is the frame budget halved, because the result carries the payload
+      // twice (text and structuredContent).
+      const bounded = boundPayloadList(events, { maxBytes: EGRESS_TOTAL_BYTES_MCP });
       return {
         sessionId,
         detailLevel,
         source: page.source,
         offset: args.offset ?? 0,
-        returned: events.length,
+        returned: bounded.items.length,
         total: page.total,
         nextOffset: page.nextOffset,
-        events,
+        truncated: bounded.truncated,
+        omitted: bounded.omitted,
+        events: bounded.items,
       };
     }
 
     case 'trajectory_search': {
       const sessions = store.searchSessions({ query: args.query, limit: args.limit ?? 20 })
-        .map((session) => ({ ...session, workspaceDir: redactPath(session.workspaceDir, { homeDir }) }));
+        .map((session) => ({ ...session, workspaceDir: redactPath(session.workspaceDir, { homeDir, roots: redactRoots }) }));
       // An empty result on a runtime whose SQLite lacks FTS5 looks identical to a
       // query that matched nothing, so say which one it is.
       return {
@@ -260,7 +284,7 @@ async function callTool(ctx, name, args = {}) {
 
     case 'trajectory_task_output': {
       const output = await store.readTaskOutput(args.taskId, { maxBytes: args.maxBytes ?? 16384 });
-      return { ...output, text: redactText(output.text, { maxLength: 64000 }) };
+      return { ...output, text: redactText(output.text, { maxLength: 64000, homeDir, roots: redactRoots }) };
     }
 
     case 'trajectory_studio': {
@@ -318,8 +342,18 @@ export function handleRpcMessage(handler, message) {
       (value) => {
         // One sweep on the way out, on top of the redaction each read already does,
         // so a field added to a result later cannot leave unredacted. The ceiling is
-        // the largest per-field bound any tool applies, so this can only redact.
-        const safe = redactPayload(value, { maxLength: EGRESS_STRING_LIMIT });
+        // the largest per-field bound any tool applies, so this can only redact; the
+        // sweep is also home-aware, so an absolute home path embedded anywhere in the
+        // result is collapsed to `~` rather than leaving the machine. `pii` is set
+        // here and nowhere else: this is the surface whose output reaches a model.
+        const safe = redactPayload(value, {
+          maxLength: EGRESS_STRING_LIMIT,
+          maxDepth: EGRESS_MAX_DEPTH,
+          maxEntries: EGRESS_MAX_ENTRIES,
+          homeDir: handler.homeDir,
+          roots: handler.redactRoots,
+          pii: true,
+        });
         return rpcResult(id, {
           content: [{ type: 'text', text: JSON.stringify(safe, null, 2) }],
           structuredContent: safe,
@@ -327,7 +361,20 @@ export function handleRpcMessage(handler, message) {
       },
       (error) => rpcResult(id, {
         isError: true,
-        content: [{ type: 'text', text: error instanceof Error ? error.message : String(error) }],
+        // The failure path goes through the same sweep as the success path. Tool
+        // errors here are Plugin-authored codes, but an unexpected one carries a
+        // driver message or a path, and an egress that is only swept when it
+        // succeeds is not a boundary. The success branch had this and the error
+        // branch did not, which is precisely how a boundary drifts.
+        content: [{
+          type: 'text',
+          text: redactText(error instanceof Error ? error.message : String(error), {
+            maxLength: 2048,
+            homeDir: handler.homeDir,
+            roots: handler.redactRoots,
+            pii: true,
+          }),
+        }],
       }),
     );
   }

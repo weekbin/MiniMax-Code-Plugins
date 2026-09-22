@@ -20,7 +20,7 @@
  */
 
 import { tableColumns, tableExists, ftsModuleAvailable, openReadOnlyProjection, resolveSqliteFile } from './sqlite.mjs';
-import { resolveDataDir, CACHE_ENTRIES } from './config.mjs';
+import { resolveDataDir, CACHE_ENTRIES, WARNINGS_MAX } from './config.mjs';
 import { resolveSessionsRoot } from './fsutil.mjs';
 import * as sessions from './sessions.mjs';
 import * as stats from './stats.mjs';
@@ -34,6 +34,7 @@ export class Store {
     this.dataDir = dataDir;
     this.db = db;
     this.warnings = warnings;
+    this.warningsDropped = 0;
     this.columns = {
       sessions: db ? tableColumns(db, 'local_runtime_sessions') : new Set(),
       rows: db ? tableColumns(db, 'local_runtime_message_rows') : new Set(),
@@ -47,13 +48,13 @@ export class Store {
     // works and then fail on the first MATCH.
     this.hasFts = Boolean(db) && tableExists(db, 'local_runtime_sessions_fts') && ftsModuleAvailable(db);
     if (db && !this.hasFts) {
-      warnings.push('fts5_unavailable:trajectory_search will return no matches on this Node runtime');
+      this.warn('fts5_unavailable:trajectory_search will return no matches on this Node runtime');
     }
     // Resolved once, because the session-artifact root is a different relative path
     // on some builds and every JSONL fallback read needs the one that really exists.
-    const sessions = resolveSessionsRoot(dataDir);
-    this.sessionsRoot = sessions.dir;
-    if (sessions.discovered) warnings.push(`sessions_root_discovered:${sessions.dir}`);
+    const sessionsRoot = resolveSessionsRoot(dataDir);
+    this.sessionsRoot = sessionsRoot.dir;
+    if (sessionsRoot.discovered) this.warn(`sessions_root_discovered:${sessionsRoot.dir}`);
     // Filled by openStore; kept here so a directly constructed Store still has it.
     this.sqliteFile = null;
     // A finished session never changes, so its folded totals are cached against the
@@ -61,6 +62,23 @@ export class Store {
     // browsing — then costs nothing, and the first visit is the only one that scans.
     this.statsCache = new Map();
     this.turnsCache = new Map();
+  }
+
+  /**
+   * Record a diagnostic, keeping the list bounded.
+   *
+   * One warning is appended per failed read, and an MCP server lives for a whole
+   * session, so an unbounded list is a slow leak that is then echoed in full on
+   * every `trajectory_list`. Dropping the oldest is reported through
+   * `warningsDropped` rather than passing silently.
+   */
+  warn(message) {
+    this.warnings.push(message);
+    const overflow = this.warnings.length - WARNINGS_MAX;
+    if (overflow > 0) {
+      this.warnings.splice(0, overflow);
+      this.warningsDropped += overflow;
+    }
   }
 
   /** LRU: refresh recency on a hit, evict the oldest entry on an insert. */
@@ -150,11 +168,10 @@ export function openStore({ dataDir, warnings = [] } = {}) {
   const dir = dataDir || resolveDataDir();
   const projection = resolveSqliteFile(dir);
   const { db, error } = openReadOnlyProjection(projection.file);
-  if (error) warnings.push(`sqlite_unavailable:${error}`);
-  else if (projection.discovered) warnings.push(`sqlite_discovered:${projection.file}`);
   const store = new Store({ dataDir: dir, db, warnings });
+  if (error) store.warn(`sqlite_unavailable:${error}`);
+  else if (projection.discovered) store.warn(`sqlite_discovered:${projection.file}`);
   store.sqliteFile = projection.file;
-  store.warnings = warnings;
   return store;
 }
 
@@ -163,4 +180,3 @@ export { resolveDataDir, resolveHomeDir, sqlitePath, sessionsRoot } from './conf
 export { SESSION_KINDS } from './sessions.mjs';
 export { encodeFtsQuery } from './search.mjs';
 export { classifyInput } from './events.mjs';
-export { readManifest } from './jsonl.mjs';

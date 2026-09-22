@@ -17,6 +17,12 @@ import { loadOverview, refreshEvents, loadEvents, debounce } from './flow.js';
 export function wire() {
   bindTimelineControls();
 
+  // The control follows the state, not the other way round, so the initial view
+  // cannot disagree with `state.detailLevel`. An earlier revision had the checkbox
+  // `checked` in the markup while the state defaulted to `summary`, so the panel
+  // fetched content the toggle said it was not fetching.
+  el('full-detail').checked = state.detailLevel === 'full';
+
   el('search').addEventListener('input', (event) => {
     state.search = event.target.value;
     renderSessions();

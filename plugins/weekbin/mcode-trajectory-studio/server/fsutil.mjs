@@ -8,10 +8,20 @@
  * the traversed path keeps the string inside the root while the kernel resolves
  * the file outside it. `containedRealPath` and `openContainedRead` are the only
  * sanctioned way to reach a file, and both canonicalize before they decide.
+ *
+ * The guarantee, stated exactly: every component of a traversed path is resolved
+ * before the file is opened, the final component may not be a symlink, and — on
+ * Linux, where `/proc/self/fd` names the inode that was actually opened — the
+ * descriptor itself is re-verified against the root, which closes the window in
+ * which an intermediate directory could be swapped between `realpath` and `open`.
+ * Where `/proc` is unavailable (macOS, Windows) that residual race is not closed:
+ * it requires a same-UID process to win a microsecond-wide timing window and it
+ * can already read the file directly, so it is an accepted limit of this boundary
+ * rather than an unstated one.
  */
 
 import { constants as FS, existsSync } from 'node:fs';
-import { open, readdir, realpath } from 'node:fs/promises';
+import { open, readdir, readlink, realpath } from 'node:fs/promises';
 import path from 'node:path';
 
 import { sessionsCandidates } from './config.mjs';
@@ -42,6 +52,31 @@ export async function realPath(target) {
 }
 
 /**
+ * Whether `candidate` is `base` itself or sits beneath it. Both must be canonical.
+ *
+ * The separator is required after `base` so a sibling whose name merely starts with
+ * the same characters (`/root/data-evil` vs `/root/data`) is not treated as inside.
+ */
+export function isWithin(base, candidate) {
+  if (typeof base !== 'string' || typeof candidate !== 'string' || !base) return false;
+  return candidate === base || candidate.startsWith(base + path.sep);
+}
+
+/**
+ * Canonicalize `root` and `target`, or null when either does not resolve.
+ *
+ * @returns {Promise<{base: string, resolved: string}|null>}
+ */
+async function containedBase(root, target) {
+  if (typeof root !== 'string' || typeof target !== 'string' || !root) return null;
+  const base = await realPath(root);
+  if (!base) return null;
+  const resolved = await realPath(target);
+  if (!resolved) return null;
+  return { base, resolved };
+}
+
+/**
  * Canonicalize `target` and confirm it is `root` or sits beneath it.
  *
  * Both sides are canonicalized, so a data directory that is itself reached
@@ -52,44 +87,84 @@ export async function realPath(target) {
  *   does not exist, or cannot be resolved.
  */
 export async function containedRealPath(root, target) {
-  if (typeof root !== 'string' || typeof target !== 'string' || !root) return null;
-  const base = await realPath(root);
-  if (!base) return null;
-  const resolved = await realPath(target);
-  if (!resolved) return null;
-  if (resolved === base) return resolved;
-  return resolved.startsWith(base + path.sep) ? resolved : null;
+  const found = await containedBase(root, target);
+  if (!found) return null;
+  return isWithin(found.base, found.resolved) ? found.resolved : null;
+}
+
+/**
+ * The path a descriptor actually names, from `/proc/self/fd` on Linux.
+ *
+ * This is the authoritative answer: the kernel resolved every symlink during the
+ * `open`, so the link names the inode that was really opened — even if an
+ * intermediate directory was swapped *after* `realpath` and *before* `open`. It is
+ * unavailable on platforms without `/proc` (macOS, Windows) and for a file that was
+ * unlinked after it was opened, where it reports `… (deleted)` and we return null.
+ *
+ * @returns {Promise<string|null>} the resolved path, or null when it cannot be read.
+ */
+export async function openedRealPath(handle) {
+  try {
+    const link = await readlink(`/proc/self/fd/${handle.fd}`);
+    return link.endsWith(' (deleted)') ? null : link;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Decide whether an opened descriptor stays inside the approved root.
+ *
+ * `openedReal` is the `/proc/self/fd` path when the platform provides one. When it
+ * is unavailable the pre-open canonical check is the only evidence, so this returns
+ * true and the *documented* boundary applies: a same-UID process racing to replace
+ * an intermediate directory between canonicalization and open is out of scope
+ * (such a process already holds the privileges to read the file directly). See the
+ * module comment for the full statement.
+ */
+export function openedPathAllowed(base, openedReal) {
+  if (typeof openedReal !== 'string' || !openedReal) return true;
+  return isWithin(base, openedReal);
 }
 
 /**
  * Open a file strictly read-only, refusing anything that canonicalizes outside
- * `root` and refusing a symlink at the final component.
+ * `root`, refusing a symlink at the final component, and re-checking containment
+ * against the descriptor that was actually opened.
  *
  * The canonical path is what gets opened and the size comes back from `fstat`, so
- * the containment decision and the read describe the same inode: there is no
- * window in which the path can be swapped after it was checked. `O_NOFOLLOW`
- * closes the remaining race between `realpath` and `open`.
+ * the containment decision and the read describe the same inode. `O_NOFOLLOW`
+ * closes the race on the *final* component. The remaining gap — an intermediate
+ * directory replaced between `realpath` and `open` — is closed on Linux by reading
+ * `/proc/self/fd/<fd>`, which names the inode actually opened and is verified
+ * against the root; where `/proc` is absent, that residual race is the documented,
+ * accepted limit of this boundary rather than an unstated one.
  *
  * @returns {Promise<{handle: object, size: number, realPath: string}|null}> the
  *   open handle, or null when the path is outside the root, is not a regular
  *   file, is a symlink, or does not exist. Callers own the handle.
  */
 export async function openContainedRead(root, target) {
-  const resolved = await containedRealPath(root, target);
-  if (!resolved) return null;
+  const found = await containedBase(root, target);
+  if (!found || !isWithin(found.base, found.resolved)) return null;
   let handle;
   try {
-    handle = await open(resolved, FS.O_RDONLY | NO_FOLLOW);
+    handle = await open(found.resolved, FS.O_RDONLY | NO_FOLLOW);
   } catch {
     return null;
   }
   try {
+    const openedReal = await openedRealPath(handle);
+    if (!openedPathAllowed(found.base, openedReal)) {
+      await handle.close();
+      return null;
+    }
     const info = await handle.stat();
     if (!info.isFile()) {
       await handle.close();
       return null;
     }
-    return { handle, size: info.size, realPath: resolved };
+    return { handle, size: info.size, realPath: found.resolved };
   } catch {
     await handle.close().catch(() => {});
     return null;

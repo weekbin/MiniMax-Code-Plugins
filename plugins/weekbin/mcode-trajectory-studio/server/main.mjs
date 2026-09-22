@@ -12,6 +12,7 @@ import path from 'node:path';
 
 import { isNodeSupported, isWithinVerifiedRange, nodeFloorMessage, NODE_FLOOR_TEXT, VERIFIED_RANGE_TEXT } from './node-version.mjs';
 import { openStore, resolveDataDir, resolveHomeDir } from './store.mjs';
+import { resolveRedactRoots } from './config.mjs';
 import { createHandler, serveStdio } from './mcp.mjs';
 import { createStudio } from './http.mjs';
 
@@ -33,17 +34,21 @@ export function bootstrap({ env = process.env, homeDir } = {}) {
   // Resolved once, with the same HOME/USERPROFILE fallback the data directory uses,
   // so home-prefix redaction works on Windows too.
   const home = resolveHomeDir(env, homeDir);
+  // The roots folded to `~` on every egress: the home directory, the data directory
+  // (which is the one absolute path this Plugin names on purpose) and anything the
+  // operator added. Resolved once so every surface folds the same set.
+  const redactRoots = resolveRedactRoots(env, dataDir);
   const warnings = [];
   const store = openStore({ dataDir, warnings });
   // Deliberately no PLUGIN_DATA: the panel keeps its capability in memory and
   // writes nothing, so there is no per-plugin state to place on disk.
-  const studio = createStudio({ store, homeDir: home });
-  const handler = createHandler({ store, studio, homeDir: home });
-  return { dataDir, home, store, studio, handler, warnings };
+  const studio = createStudio({ store, homeDir: home, redactRoots });
+  const handler = createHandler({ store, studio, homeDir: home, redactRoots });
+  return { dataDir, home, redactRoots, store, studio, handler };
 }
 
 async function doctor(context) {
-  const { dataDir, store } = context;
+  const { dataDir, redactRoots, store } = context;
   const sessions = store.listSessions({ limit: 5 });
   const [latest] = sessions;
   const stats = latest ? store.getStats(latest.sessionId) : null;
@@ -57,6 +62,10 @@ async function doctor(context) {
     sqliteAvailable: Boolean(store.db),
     ftsAvailable: store.hasFts,
     sessionsRoot: store.sessionsRoot,
+    // Printed verbatim, unlike every other surface: this is the diagnostic a user
+    // reads and decides for themselves whether to share, so folding the paths here
+    // would remove the only information that makes it useful.
+    redactRoots,
     sessionsVisible: sessions.length,
     latestSession: latest ? { sessionId: latest.sessionId, title: latest.title, agent: latest.agent } : null,
     latestStats: stats
@@ -73,6 +82,7 @@ async function doctor(context) {
         }
       : null,
     warnings: store.warnings,
+    ...(store.warningsDropped > 0 ? { warningsDropped: store.warningsDropped } : {}),
   };
 }
 

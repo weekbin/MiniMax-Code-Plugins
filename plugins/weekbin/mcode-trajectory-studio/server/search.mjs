@@ -35,7 +35,7 @@ export function searchSessions(store, { query, limit = LIMITS.search.default } =
       LIMIT ?
     `).all(encoded, clamp(limit, LIMITS.search)).map(sessionSummary);
   } catch (error) {
-    store.warnings.push(`search_failed:${error.message}`);
+    store.warn(`search_failed:${error.message}`);
     return [];
   }
 }

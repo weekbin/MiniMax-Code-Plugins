@@ -194,3 +194,82 @@ test('the API response is swept for credentials on the way out', async () => {
   assert.equal(res.body.includes(secret), false, `the sweep missed a credential: ${res.body}`);
   assert.equal(res.body.includes('deploy with'), true, 'the sweep destroyed the title text');
 });
+
+/* ---------------------------------------------- confidentiality egress -- */
+
+const FIXTURE_HOME = '/tmp/trajectory-fixture-home';
+
+/**
+ * The absolute user path must not leave the process on any route.
+ *
+ * `/api/overview` returned `stats.workspaceDir` raw while the `session` field right
+ * above it had been collapsed to `~` — the same path, one field guarded and the
+ * other not. These regressions cover every route that can carry a path, including
+ * a warning that embeds one mid-string.
+ */
+test('/api/overview does not leak the absolute workspace path', async () => {
+  const store = makeStore({
+    getSession: () => ({
+      sessionId: 's1', title: 't', workspaceDir: `${FIXTURE_HOME}/ws/proj`, children: [],
+    }),
+    // `getStats` carries the same workspace path again, built from the session row.
+    getStats: () => ({ sessionId: 's1', workspaceDir: `${FIXTURE_HOME}/ws/proj`, turns: 3 }),
+  });
+  const { res } = await request(store, makeReq({ url: '/api/overview?id=s1' }));
+  assert.equal(res.status, 200);
+  assert.equal(res.body.includes(FIXTURE_HOME), false, `overview leaked the home path: ${res.body}`);
+  const body = await jsonBody(res);
+  assert.equal(body.session.workspaceDir, '~/ws/proj');
+  assert.equal(body.stats.workspaceDir, '~/ws/proj');
+});
+
+test('an embedded home path in a warning is collapsed too', async () => {
+  const store = makeStore({ warnings: [`sqlite_discovered:${FIXTURE_HOME}/.minimax/v2/sqlite/runtime-state.sqlite`] });
+  const { res } = await request(store, makeReq({ url: '/api/meta' }));
+  assert.equal(res.body.includes(FIXTURE_HOME), false, `meta leaked the home path: ${res.body}`);
+  assert.match(res.body, /sqlite_discovered:~\/\.minimax/u);
+});
+
+test('full-detail events are redacted by key name through the HTTP egress', async () => {
+  // The structured variants the previous exact-name set missed: a value-only rule
+  // cannot see the key, so this has to be caught by the key-name judgement.
+  const canary = 'CANARY-STRUCTURED-SECRET-7c1f';
+  const store = makeStore({
+    getEvents: () => ({
+      events: [{
+        index: 0,
+        toolCalls: [{
+          name: 'bash', id: 'c1',
+          args: { clientSecret: canary, refreshToken: canary, authToken: canary, xApiKey: canary },
+          result: 'ok',
+        }],
+      }],
+      total: 1, nextOffset: null, source: 'sqlite',
+    }),
+  });
+  const { res } = await request(store, makeReq({ url: '/api/events?id=s1&detailLevel=full' }));
+  assert.equal(res.status, 200);
+  assert.equal(res.body.includes(canary), false, `the HTTP egress leaked a structured secret: ${res.body}`);
+  assert.match(res.body, /\[redacted\]/u, 'nothing was redacted at all');
+  assert.match(res.body, /"bash"/u, 'the sweep destroyed the payload');
+});
+
+test('a full-detail event page is bounded by total bytes, not only per string', async () => {
+  // A thousand records each bounded to 20 KB still serialise to ~20 MB. The page has
+  // to be trimmed to an aggregate budget and say so, or `limit=1000&detailLevel=full`
+  // is a memory amplifier for the server and the browser alike.
+  const store = makeStore({
+    getEvents: () => ({
+      events: Array.from({ length: 1000 }, (_, i) => ({ index: i, content: 'x'.repeat(20000) })),
+      total: 1000, nextOffset: null, source: 'sqlite',
+    }),
+  });
+  const { res } = await request(store, makeReq({ url: '/api/events?id=s1&detailLevel=full&limit=1000' }));
+  assert.equal(res.status, 200);
+  const body = await jsonBody(res);
+  assert.equal(body.truncated, true, 'the response was not reported as truncated');
+  assert.ok(body.omitted > 0, 'nothing was reported as omitted');
+  assert.ok(body.events.length < 1000, `the page was not trimmed: ${body.events.length}`);
+  assert.ok(res.body.length <= 4 * 1024 * 1024 + 4096, `the response exceeded its budget: ${res.body.length}`);
+  assert.equal(body.events[0].index, 0, 'the first record must survive so paging stays coherent');
+});
