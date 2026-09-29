@@ -731,6 +731,68 @@ MiniApp 契约验证于**桌面端 3.0.73**，而本手册其余章节的基线�
 
 ---
 
+## 17. 命名口径与双语一致性（2026 复核）
+
+### 17.1 「能力说明」→「概要说明」
+
+站点主标题自 §14 起已为「MCode 概要说明」，但插件对外的各入口仍沿用旧名「能力说明」，
+与正文标题不一致。本轮统一为**「概要说明与事实基线」**，覆盖全部对外描述面：
+
+| 位置 | 字段 |
+| --- | --- |
+| `plugin.json` / `.claude-plugin/plugin.json` / `.minimax-plugin/plugin.json` | `description` |
+| `.minimax-plugin/plugin.json` | `displayName`、`exampleQueries[4]` |
+| `skills/mcode-docs/SKILL.md` | frontmatter `description`、正文标题与开篇段 |
+| `site/index.html` / `site/index.en.html` | `<meta name="description">` |
+| `README.zh-CN.md` / `README.md` | 开篇标语段 |
+
+**为何不用「能力说明」**：该措辞暗示"本文罗列 mcode 的能力"，与本插件的实际口径相反——
+本文明确区分"经核实存在"与"经核实不存在"，并对后者给出替代路径。改为「概要说明」
+后，名称与内容一致，不再暗示穷举式的能力清单。
+
+描述文本同时**扩写**：原先只列覆盖范围，现补入三项此前缺失的说明——
+
+1. 本文档**不止罗列功能**，而是事实基线；
+2. 取证**分级**（A/B/C/D，见本台账「证据等级」）且可追溯至 `VERIFICATION.md`；
+3. 取证**基线版本 0.5.8**。
+
+`SKILL.md` 的 frontmatter `description` 扩写尤其关键——它是模型决定是否加载本 Skill 的
+唯一依据，触发词覆盖到 MiniApp 编写契约与 Hook 输入输出契约两类此前缺失的入口。
+
+### 17.2 中英文混杂清理
+
+英文站 `index.en.html` 逐行扫描中文字符后，全文**仅剩一处**中文：语言切换按钮的
+`title="切换到中文"`。已改为 `title="Switch to 中文"`。
+
+判定口径：**语言名称本身**用其本名（中文页写 `English`、英文页写 `中文`），
+**包裹它的句子**用当前页语言。该按钮的 `aria-label` 原本已符合（`Currently in English,
+switch to 中文`），仅 `title` 遗漏。
+
+经扫描确认无需处理的部分：`navToggle`、`themeToggle`、`skip-link`、搜索框等
+`aria-label` 均为英文；`README.md` 全文仅语言切换链接含 `简体中文`（属语言名称，合规）；
+`README.zh-CN.md` 中的纯英文行均为代码、命令与目录树，非混排。
+
+### 17.3 `reference/` 中 Browser 残留与 §9 判定相悖（事实修正）
+
+§9 已判定「Browser：**未暴露给 TUI/CLI，已从文档移除**」（A 级实测），
+§14.5 记录了移除动作。但站点 HTML 当时已清干净，**`skills/mcode-docs/reference/`
+下仍有 4 处把 Browser 当作真实能力**，与本台账判定直接矛盾：
+
+| 位置 | 修正前 | 修正后 |
+| --- | --- | --- |
+| `reference/mcp-tools.md` 标题 | `MCP、工具与 Browser` | `MCP 与内置工具` |
+| `reference/agents-skills.md` | 「需显式开启 beta 开关后才装配的 Browser 工具」 | 明确标注**经实测未装配**，并给出替代路径（`web_search` / `web_fetch`） |
+| `reference/coverage.md` 表格行 | `12 个基础工具 + MCP 工具 + Browser` | `… + MCP 工具（Browser 未暴露给 TUI/CLI）` |
+| `reference/coverage.md` §19 正文 | 「需显式开启的 Browser 工具」 | 同上，标注未暴露并给替代路径 |
+
+三处 manifest 的 `description` 原写「MCP 与 **Browser** 装配」，同样属同一漂移，
+本轮一并改为「MCP 与内置工具」。
+
+这正是本台账「经核实不存在的能力明确标注为不存在，并同时给出替代路径」的执行位置：
+否定性结论若不给替代路径，使用者会误以为无路可走。
+
+---
+
 ## 13. 本插件自身声明
 
 本插件**不提供 MCP 服务**，交付物为：一个可复用 Skill（`skills/mcode-docs/SKILL.md` +

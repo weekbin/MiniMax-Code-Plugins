@@ -1,4 +1,4 @@
-# MCP、工具与 Browser
+# MCP 与内置工具
 
 ## MCP 配置
 

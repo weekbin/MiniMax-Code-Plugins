@@ -27,7 +27,7 @@ opencode v2 文档站（<https://opencode.ai/v2/docs/>）共 24 个章节。下�
 | 16 | Formatters | 无代码格式化器 | ❌ |
 | 17 | References | `@` 引用、`--file` 附件 | ✅ |
 | 18 | Attachments | `--file`、图片 `[Image #n]` | ✅ |
-| 19 | Tools | 12 个基础工具 + MCP 工具 + Browser | ✅ |
+| 19 | Tools | 12 个基础工具 + MCP 工具（Browser 未暴露给 TUI/CLI） | ✅ |
 | 20 | MCP servers | `~/.minimax/mcp.json` + `.mcp.json` + `/mcp` | ✅ |
 | 21 | Permissions | `PermissionMode` 5 值 + `/permission` | ✅ |
 | 22 | Policies | 无独立策略层，由 PermissionMode 承载 | ⚠️ |
@@ -161,7 +161,8 @@ mcode **没有**保存时自动格式化的 formatter 概念。
 
 12 个基础工具：`read`、`write`、`edit`、`bash`、`grep`、`glob`、`task`、`todowrite`、
 `skill`、`ask_user`、`web_search`、`web_fetch`。
-外加 MCP 提供的 `mcp__*` 工具，以及需显式开启的 Browser 工具。详见 `mcp-tools.md`。
+外加 MCP 提供的 `mcp__*` 工具。**Browser 工具经实测未装配到 TUI/CLI**，属桌面端宿主能力，
+终端侧改用 `web_search` / `web_fetch`。详见 `mcp-tools.md`。
 
 ### 20. MCP servers ✅
 

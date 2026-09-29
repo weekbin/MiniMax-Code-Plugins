@@ -98,7 +98,10 @@ Skill 以 `SKILL.md` 为入口，通过插件 manifest 的 `skills` 数组挂载
 | `web_search` | 联网搜索 |
 | `web_fetch` | 抓取 URL 原始文本 |
 
-此外还有 MCP 提供的 `mcp__*` 工具，以及需显式开启 beta 开关后才装配的 Browser 工具。
+此外还有 MCP 提供的 `mcp__*` 工具。**Browser 工具经实测未装配到 TUI/CLI**——即便本机
+`beta.browserUseTooling` 为真，`mcode exec` 自列的工具清单中也没有 `navigate`／`open_tab`／
+`screenshot` 等条目；它属桌面端宿主能力。终端侧需要联网取信息时用 `web_search` 与
+`web_fetch`（见 VERIFICATION §9、§14.5）。
 
 ## Bash 工具的真实行为
 

@@ -2,11 +2,17 @@
 
 English | [简体中文](./README.zh-CN.md)
 
-**A capability reference and factual baseline for MiniMax Code (`mcode`).**
+**An overview and factual baseline for MiniMax Code (`mcode`).**
 
 This plugin ships **no MCP server**. Its deliverables are a reusable Skill and a fully
 static HTML documentation site (Chinese and English), readable offline by opening `site/index.html`
 directly in a browser.
+
+This documentation is not a feature list but a **factual baseline**: it walks through mcode's
+usage forms, command surface, configuration, extension mechanisms and permission model, and gives
+a verdict traceable to `VERIFICATION.md` for any "does mcode support X?" question. Capabilities
+that were checked and found absent are stated as absent together with a substitute path, rather
+than being omitted or guessed.
 
 ## Rationale
 
