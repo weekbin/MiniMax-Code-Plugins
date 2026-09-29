@@ -65,29 +65,29 @@ export function renderReport({ results, counts, env, durationMs, uncoveredWarnin
   )
   out.push('')
 
-  const head = ['域', '总', 'pass', 'fail', 'skip', 'uncovered'].map((h) => pad(h, 12))
+  const head = ['域', '总', 'pass', 'fail', 'skip', 'uncovered'].map((h) => pad(h, 14))
   out.push(paint(C.dim, '  ' + head.join('')))
   for (const [domain, list] of byDomain) {
     const c = summarize(list)
     out.push(
       '  ' +
-        pad(domain, 12) +
-        pad(String(c.total), 12) +
-        paint(c.pass ? C.green : C.dim, pad(String(c.pass), 12)) +
-        paint(c.fail ? C.red : C.dim, pad(String(c.fail), 12)) +
-        paint(c.skip ? C.yellow : C.dim, pad(String(c.skip), 12)) +
-        paint(c.uncovered ? C.gray : C.dim, pad(String(c.uncovered), 12)),
+        pad(domain, 14) +
+        pad(String(c.total), 14) +
+        paint(c.pass ? C.green : C.dim, pad(String(c.pass), 14)) +
+        paint(c.fail ? C.red : C.dim, pad(String(c.fail), 14)) +
+        paint(c.skip ? C.yellow : C.dim, pad(String(c.skip), 14)) +
+        paint(c.uncovered ? C.gray : C.dim, pad(String(c.uncovered), 14)),
     )
   }
 
   out.push('')
   out.push(
-    paint(C.dim, '  ' + pad('总计', 12)) +
-      paint(C.bold, pad(String(counts.total), 12)) +
-      paint(C.green, pad(String(counts.pass), 12)) +
-      (counts.fail ? paint(C.red, pad(String(counts.fail), 12)) : pad('0', 12)) +
-      (counts.skip ? paint(C.yellow, pad(String(counts.skip), 12)) : pad('0', 12)) +
-      paint(C.gray, pad(String(counts.uncovered), 12)),
+    paint(C.dim, '  ' + pad('总计', 14)) +
+      paint(C.bold, pad(String(counts.total), 14)) +
+      paint(C.green, pad(String(counts.pass), 14)) +
+      (counts.fail ? paint(C.red, pad(String(counts.fail), 14)) : pad('0', 14)) +
+      (counts.skip ? paint(C.yellow, pad(String(counts.skip), 14)) : pad('0', 14)) +
+      paint(C.gray, pad(String(counts.uncovered), 14)),
   )
 
   const problems = results.filter((r) => r.status === 'fail' || r.status === 'uncovered')

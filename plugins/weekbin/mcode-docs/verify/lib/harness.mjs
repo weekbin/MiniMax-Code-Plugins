@@ -200,6 +200,16 @@ function checkSource(check, ctx) {
   if (!index || index.entries.length === 0) {
     return { kind: 'source', ok: false, skipped: true, detail: '源码索引为空' }
   }
+  // containsAll:多项须全部命中。单值 pattern 只能验「有一个」,
+  // 验不了「四条命令线都在」这种完整性主张。
+  if (check.containsAll) {
+    const missing = check.containsAll.filter((n) => !searchAny(index.entries, n, check.file))
+    return {
+      kind: 'source',
+      ok: missing.length === 0,
+      detail: missing.length === 0 ? `${check.containsAll.length} 项全部命中` : `缺少: ${missing.join(' ')}`,
+    }
+  }
   if (check.count != null) {
     const n = countMatches(index.entries, check.pattern)
     return {

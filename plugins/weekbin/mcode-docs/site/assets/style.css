@@ -1128,3 +1128,46 @@ html[data-theme="dark"] .stat { background: var(--bg-soft); }
 
 /* 官方 .prose strong:is(.dark *) { color: rgb(var(--gray-50)) } —— 逐字照搬 */
 html[data-theme="dark"] .content strong { color: rgb(var(--gray-50)); }
+
+/* ---------------- 架构图组件 ----------------
+   主题感知：一律走既有语义令牌（--fg / --fg-muted / --border / --accent-bg），
+   暗色由 html[data-theme="dark"] 的令牌覆盖自动生效，图内不写死颜色。
+   图形用 SVG 而非图片：可随字号缩放、可被搜索命中、离线无请求。 */
+.diagram {
+  margin: 0 0 1.4em;
+  padding: 20px 16px 14px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-note);
+  background: var(--bg-soft);
+  overflow-x: auto;
+}
+
+.diagram svg { display: block; width: 100%; height: auto; min-width: 560px; }
+
+.diagram figcaption {
+  margin-top: 12px;
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--fg-muted);
+  text-align: center;
+}
+
+/* 节点 */
+.dg-node   { fill: var(--bg); stroke: var(--border-strong); stroke-width: 1; }
+.dg-node-core { fill: var(--accent-bg); stroke: var(--accent); stroke-width: 1.5; }
+.dg-node-seam { fill: var(--accent-bg); stroke: var(--accent); stroke-width: 2; }
+.dg-node-muted { fill: var(--bg); stroke: var(--border-soft); stroke-width: 1; stroke-dasharray: 4 3; }
+
+/* 文字 */
+.dg-t      { fill: var(--fg);        font-weight: 500; }
+.dg-t-sub  { fill: var(--fg-muted);  font-weight: 400; }
+.dg-t-core { fill: var(--fg-strong); font-weight: 600; }
+.dg-t-mono { fill: var(--fg-muted);  font-weight: 400; }
+
+/* 连线 */
+.dg-edge   { stroke: var(--fg-faint); stroke-width: 1.5; fill: none; }
+.dg-edge-core { stroke: var(--accent); stroke-width: 2; fill: none; }
+
+/* 分组底纹 */
+.dg-band   { fill: var(--inline-bg); stroke: var(--border-soft); stroke-width: 1; }
+.dg-band-label { fill: var(--fg-faint); font-weight: 500; }
