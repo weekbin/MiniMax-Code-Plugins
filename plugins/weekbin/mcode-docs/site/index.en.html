@@ -519,7 +519,7 @@ mcode plugin marketplace</code></pre>
 
       <h3 class="h3" id="h-btw">Side Session (BTW) Read-Only Commands</h3>
       <p><code>/btw</code> (alias <code>/side</code>) forks a temporary side session from the most recent committed session boundary; the main task keeps running uninterrupted. The side session inherits the main session history as a read-only context, carries the same tool permissions, and is instructed to make no changes unless explicitly asked.</p>
-      <p>Only the following commands are available in the side session view (source <code>SIDE_MODE_READ_ONLY_COMMANDS</code>):</p>
+      <p>Only the following commands are available in the side session view:</p>
       <p class="cmd-strip"><code>help</code><code>changelog</code><code>context</code><code>status</code><code>usage</code><code>export</code><code>transcript</code><code>copy</code><code>parent</code></p>
       <ul>
         <li><code>/parent</code> (or <code>Ctrl+/</code>) switches between the side session and the main session view without ending either.</li>

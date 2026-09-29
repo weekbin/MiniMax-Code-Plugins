@@ -166,7 +166,7 @@ Composer 会把当前输入标记为 `Prompt`、`Command`、`Shell` 或 `Skill`�
 `/btw`（别名 `/side`）从最近一个已提交的会话边界 fork 出临时侧会话，主任务继续运行不被中断。
 侧会话以只读上下文继承主会话历史，工具权限与主会话一致，并被要求除非明确请求否则不做修改。
 
-侧会话视图中仅以下命令可用（源码 `SIDE_MODE_READ_ONLY_COMMANDS`）：
+侧会话视图中仅以下命令可用：
 
 `help`、`changelog`、`context`、`status`、`usage`、`export`、`transcript`、`copy`、`parent`
 

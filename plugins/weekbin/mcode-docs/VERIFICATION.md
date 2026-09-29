@@ -120,8 +120,13 @@
 **分类（C 级 `TuiCommandCategory`）**：
 `Session` / `Runtime` / `Capability` / `Input` / `Transcript` / `Decision` / `Application`
 
-**侧会话只读命令集**（C 级 `SIDE_MODE_READ_ONLY_COMMANDS`）：
+**侧会话只读命令集**（C 级，随包 chunk 内的命令名集合字面量）：
 `help`、`changelog`、`context`、`status`、`usage`、`export`、`transcript`、`copy`、`parent`。
+
+> **修正记录**：此处曾标注符号名 `SIDE_MODE_READ_ONLY_COMMANDS`。该名称在
+> 0.5.8 随包 bundle 中并不存在——产物已压缩，符号名被改写，只有字符串字面量保留。
+> 改按命令名集合字面量取证；`verify/domains/cli.mjs` 的 `cli.side-session-commands`
+> 持续复验这一集合。
 
 ---
 

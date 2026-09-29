@@ -518,7 +518,7 @@ mcode plugin marketplace</code></pre>
 
       <h3 class="h3" id="h-btw">侧会话（BTW）只读命令</h3>
       <p><code>/btw</code>（别名 <code>/side</code>）从最近一个已提交的会话边界 fork 出临时侧会话，主任务继续运行不被中断。侧会话以只读上下文继承主会话历史，工具权限与主会话一致，并被要求除非明确请求否则不做修改。</p>
-      <p>侧会话视图中仅以下命令可用（源码 <code>SIDE_MODE_READ_ONLY_COMMANDS</code>）：</p>
+      <p>侧会话视图中仅以下命令可用：</p>
       <p class="cmd-strip"><code>help</code><code>changelog</code><code>context</code><code>status</code><code>usage</code><code>export</code><code>transcript</code><code>copy</code><code>parent</code></p>
       <ul>
         <li><code>/parent</code>（或 <code>Ctrl+/</code>）在侧会话与主会话视图间切换而不结束任何一方。</li>
