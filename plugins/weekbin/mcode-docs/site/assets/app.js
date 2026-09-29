@@ -624,27 +624,18 @@
   /* ---------------------------------------------------------
      9. 语言切换（i18n）
      --------------------------------------------------------- */
-  // 双语言为两份独立 HTML：index.html（zh）与 index.en.html（en），
+  // 双语言为两份独立 HTML：index.html（zh，默认入口）与 index.en.html（en），
   // 共用同一套 style.css 与 app.js。不用 fetch 加载语言包，
   // 是因为 fetch 在 file:// 下被浏览器拦截，双击打开必须可用。
+  //
+  // 不做任何语言自动判定：index.html 打开即中文，index.en.html 打开即英文。
+  // 早前按 navigator.language 首访跳转，会让英文系统的用户打开中文入口却看到
+  // 英文内容（URL 说中文、内容是英文）。此处以「打开哪份文件就是哪种语言」
+  // 为唯一规则——确定性优先于猜测。
   var LANG_KEY = 'mcode-docs-lang';
-  var LANG_PAGES = { zh: 'index.html', en: 'index.en.html' };
-  // index.html 既是中文正文页，又是首次访问的自动判定入口。两种身份会打架：
-  // 一旦 localStorage 存了英文偏好，用户显式双击 index.html 就会被弹到英文页，
-  // URL 说中文、内容是英文。故自动判定只在「尚无记录」时执行一次；此后
-  // index.html 恒为中文页——打开哪份文件就是哪种语言，手动切换照常生效。
-  var ENTRY_PAGE = /(?:^|\/)(?:index\.html?|default\.html?)$/i;
-  var isEntry = ENTRY_PAGE.test(location.pathname);
 
   function currentLang() {
     return (root.getAttribute('lang') || 'zh').slice(0, 2).toLowerCase();
-  }
-
-  function readLang() {
-    try {
-      var v = localStorage.getItem(LANG_KEY);
-      return v === 'en' ? 'en' : (v === 'zh' ? 'zh' : null);
-    } catch (e) { return null; }
   }
 
   function writeLang(v) {
@@ -653,20 +644,9 @@
 
   var langSwitch = $('#langSwitch');
   if (langSwitch) {
-    // 切换前先落盘偏好，刷新后仍停在这一语言
+    // 记录用户最后一次选择，仅用于展示偏好；不参与任何跳转判定
     langSwitch.addEventListener('click', function () { writeLang(currentLang() === 'zh' ? 'en' : 'zh'); });
   }
-
-  (function resolveLang() {
-    if (!isEntry) { return; }
-    // 已有记录 = 首次判定已完成（或用户手动选过），index.html 就是中文页，不再重定向
-    if (readLang()) { return; }
-    // 首访按浏览器语言判定：非中文界面一律走英文版
-    var nav = (navigator.language || 'zh').toLowerCase();
-    var prefer = nav.indexOf('zh') === 0 ? 'zh' : 'en';
-    writeLang(prefer);
-    if (prefer !== currentLang()) { location.replace(LANG_PAGES[prefer]); }
-  })();
 
   /* ---------------------------------------------------------
      10. 初始化
