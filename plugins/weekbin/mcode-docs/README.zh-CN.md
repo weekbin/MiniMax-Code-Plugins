@@ -47,12 +47,13 @@ mcode-docs/
 ├── LICENSE
 ├── skills/mcode-docs/
 │   ├── SKILL.md                 # 可复用 Skill
-│   └── reference/               # 八份参考文档
+│   └── reference/               # 九份参考文档
 │       ├── commands.md          # 52 条 slash 命令(7 类 + 基础)
 │       ├── cli.md               # CLI、无头执行与 ACP
 │       ├── config.md            # 配置结构与数据目录
 │       ├── agents-skills.md     # Agent、Skill 与工具
-│       ├── plugins-hooks.md     # 插件分发、Hook 契约与 MiniApp 编写
+│       ├── plugins.md           # 插件容器、manifest 契约与 Hook 系统
+│       ├── miniapp.md           # MiniApp 契约、生命周期与编写
 │       ├── mcp-tools.md         # MCP 与附件
 │       ├── permissions.md       # 权限模式、Plan Mode 与会话
 │       └── coverage.md          # opencode v2 章节能力边界对照
@@ -66,17 +67,21 @@ mcode-docs/
 
 - **完全静态。** 无构建步骤、无包管理器、无 MCP 服务、无 CDN，不发起任何网络请求。
 - **中英双语。** `index.html` 与 `index.en.html` 共享同一套 `assets/style.css` 与
-  `assets/app.js`；两版锚点集合与顺序一致。顶栏可切换语言，首访按 `navigator.language`
-  判定，手动选择后持久化。不使用 `fetch` 加载语言包，以保持 `file://` 可用。
+  `assets/app.js`；两版锚点集合与顺序一致。顶栏可切换语言，**不做任何语言自动判定**——
+  打开哪份文件就是哪种语言，手动选择后持久化。不使用 `fetch` 加载语言包，以保持 `file://` 可用。
 - 可在 `file://` 下运行；剪贴板降级路径已单独验证。
 - 视觉系统取自 **MiniMax 开放平台文档中心**
-  （<https://platform.minimax.cn/docs/api-reference/api-overview>）。设计令牌以实测方式提取，
-  非目测比对：取自该页 404 个 CSS 变量，并以关键元素的 `getComputedStyle` 补充。主要实测值：
+  （<https://platform.minimax.cn/docs/api-reference/api-overview>），组件几何与中性灰配色另据
+  **platform.minimaxi.com 文档站**截图逐像素取样。设计令牌以实测方式提取，非目测比对：取自该页
+  404 个 CSS 变量，并以关键元素的 `getComputedStyle` 与官方截图逐像素取样补充。主要实测值：
   `--primary 24 30 37`、`--primary-light 74 222 128`、默认边框 `--gray-100 #EEEEEF`、
   标题 `#171717`、二级标题与正文链接 `#1E293B`（字重 600，带下划线）、正文 `#3F3F3F`
-  `16px/24px`、导航 `#707071`、行内代码底色 `#F1F1F1@50%`（`2px 8px` 内边距，`6px` 圆角）、
-  代码块白底 `14px` 圆角 `14px 16px` 内边距、提示框 `#EFF6FF` 底 `#BFDBFE` 边 `16px` 圆角、
-  侧栏宽 `288px`、激活项 `rgba(0,0,0,.1)` 填充 `12px` 圆角、分隔线 `0.667px`。
+  `16px/24px`、导航 `#707071`、行内代码底色 `#EEEEEF@50%`（`2px 8px` 内边距，`6px` 圆角）、
+  代码块白底 `16px` 圆角 `14px 16px` 内边距、提示框 `#EFF6FF` 底 `#BFDBFE` 边 `16px` 圆角、
+  分隔线 `0.667px`。截图实测的组件值：左栏激活项 `#E8E8E8` 填充、`8px` 圆角、`48px` 行高
+  （无左侧竖线，文字 `#101113`，非当前项 `#2D2D2D`）；卡片 `#E5E5E5` 描边 `1px`、`12px` 圆角；
+  搜索框居中、`588×40`、`10px` 圆角；右栏大纲非大写、无左侧竖线（当前项 `#08090B` 字重 600，
+  非当前项 `#424242`）。
 - **默认浅色主题。** 首访刻意不查询系统 `prefers-color-scheme` 媒体特性；深色主题为可选项，
   选择结果持久化保存。
 - 全文检索（`Cmd`/`Ctrl` + `K`）、代码块复制、随滚动定位的大纲、移动端抽屉。

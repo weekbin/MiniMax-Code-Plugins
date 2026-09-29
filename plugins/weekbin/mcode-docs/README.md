@@ -58,12 +58,13 @@ mcode-docs/
 ├── LICENSE
 ├── skills/mcode-docs/
 │   ├── SKILL.md                 # Reusable Skill
-│   └── reference/               # Eight reference documents
+│   └── reference/               # Nine reference documents
 │       ├── commands.md          # Complete table of the 52 slash commands
 │       ├── cli.md               # CLI, headless execution, ACP
 │       ├── config.md            # Configuration structure and all known keys
 │       ├── agents-skills.md     # Agents, skills, tools
-│       ├── plugins-hooks.md     # Plugin manifest contract and hook system
+│       ├── plugins.md           # Plugin container, manifest contract, hook system
+│       ├── miniapp.md           # MiniApp contract, lifecycle, authoring
 │       ├── mcp-tools.md         # MCP, attachments
 │       ├── permissions.md       # Permission modes, Plan Mode, sessions
 │       └── coverage.md          # Capability-boundary crosswalk against opencode v2
@@ -79,18 +80,25 @@ mcode-docs/
   network request of any kind.
 - Operates under `file://`. The clipboard fallback path was verified explicitly.
 - The visual system is derived from the **MiniMax platform documentation**
-  (<https://platform.minimax.cn/docs/api-reference/api-overview>). Design tokens were
-  extracted by measurement rather than by inspection: 404 CSS variables from the live
-  page, supplemented by `getComputedStyle` on key elements. Principal measured values:
+  (<https://platform.minimax.cn/docs/api-reference/api-overview>), with the component geometry
+  and neutral-grey palette additionally measured pixel-by-pixel from the **platform.minimaxi.com
+  documentation site** screenshots. Design tokens were extracted by measurement rather than by
+  inspection: 404 CSS variables from the live page, supplemented by `getComputedStyle` on key
+  elements and per-pixel sampling of official screenshots. Principal measured values:
   `--primary 24 30 37`, `--primary-light 74 222 128`, `--gray-100 #EEEEEF` as the default
   border, headings `#171717`, second-level headings and body links `#1E293B` at weight 600
   with underlining, body text `#3F3F3F` at 16px/24px, navigation `#707071`, inline code on
-  `#F1F1F1@50%` with 2px 8px padding and a 6px radius, white code blocks at a 14px radius
+  `#EEEEEF@50%` with 2px 8px padding and a 6px radius, white code blocks at a 16px radius
   with 14px 16px padding, note boxes on `#EFF6FF` with a `#BFDBFE` border at a 16px radius,
-  a 288px sidebar, active items filled with `rgba(0,0,0,.1)` at a 12px radius, and 0.667px
-  dividers.
+  and 0.667px dividers. Screenshot-sampled component values: an 8px-radius `#E8E8E8` fill and a
+  48px row height for the active sidebar item (no left rule, `#101113` text, `#2D2D2D` for the
+  rest), a `#E5E5E5` 1px card border at a 12px radius, a centred 588×40 search field at a 10px
+  radius, and a right-hand outline with no uppercase and no left rule (`#08090B` at weight 600 for
+  the current entry, `#424242` for the rest).
 - **Light theme by default.** The system `prefers-color-scheme` media query is deliberately
-  not consulted on first visit. Dark mode is opt-in and the selection persists.
+  not consulted on first visit. Dark mode is opt-in and the selection persists. The same rule
+  governs language: `index.html` is always Chinese and `index.en.html` always English, with no
+  automatic detection.
 - Full-text search (`Cmd`/`Ctrl` + `K`), per-block copy controls, a scroll-tracking
   outline, and a mobile drawer.
 

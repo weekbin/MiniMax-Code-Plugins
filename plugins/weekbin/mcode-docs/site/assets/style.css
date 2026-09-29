@@ -1,25 +1,13 @@
 /* ============================================================
    mcode-docs · 静态文档站样式
-   设计令牌取自 MiniMax 官网（www.minimax.cn）
-   浅色优先（不跟随系统偏好），深色为可选
-   无外部字体 / 无 CDN / 无网络请求
-   ============================================================ */
-
-/* ============================================================
-   mcode-docs · 静态文档站样式
-   设计令牌逐一取自 https://platform.minimax.cn/docs/api-reference/api-overview
-   的真实计算样式（404 个 CSS 变量 + 关键元素 getComputedStyle）
-   浅色优先（不跟随系统偏好），深色为可选
-   无外部字体 / 无 CDN / 无网络请求
-   ============================================================ */
-
-/* ============================================================
-   mcode-docs · 静态文档站样式
    令牌来源：https://platform.minimax.cn/docs/api-reference/api-overview
-     · mint 调色板 17 令牌 —— 页面内联 <style> 的 :root 块，逐字抄录
-     · :root,:host 54 条 —— 官方 Tailwind 主题原语，逐字抄录
+     · mint 调色板 14 令牌 —— 页面内联 <style> 的 :root 块，逐字抄录
+     · :root,:host 19 条 —— 官方 Tailwind 主题原语，逐字抄录
      · --tw-prose-* —— 官方排版令牌（slate 色板），逐字抄录
      · 其余组件值 —— 页面元素 getComputedStyle 实测
+  ①②③ 三组抄录令牌一律「仅保留本站实际引用项」：声明后若在任何地方都没有
+  var() 引用——包括只被另一个死令牌别名引用的情况——即不保留。
+  全表当前 114 条，声明数与可达数相等（无死变量）。
    组件几何与中性灰 —— 另据 platform.minimaxi.com 官方文档站截图实测
      （1920px 视口、浅色主题，1920 宽坐标系逐像素取样，见 ⑥）
    ⚠ 上游 --tw-prose-* 为偏蓝的 slate 色板，官方文档站**实际渲染**的中性灰
@@ -28,18 +16,15 @@
    无外部字体 / 无 CDN / 无网络请求
    ============================================================ */
 
-/* ---------- ① mint 调色板（官方 :root，17 令牌，逐字） ---------- */
+/* ---------- ① mint 调色板（官方 :root，14 令牌，逐字） ---------- */
 :root {
   --primary:            24 30 37;
   --primary-light:      74 222 128;
-  --primary-dark:       24 30 37;
-  --tooltip-foreground: 255 255 255;
   --background-light:   255 255 255;
   --background-dark:    10 13 13;
   --gray-50:            243 243 243;
   --gray-100:           238 238 239;
   --gray-200:           223 223 223;
-  --gray-300:           206 206 207;
   --gray-400:           159 159 159;
   --gray-500:           112 112 113;
   --gray-600:           80 80 81;
@@ -54,21 +39,15 @@
   --color-green-400: #4ade80;
   --color-green-600: #16a34a;
 
-  --container-sm: 24rem;   --container-md: 28rem;
-  --container-xl: 36rem;   --container-2xl: 42rem;
-  --container-4xl: 56rem;  --container-5xl: 64rem;
-
   --text-sm: .875rem;  --text-base: 1rem;
-  --text-lg: 1.125rem; --text-xl: 1.25rem;  --text-2xl: 1.5rem;
-  --text-4xl: 2.25rem;
+  --text-lg: 1.125rem; --text-xl: 1.25rem;
 
   --font-weight-normal: 400;    --font-weight-medium: 500;
-  --font-weight-semibold: 600; --font-weight-bold: 700;
+  --font-weight-semibold: 600;
 
-  --tracking-tight: -.025em;
-  --tracking-normal: 0em;      --tracking-wide: .025em;
+  --tracking-normal: 0em;
 
-  --leading-normal: 1.5;  --leading-relaxed: 1.625;
+  --leading-normal: 1.5;
 
   --default-transition-duration: .15s;
   --default-transition-timing-function: cubic-bezier(.4,0,.2,1);
@@ -85,26 +64,17 @@
   --default-border-color: var(--gray-100);
 }
 
-/* ---------- ③ 官方排版令牌 --tw-prose-*（slate 色板，逐字） ---------- */
+/* ---------- ③ 官方排版令牌 --tw-prose-*（slate 色板，逐字；仅保留本站实际引用项） ---------- */
 :root {
   --tw-prose-body:          oklch(37.3% .034 259.733);
   --tw-prose-headings:      oklch(21% .034 264.665);
-  --tw-prose-lead:          oklch(44.6% .03 256.802);
   --tw-prose-links:         oklch(21% .034 264.665);
-  --tw-prose-bold:          oklch(21% .034 264.665);
-  --tw-prose-counters:      oklch(55.1% .027 264.364);
   --tw-prose-bullets:       oklch(86.9% .005 56.366);
-  --tw-prose-hr:            oklch(92.3% .003 48.717);
-  --tw-prose-quotes:        oklch(21% .034 264.665);
-  --tw-prose-quote-borders: oklch(92.3% .003 48.717);
   --tw-prose-captions:      oklch(55.1% .027 264.364);
   --tw-prose-kbd:           oklch(21% .034 264.665);
   --tw-prose-kbd-shadows:   oklab(21% -.00316127 -.0338527/.1);
   --tw-prose-code:          oklch(21% .034 264.665);
-  --tw-prose-pre-code:      oklch(92.3% .003 48.717);
-  --tw-prose-pre-bg:        oklch(26.8% .007 34.298);
   --tw-prose-th-borders:    oklch(86.9% .005 56.366);
-  --tw-prose-td-borders:    oklch(92.3% .003 48.717);
 }
 
 /* ---------- ④ 语义别名：一律指向官方令牌 ---------- */
@@ -114,11 +84,7 @@
                     "Liberation Mono","Courier New",monospace;
 
   /* 以下均为 ①②③ 中官方令牌的引用，不引入新值 */
-  --g-50:  var(--gray-50);   --g-100: var(--gray-100);
-  --g-200: var(--gray-200);  --g-300: var(--gray-300);
-  --g-400: var(--gray-400);  --g-500: var(--gray-500);
-  --g-600: var(--gray-600);  --g-700: var(--gray-700);
-  --g-800: var(--gray-800);  --g-900: var(--gray-900);
+  --g-100: var(--gray-100);
 
   --bg:        var(--color-background-light);
   --bg-soft:   rgb(var(--gray-50));            /* 实测代码块语言栏 #FAFAFA 的近邻官方面 */
@@ -136,7 +102,6 @@
   --border-strong: rgb(var(--gray-200));
 
   --accent:     var(--color-primary);
-  --accent-fg:  rgb(var(--background-light));
   --accent-bg:  rgb(var(--primary) / 0.1);      /* 官网实测侧栏激活态 oklab(0.232…/0.1) */
 
   --inline-bg:     rgb(var(--gray-100) / 0.5); /* 实测 oklab(...)/0.5 */
@@ -166,11 +131,9 @@
   --mark-bg: color-mix(in oklab, var(--color-green-400) 30%, transparent);
 
   --yes-fg: var(--color-green-600);
-  --yes-bg: color-mix(in oklab, var(--color-green-400) 16%, transparent);
   /* 以下取自官方 CSS 内既有的 Tailwind 工具值 */
-  --warn-fg: #854D0E;  --warn-bg: #FFFBEB;  --warn-border: #FDE68A; /* amber-800 / amber-50 / amber-200 */
-  --no-fg:   #991B1B;  --no-bg:   #FEF2F2;  --no-border:   #FECACA; /* red-800   / red-50   / red-200   */
-  --na-fg: var(--g-500); --na-bg: var(--g-100);
+  --warn-bg: #FFFBEB;  --warn-border: #FDE68A; /* amber-50 / amber-200 */
+  --no-fg:   #991B1B;                           /* red-800 */
 
   --ring: color-mix(in srgb, var(--color-primary) 55%, transparent);
   --hr:   1px solid rgb(var(--default-border-color));   /* 官方 prose hr: border-top-width 1px */
@@ -207,41 +170,25 @@ html[data-theme="dark"] {
   --tw-prose-invert-body:          oklch(86.9% .005 56.366);
   --tw-prose-invert-headings:      #fff;
   --tw-prose-invert-links:         #fff;
-  --tw-prose-invert-lead:          oklch(70.7% .022 261.325);
-  --tw-prose-invert-bold:          #fff;
-  --tw-prose-invert-counters:      oklch(70.7% .022 261.325);
   --tw-prose-invert-bullets:       oklch(44.4% .011 73.639);
   --tw-prose-invert-hr:            oklch(37.3% .034 259.733);
-  --tw-prose-invert-quotes:        oklch(96.7% .003 264.542);
-  --tw-prose-invert-quote-borders: oklch(37.3% .034 259.733);
   --tw-prose-invert-captions:      oklch(70.7% .022 261.325);
   --tw-prose-invert-kbd:           #fff;
   --tw-prose-invert-kbd-shadows:   #ffffff1a;
   --tw-prose-invert-code:          #fff;
   --tw-prose-invert-pre-code:      oklch(86.9% .005 56.366);
-  --tw-prose-invert-pre-bg:        #00000080;
   --tw-prose-invert-th-borders:    oklch(44.4% .011 73.639);
-  --tw-prose-invert-td-borders:    oklch(37.3% .034 259.733);
 
   /* 官方 dark 映射规则 */
   --tw-prose-body:          var(--tw-prose-invert-body);
   --tw-prose-headings:      var(--tw-prose-invert-headings);
-  --tw-prose-lead:          var(--tw-prose-invert-lead);
   --tw-prose-links:         var(--tw-prose-invert-links);
-  --tw-prose-bold:          var(--tw-prose-invert-bold);
-  --tw-prose-counters:      var(--tw-prose-invert-counters);
   --tw-prose-bullets:       var(--tw-prose-invert-bullets);
-  --tw-prose-hr:            var(--tw-prose-invert-hr);
-  --tw-prose-quotes:        var(--tw-prose-invert-quotes);
-  --tw-prose-quote-borders: var(--tw-prose-invert-quote-borders);
   --tw-prose-captions:      var(--tw-prose-invert-captions);
   --tw-prose-kbd:           var(--tw-prose-invert-kbd);
   --tw-prose-kbd-shadows:   var(--tw-prose-invert-kbd-shadows);
   --tw-prose-code:          var(--tw-prose-invert-code);
-  --tw-prose-pre-code:      var(--tw-prose-invert-pre-code);
-  --tw-prose-pre-bg:        var(--tw-prose-invert-pre-bg);
   --tw-prose-th-borders:    var(--tw-prose-invert-th-borders);
-  --tw-prose-td-borders:    var(--tw-prose-invert-td-borders);
 
   /* 以下全部由 ① 中官方令牌推导，不引入新值 */
   --bg:          var(--color-background-dark);
@@ -260,7 +207,6 @@ html[data-theme="dark"] {
   --border-strong: rgb(var(--gray-800));
 
   --accent:     var(--color-primary-light);
-  --accent-fg:  rgb(var(--background-dark));
   --accent-bg:  rgb(var(--primary-light) / 0.1);  /* 官网实测 oklab(0.800343…/0.1) */
 
   --inline-bg:  rgb(var(--gray-900));
@@ -292,12 +238,9 @@ html[data-theme="dark"] {
   --th-fg:        #fff;
 
   --yes-fg:  var(--color-green-400);
-  --yes-bg:  color-mix(in oklab, var(--color-green-400) 13%, transparent);
-  --warn-fg: #FDE68A;  --warn-bg: oklab(41.3707% .0733197 .0756701 / .2); /* dark:text-amber-200 / dark:bg-amber-900/20 */
+  --warn-bg: oklab(41.3707% .0733197 .0756701 / .2); /* dark:bg-amber-900/20 */
   --warn-border: oklab(47.3189% .0863082 .0900034 / .5);                /* dark:border-amber-800/50 */
-  --no-fg:   #FECACA;  --no-bg:   oklab(57.7099% .191149 .0987651 / .2);  /* dark:text-red-200   / dark:bg-red-600/20   */
-  --no-border: #7F1D1D;                                                  /* dark:border-red-900 */
-  --na-bg:   rgb(var(--gray-900));
+  --no-fg:   #FECACA;                                                    /* dark:text-red-200 */
   --ring:    rgb(var(--primary-light) / .9);
 
   color-scheme: dark;

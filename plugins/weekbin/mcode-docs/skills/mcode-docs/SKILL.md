@@ -169,7 +169,7 @@ JSON 无法覆盖；多处理器按**最强裁决合并**。
 
 输出 `{"systemMessage":"..."}` 并 exit 0，可在 TUI 显示提示而**不写入模型上下文**。
 
-详见 `reference/plugins-hooks.md`。
+详见 `reference/plugins.md`。
 
 ## 配置
 
@@ -222,7 +222,8 @@ MCP 单独放 `~/.minimax/mcp.json`（用户级）与 `<workspace>/.mcp.json`（
 | `reference/cli.md` | CLI、`exec`、`acp` 完整参数 |
 | `reference/config.md` | 配置文件结构与全部已知键 |
 | `reference/agents-skills.md` | 内置 Agent、Skill 与扩展机制 |
-| `reference/plugins-hooks.md` | 三类概念的区分、插件 manifest 与 Hook 契约、MiniApp 契约与编写 |
+| `reference/plugins.md` | 三类概念的区分、插件 manifest 与 Hook 契约 |
+| `reference/miniapp.md` | MiniApp 契约、与 MCP 的差异、生命周期与编写 |
 | `reference/mcp-tools.md` | 内置工具、MCP、附件 |
 | `reference/permissions.md` | 权限模式、Plan Mode、会话管理 |
 | `reference/coverage.md` | opencode v2 章节 → mcode 能力逐条对照 |

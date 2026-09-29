@@ -158,7 +158,7 @@ mcode plugin remove <plugin-id>
 mcode plugin marketplace
 ```
 
-直接运行 `mcode plugin` 会打开交互式 Plugin manager。详见 `plugins-hooks.md`。
+直接运行 `mcode plugin` 会打开交互式 Plugin manager。详见 `plugins.md`。
 
 ## 安装故障排查
 
