@@ -1,0 +1,23 @@
+{
+  "name": "mcode-docs",
+  "version": "0.1.0",
+  "description": "MiniMax Code（mcode）能力说明。涵盖三种使用形态与安装、CLI 与无头执行全量参数、ACP 接入、52 条 TUI slash 命令全表、配置结构与开关、Agent 与 Skill 体系、插件 manifest 契约、Hook 系统完整契约（事件、注册文档、stdin 契约、进程环境白名单、控制输出字段、权限更新、时间预算与诊断码）、MCP 与 Browser 装配、权限模式与 Plan Mode、会话管理。功能定义取自官方开源仓库源码，界面行为取自本机实跑。文档站为中英双语纯静态 HTML，无构建步骤、无 MCP 服务，可离线阅读。 / Capability reference for MiniMax Code (mcode). Covers the three usage forms and installation, the complete CLI and headless flag set, ACP integration, all 52 TUI slash commands, configuration structure and switches, the agent and skill system, the plugin manifest contract, the full Hook contract (events, registration document, stdin contract, process environment allow-list, control output fields, permission updates, time budgets and diagnostic codes), MCP and Browser assembly, permission modes and Plan Mode, and session management. Functional definitions come from the official open-source repository; interface behaviour comes from live execution on a local installation. The documentation site is a bilingual purely static HTML build with no build step and no MCP server, and reads offline.",
+  "author": {
+    "name": "weekbin",
+    "url": "https://github.com/weekbin"
+  },
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/weekbin/MiniMax-Code-Plugins/tree/main/plugins/weekbin/mcode-docs",
+  "repository": "https://github.com/weekbin/MiniMax-Code-Plugins/tree/main/plugins/weekbin/mcode-docs",
+  "icon": "icon.png",
+  "keywords": [
+    "mcode",
+    "documentation",
+    "reference",
+    "cli",
+    "tui"
+  ],
+  "skills": [
+    "./skills/mcode-docs/SKILL.md"
+  ]
+}

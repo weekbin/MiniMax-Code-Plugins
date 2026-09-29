@@ -1,0 +1,1415 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mcode · MiniMax Code 能力说明</title>
+<meta name="description" content="MiniMax Code（mcode）能力说明。涵盖 CLI 与无头执行全量参数、52 条 TUI slash 命令、配置结构、Agent 与 Skill、插件契约与 Hook 事件、MCP 与工具、权限模式与会话管理。">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" type="image/png" href="assets/minimax.png">
+<link rel="stylesheet" href="assets/style.css">
+<script>
+  // Pre-paint theme resolution (must run before first paint to avoid a flash).
+  // Light is the default and is NOT overridden by the OS preference:
+  // this site follows the MiniMax official-site convention of a light-first
+  // reading experience. Dark mode is opt-in and persists once chosen.
+  (function () {
+    try {
+      var saved = localStorage.getItem('mcode-docs-theme');
+      var theme = saved === 'light' || saved === 'dark' ? saved : 'light';
+      document.documentElement.setAttribute('data-theme', theme);
+    } catch (e) {
+      document.documentElement.setAttribute('data-theme', 'light');
+    }
+  })();
+</script>
+</head>
+<body>
+
+<a class="skip-link" href="#main">跳到主内容</a>
+
+<header class="navbar" id="navbar">
+  <div class="navbar-inner">
+    <button type="button" class="icon-btn nav-toggle" id="navToggle" aria-expanded="false" aria-controls="sidebar" aria-label="打开侧边导航">
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><path d="M3 6h18M3 12h18M3 18h18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+    </button>
+
+    <a class="brand" href="#intro">
+      <img class="brand-mark" src="assets/minimax.png" width="28" height="28" alt="">
+      <span class="brand-text">
+        <span class="brand-name">MCode 文档</span>
+      </span>
+    </a>
+
+    <button type="button" class="search-trigger" id="searchTrigger" aria-label="打开搜索（快捷键 Ctrl 或 Cmd + K）">
+      <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="6.2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M15.6 15.6L20 20" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+      <span class="search-trigger-label">搜索文档…</span>
+      <kbd class="kbd">Ctrl K</kbd>
+    </button>
+
+    <a class="icon-btn" href="https://github.com/MiniMax-AI/minimax-code" target="_blank" rel="noreferrer noopener" aria-label="查看 mcode 官方仓库（GitHub，新窗口打开）" title="mcode 官方仓库 · GitHub">
+      <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true" focusable="false"><path d="M8.6 7.4 4 12l4.6 4.6M15.4 7.4 20 12l-4.6 4.6M13.7 5.1l-3.4 13.8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </a>
+
+    <a class="icon-btn lang-btn" id="langSwitch" href="index.en.html" hreflang="en" aria-label="Switch to English" title="English">
+      <span class="lang-label" aria-hidden="true">EN</span>
+    </a>
+
+    <button type="button" class="icon-btn" id="themeToggle" aria-label="切换深色 / 浅色主题" aria-pressed="false">
+      <svg class="icon-sun" viewBox="0 0 24 24" width="17" height="17" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 2.6v2.2M12 19.2v2.2M2.6 12h2.2M19.2 12h2.2M5.4 5.4l1.6 1.6M17 17l1.6 1.6M18.6 5.4L17 7M7 17l-1.6 1.6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+      <svg class="icon-moon" viewBox="0 0 24 24" width="17" height="17" aria-hidden="true" focusable="false"><path d="M20 14.2A8.2 8.2 0 019.8 4 8.4 8.4 0 1020 14.2z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
+    </button>
+  </div>
+</header>
+
+<div class="scrim" id="scrim" hidden></div>
+
+<div class="layout">
+  <aside class="sidebar" id="sidebar" aria-label="文档导航">
+    <nav class="sidenav">
+      <p class="sidenav-group">概览</p>
+      <ul class="sidenav-list">
+        <li><a href="#intro">概览</a></li>
+        <li><a href="#quickstart">快速开始</a></li>
+      </ul>
+
+      <p class="sidenav-group">CLI</p>
+      <ul class="sidenav-list">
+        <li><a href="#cli">CLI、Headless 与 ACP</a></li>
+      </ul>
+
+      <p class="sidenav-group">TUI 命令</p>
+      <ul class="sidenav-list">
+        <li><a href="#commands">52 条 slash 命令全表</a></li>
+      </ul>
+
+      <p class="sidenav-group">配置</p>
+      <ul class="sidenav-list">
+        <li><a href="#config">配置文件与开关</a></li>
+      </ul>
+
+      <p class="sidenav-group">能力</p>
+      <ul class="sidenav-list">
+        <li><a href="#agents-skills">Agent、Skill 与工具</a></li>
+        <li><a href="#plugins-hooks">插件与 Hook</a></li>
+        <li><a href="#mcp-browser">MCP、工具与 Browser</a></li>
+      </ul>
+
+      <p class="sidenav-group">权限与会话</p>
+      <ul class="sidenav-list">
+        <li><a href="#permissions">权限模式、Plan 与会话</a></li>
+      </ul>
+
+      <p class="sidenav-group">分享</p>
+      <ul class="sidenav-list">
+        <li><a href="#sharing">官方仓库与许可</a></li>
+      </ul>
+    </nav>
+  </aside>
+
+  <main class="content" id="main">
+
+    <!-- ══════════════════ 1. 概览 ══════════════════ -->
+    <section class="doc-section" id="intro" aria-labelledby="h-intro">
+      <h1 class="page-title" id="h-intro">mcode 能力说明</h1>
+      <p class="lede">
+        MiniMax Code（<code>mcode</code>）为运行于终端的 AI Coding Agent：解析代码库、修改文件、
+        执行命令、运行测试，每次工作保存为可继续的 Session。下文逐节说明其命令行界面、命令集、
+        配置、扩展机制与权限模型。
+      </p>
+
+
+      <div class="stat-row">
+        <div class="stat"><span class="stat-num">3</span><span class="stat-label">使用形态</span></div>
+        <div class="stat"><span class="stat-num">52</span><span class="stat-label">TUI 命令</span></div>
+        <div class="stat"><span class="stat-num">12</span><span class="stat-label">基础工具</span></div>
+        <div class="stat"><span class="stat-num">4</span><span class="stat-label">内置 Agent</span></div>
+        <div class="stat"><span class="stat-num">17</span><span class="stat-label">内置 Skill</span></div>
+        <div class="stat"><span class="stat-num">11</span><span class="stat-label">Hook 事件</span></div>
+        <div class="stat"><span class="stat-num">19</span><span class="stat-label">beta 开关</span></div>
+        <div class="stat"><span class="stat-num">0</span><span class="stat-label">MCP 服务</span></div>
+      </div>
+
+      <h2 class="h2" id="h-three-forms">三种使用形态</h2>
+      <p>三种使用形态<strong>共用同一个进程内 Runtime 生命周期</strong>：</p>
+      <div class="card-grid">
+        <div class="card">
+          <p class="card-title"><code>mcode</code> · 交互式 TUI</p>
+          <p>启动交互式终端界面，带 Composer、会话视图、状态栏与 slash 命令。</p>
+        </div>
+        <div class="card">
+          <p class="card-title"><code>mcode exec</code> · 无头 Headless</p>
+          <p>不启动 TUI，执行一次任务，供脚本与 CI 使用。</p>
+        </div>
+        <div class="card">
+          <p class="card-title"><code>mcode acp</code> · ACP</p>
+          <p>以 Agent Client Protocol 服务运行（stdio），供支持 ACP 的编辑器接入。</p>
+        </div>
+      </div>
+
+      <h2 class="h2" id="h-install">安装</h2>
+      <p>要求 Node.js <code>&gt;=22.19 &lt;23</code> 或 <code>&gt;=24 &lt;27</code>：</p>
+
+      <div class="code-block" data-lang="bash">
+        <div class="code-head"><span class="code-lang">bash</span></div>
+        <pre><code>npm install -g @minimax-ai/code \
+  --allow-scripts=@minimax-ai/code,better-sqlite3 \
+  --registry=https://registry.npmjs.org/</code></pre>
+      </div>
+
+      <p>安装同时提供 <code>mcode</code> 与 <code>mcode-tools</code> 两个命令；<code>mcode-tools</code> 无需先启动 TUI 即在 <code>PATH</code> 上。卸载用 <code>npm uninstall -g @minimax-ai/code</code>，更新用 <code>mcode update</code>。</p>
+
+    </section>
+
+    <!-- ══════════════════ 2. 快速开始 ══════════════════ -->
+    <section class="doc-section" id="quickstart" aria-labelledby="h-quickstart">
+      <h2 class="h2" id="h-quickstart">快速开始</h2>
+
+      <p>常用命令：</p>
+      <div class="code-block" data-lang="bash">
+        <div class="code-head"><span class="code-lang">bash</span></div>
+        <pre><code>mcode                      # 启动 TUI
+mcode "任务描述"            # 带初始任务启动
+mcode --continue           # 继续当前 workspace 最近的 Session
+mcode --session            # 浏览 Session
+mcode --session &lt;id&gt;       # 按 ID 打开
+mcode --tui-mode fullscreen
+mcode -m &lt;provider/model&gt;  # 仅本次 Session 换模型
+mcode init                 # 分析代码库生成 AGENTS.md
+mcode exec "..."           # 无头执行一次
+mcode exec review          # 审查 staged/unstaged/untracked 改动
+mcode acp                  # 以 ACP 服务运行
+mcode login / logout       # 登录态（--region cn|global）
+mcode update
+mcode provider list|add|remove|test|use|set-minimax-key
+mcode plugin list|add|remove|enable|disable|marketplace</code></pre>
+      </div>
+
+      <p>完整参数见 <a href="#cli">CLI、Headless 与 ACP</a>。</p>
+    </section>
+
+    <!-- ══════════════════ 3. CLI 与 Headless ══════════════════ -->
+    <section class="doc-section" id="cli" aria-labelledby="h-cli">
+      <h2 class="h2" id="h-cli">CLI 与 Headless</h2>
+      <p>以下为完整参数。</p>
+
+      <h3 class="h3" id="h-cli-install">安装与更新</h3>
+      <div class="code-block" data-lang="bash">
+        <div class="code-head"><span class="code-lang">bash</span></div>
+        <pre><code>mcode --version          # 输出版本号
+mcode update             # 检查并安装更新
+npm uninstall -g @minimax-ai/code</code></pre>
+      </div>
+
+      <h3 class="h3" id="h-top-commands">顶层命令</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>命令</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td><code>mcode [prompt]</code></td><td>启动交互式 TUI</td></tr>
+            <tr><td><code>mcode init [directory]</code></td><td>分析代码库生成 / 完善 <code>AGENTS.md</code>（使用内置 <code>init</code> Skill）</td></tr>
+            <tr><td><code>mcode exec [prompt]</code></td><td>不启动 TUI，执行一次任务</td></tr>
+            <tr><td><code>mcode exec review</code></td><td>审查 staged / unstaged / untracked 本地改动</td></tr>
+            <tr><td><code>mcode acp</code></td><td>以 Agent Client Protocol 服务运行（stdio）</td></tr>
+            <tr><td><code>mcode login</code> / <code>logout</code></td><td>管理登录态，<code>--region cn|global</code>，login 支持 <code>--no-browser</code></td></tr>
+            <tr><td><code>mcode update</code></td><td>检查并安装更新</td></tr>
+            <tr><td><code>mcode provider ...</code></td><td><code>list</code> / <code>add</code> / <code>remove</code> / <code>test</code> / <code>use</code> / <code>set-minimax-key</code></td></tr>
+            <tr><td><code>mcode plugin ...</code></td><td><code>list</code> / <code>add</code> / <code>remove</code> / <code>enable</code> / <code>disable</code> / <code>marketplace</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="h3" id="h-global-options">全局选项</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>选项</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td><code>-V, --version</code></td><td>输出版本号</td></tr>
+            <tr><td><code>-m, --model &lt;provider/model&gt;</code></td><td>仅为本次 Session 选择模型</td></tr>
+            <tr><td><code>--lane &lt;lane&gt;</code></td><td>托管后端通道（测试或预发布构建）</td></tr>
+            <tr><td><code>--session [id]</code></td><td>省略 id 时打开 Session 浏览器</td></tr>
+            <tr><td><code>-c, --continue</code></td><td>继续当前 workspace 最近的 Session</td></tr>
+            <tr><td><code>--tui-mode &lt;mode&gt;</code></td><td><code>regular</code>（默认）或 <code>fullscreen</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout callout-note">
+        <p><code>-m</code> 只影响本次打开或创建的 Session，不改变全局默认模型，可与 <code>--continue</code> 或 <code>--session &lt;id&gt;</code> 配合；<strong>无 id 的 Session 浏览器不能同时指定模型</strong>。</p>
+      </div>
+
+      <h3 class="h3" id="h-exec">mcode exec（Headless）</h3>
+      <div class="code-block" data-lang="bash">
+        <div class="code-head"><span class="code-lang">bash</span></div>
+        <pre><code>mcode exec "审查当前改动，并运行相关测试。"
+mcode exec --cwd ./repo --file error.log "定位这次构建失败的原因。"
+mcode exec --output-format json "总结当前分支。"
+mcode exec --model custom_provider:work/deep-reasoner-1 --effort xhigh "规划这次迁移。"
+mcode exec review --cwd ./repo</code></pre>
+      </div>
+
+      <h4 class="h4" id="h-exec-flags">参数全集</h4>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>参数</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td><code>--input &lt;source&gt;</code></td><td>读取显式输入，<strong>仅支持 <code>-</code></strong>（stdin）</td></tr>
+            <tr><td><code>--input-format &lt;format&gt;</code></td><td><code>text</code>（默认）或 <code>json</code></td></tr>
+            <tr><td><code>--cwd &lt;path&gt;</code></td><td>workspace 目录</td></tr>
+            <tr><td><code>--file &lt;path&gt;</code></td><td>附加文件，<strong>可重复</strong></td></tr>
+            <tr><td><code>--model &lt;provider/model&gt;</code></td><td>仅本次 Run 覆盖</td></tr>
+            <tr><td><code>--effort &lt;level&gt;</code></td><td>仅本次 Run 覆盖推理强度</td></tr>
+            <tr><td><code>--prompt-mode &lt;mode&gt;</code></td><td><code>tui</code>（默认）/ <code>coding</code> / <code>work</code></td></tr>
+            <tr><td><code>--session &lt;id&gt;</code></td><td>在已有活跃 Session 中运行</td></tr>
+            <tr><td><code>--continue</code></td><td>继续 <code>--cwd</code> 中最近的活跃 Session</td></tr>
+            <tr><td><code>--config &lt;path&gt;</code></td><td>本进程使用显式 Runtime 配置文件</td></tr>
+            <tr><td><code>--permission &lt;policy&gt;</code></td><td><code>smart</code>（默认）/ <code>full</code> / <code>off</code>（<code>ask</code> 需 TUI/ACP）</td></tr>
+            <tr><td><code>--timeout &lt;duration&gt;</code></td><td>Run 超时，如 <code>30s</code>、<code>2m</code></td></tr>
+            <tr><td><code>--max-steps &lt;count&gt;</code></td><td>最大 assistant 步数</td></tr>
+            <tr><td><code>--output-format &lt;format&gt;</code></td><td><code>text</code> / <code>json</code> / <code>stream-json</code></td></tr>
+            <tr><td><code>--diagnostics-dir &lt;path&gt;</code></td><td>保存有界执行诊断到<strong>全新空目录</strong></td></tr>
+            <tr><td><code>--output-schema &lt;schema&gt;</code></td><td>JSON Schema 文件或内联对象，约束最终回答</td></tr>
+            <tr><td><code>-o, --output-last-message &lt;path&gt;</code></td><td>将最终消息写入文件</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4 class="h4" id="h-exec-semantics">关键语义</h4>
+      <ul>
+        <li><code>--effort</code> 只对本次 Run 生效，与 <code>--model</code> <strong>相互独立</strong>；启动前会按模型声明的强度校验，校验未通过即以非零退出码结束。覆盖<strong>不写回 Session</strong>。</li>
+        <li><code>--model provider/model#xhigh</code> 后缀<strong>不是</strong>思考强度：Runtime 会把它当作模型身份的一部分，请求的强度被静默丢弃。需要强度生效请用 <code>--effort xhigh</code>。</li>
+        <li><code>--diagnostics-dir</code> 相对路径基于 <code>--cwd</code> 解析，<strong>已有非空目录会被拒绝</strong>，避免覆盖前次证据。</li>
+        <li>JSON 校验失败仍返回失败，不会自动修复；<code>--output-last-message</code> 只保存成功结果。</li>
+        <li>诊断不混入 stdout；写入失败只告警，不替换原始执行错误。</li>
+      </ul>
+
+      <h4 class="h4" id="h-exec-review">mcode exec review</h4>
+      <p>只审查 staged、unstaged、untracked 的本地改动。<strong>仅支持</strong>：<code>--cwd</code>、<code>--model</code>、<code>--effort</code>、<code>--config</code>、<code>--permission</code>、<code>--timeout</code>、<code>--max-steps</code>、<code>--output-format</code>、<code>--output-last-message</code>。</p>
+      <ul>
+        <li>参数可放在 <code>review</code> 前后；两处都指定时以 <code>review</code> 后的显式值为准。</li>
+        <li>会话与输入输出类选项（<code>--session</code>、<code>--continue</code>、<code>--input</code>、<code>--input-format</code>、<code>--file</code>、<code>--output-schema</code>、<code>--diagnostics-dir</code>）仅适用于 <code>exec &lt;prompt&gt;</code>，<code>review</code> 形式使用上列选项。</li>
+        <li><strong>发现问题仍返回退出码 0</strong>；只有调用、Runtime 或审查结果协议失败才返回非零。</li>
+        <li>默认使用 <code>inline</code> 模式（当前 Turn 内完成审查）；显式配置 <code>review.mode: subagent</code> 时改用子代理。</li>
+      </ul>
+
+      <h3 class="h3" id="h-acp">mcode acp</h3>
+      <div class="code-block" data-lang="bash">
+        <div class="code-head"><span class="code-lang">bash</span></div>
+        <pre><code>mcode acp</code></pre>
+      </div>
+      <p>通过 stdin/stdout 启动 Agent Client Protocol 服务。支持 ACP 的编辑器与 Agent 客户端可借此创建、加载、继续和关闭 mcode Session。TUI、<code>exec</code> 与 ACP <strong>共用同一进程内 Runtime 生命周期</strong>。</p>
+
+      <h3 class="h3" id="h-provider">mcode provider</h3>
+      <div class="code-block" data-lang="bash">
+        <div class="code-head"><span class="code-lang">bash</span></div>
+        <pre><code>mcode provider list
+mcode provider test &lt;provider-id&gt;
+mcode provider add --name Work --base-url https://example.com/v1 \
+  --api-format openai-completions --model vision-model \
+  --context-limit 128000 --output-limit 8192 --support-image --use
+mcode provider remove &lt;provider-id&gt; --yes
+mcode provider use &lt;source&gt;
+mcode provider set-minimax-key</code></pre>
+      </div>
+      <ul>
+        <li>API Key 从 <code>MCODE_PROVIDER_API_KEY</code> 或 <code>--api-key-env</code> 指定的环境变量读取。</li>
+        <li><code>--use</code> 先测试第一个模型，成功才保存并选为默认；<strong>失败不保存</strong>。不带 <code>--use</code> 可先保存后在 <code>/provider</code> 测试。</li>
+        <li>Token 上限必须是正整数；<code>--support-image</code> 显式声明图片输入能力，不凭模型名字猜测。</li>
+        <li>第三方 relay 的自定义 header 位于 <code>custom_provider.&lt;id&gt;.options.headers</code>。</li>
+      </ul>
+
+      <h3 class="h3" id="h-plugin-cli">mcode plugin</h3>
+      <div class="code-block" data-lang="bash">
+        <div class="code-head"><span class="code-lang">bash</span></div>
+        <pre><code>mcode plugin list --available
+mcode plugin add &lt;plugin-id&gt;
+mcode plugin enable &lt;plugin-id&gt;
+mcode plugin disable &lt;plugin-id&gt;
+mcode plugin remove &lt;plugin-id&gt;
+mcode plugin marketplace</code></pre>
+      </div>
+      <p>直接运行 <code>mcode plugin</code> 会打开交互式 Plugin manager。详见 <a href="#plugins-hooks">插件与 Hook</a>。</p>
+
+      <h3 class="h3" id="h-troubleshooting">安装故障排查</h3>
+      <h4 class="h4" id="h-trouble-sqlite">npm 12 阻止安装脚本 / SQLite 原生依赖缺失</h4>
+      <p>症状：安装日志出现 <code>npm warn install-scripts</code>；启动时报 <code>Could not locate the bindings file</code>、缺少 <code>better_sqlite3.node</code>，或 <code>migration_failed</code>。</p>
+      <p>修复（保持原包名、版本与 registry）：</p>
+      <div class="code-block" data-lang="bash">
+        <div class="code-head"><span class="code-lang">bash</span></div>
+        <pre><code>npm install -g @minimax-ai/code@latest \
+  --registry=https://registry.npmjs.org/ \
+  --foreground-scripts --ignore-scripts=false \
+  --include=optional \
+  --allow-scripts=@minimax-ai/code,better-sqlite3</code></pre>
+      </div>
+      <ul>
+        <li>只加 <code>--ignore-scripts=false</code> <strong>不能</strong>代替 npm 12 的脚本授权。</li>
+        <li>看到 <code>[MCode] Native SQLite check passed.</code> 后再启动 <code>mcode</code>。</li>
+        <li>通过官方 Shell/PowerShell 安装器安装的用户，重跑原安装命令即可。</li>
+      </ul>
+    </section>
+
+    <!-- ══════════════════ 4. TUI 命令 ══════════════════ -->
+    <section class="doc-section" id="commands" aria-labelledby="h-commands">
+      <h2 class="h2" id="h-commands">TUI 命令（52 条）</h2>
+      <p>命令面由<strong>两个源码注册表</strong>构成，<strong>二者无重叠，合计 52 条</strong>：</p>
+      <ul>
+        <li><code>packages/tui/src/tui/commands/catalog.ts</code> → 41 条</li>
+        <li><code>packages/tui/src/application/command-descriptors.ts</code>（<code>TUI_COMMAND_DESCRIPTORS</code>）→ 11 条</li>
+      </ul>
+
+      <p><strong>别名</strong>：<code>/clear</code> → <code>/new</code>、<code>/exit</code> → <code>/quit</code>、<code>/resume</code> → <code>/sessions</code>、<code>/side</code> → <code>/btw</code></p>
+      <p><strong>分类</strong>：<code>Session</code> / <code>Runtime</code> / <code>Capability</code> / <code>Input</code> / <code>Transcript</code> / <code>Decision</code> / <code>Application</code></p>
+
+      <h3 class="h3" id="h-input-disambiguation">输入判别规则（重要）</h3>
+      <p>Composer 会把当前输入标记为 <code>Prompt</code>、<code>Command</code>、<code>Shell</code> 或 <code>Skill</code>，并提示按下 Enter 后是发送、执行还是调用。</p>
+      <ul>
+        <li><strong>无参数的命令</strong>只在命令名后<strong>没有正文</strong>时执行（允许尾随空白）。如果继续输入正文，整句作为<strong>普通提示词</strong>发送。例：<code>/context</code> 是命令；<code>/context 解释这个项目</code> 是普通提示词。</li>
+        <li><strong>接受参数的命令</strong>（如 <code>/sessions [query]</code>）仍按命令处理。</li>
+        <li>Skill 调用形如 <code>/docs 解释 API</code>，会显示为带 instructions 的 Skill 调用。</li>
+      </ul>
+
+      <h3 class="h3" id="h-core-commands">核心命令（descriptors 注册表，11 条）</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>命令</th><th>别名</th><th>描述</th></tr></thead>
+          <tbody>
+            <tr><td><code>/help</code></td><td>—</td><td>Show available commands（显示可用命令）</td></tr>
+            <tr><td><code>/new</code></td><td><code>/clear</code></td><td>Start a fresh session in the current workspace</td></tr>
+            <tr><td><code>/model</code></td><td>—</td><td>Choose a model（选择模型）</td></tr>
+            <tr><td><code>/status</code></td><td>—</td><td>Show account and model status</td></tr>
+            <tr><td><code>/doctor</code></td><td>—</td><td>Check the local config file（检查本地配置文件）</td></tr>
+            <tr><td><code>/context</code></td><td>—</td><td>Show the Runtime-owned context snapshot</td></tr>
+            <tr><td><code>/skills</code></td><td>—</td><td>List built-in and user Skills</td></tr>
+            <tr><td><code>/mcp</code></td><td>—</td><td>Inspect MCP capabilities and project configuration</td></tr>
+            <tr><td><code>/usage</code></td><td>—</td><td>Show session usage</td></tr>
+            <tr><td><code>/compact</code></td><td>—</td><td>Shorten the active conversation</td></tr>
+            <tr><td><code>/export</code></td><td>—</td><td>Export the current Session as Markdown（<code>[path.md]</code>）</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="h3" id="h-catalog-commands">Catalog 注册表（41 条）</h3>
+
+      <h4 class="h4" id="h-catalog-session">Session（会话与对话）· 13 条</h4>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>命令</th><th>参数</th><th>描述</th></tr></thead>
+          <tbody>
+            <tr><td><code>/sessions</code></td><td><code>[query]</code></td><td>Search, resume, and manage sessions</td></tr>
+            <tr><td><code>/goal</code></td><td><code>&lt;objective | action&gt;</code></td><td>Start or manage the current Session Goal</td></tr>
+            <tr><td><code>/plan</code></td><td><code>[on | off | status | view]</code></td><td>Switch Plan Mode or view the latest Plan</td></tr>
+            <tr><td><code>/review</code></td><td>—</td><td>Review staged, unstaged, and untracked local changes</td></tr>
+            <tr><td><code>/parent</code></td><td>—</td><td>Return from a sub-agent session to its parent</td></tr>
+            <tr><td><code>/btw</code></td><td><code>[question]</code></td><td>Ask a side question without interrupting the running task</td></tr>
+            <tr><td><code>/history</code></td><td>—</td><td>浏览当前 Session 的输入历史</td></tr>
+            <tr><td><code>/fork</code></td><td>—</td><td>Fork from here：从历史用户消息创建子会话，不修改当前会话或文件</td></tr>
+            <tr><td><code>/rewind</code></td><td>—</td><td>回退会话；可选「仅回退会话」或「回退会话和文件」</td></tr>
+            <tr><td><code>/edit</code></td><td><code>[instructions]</code></td><td>Edit this input：替换此提示词并从这里重新生成</td></tr>
+            <tr><td><code>/retry</code></td><td>—</td><td>Resend the last message after a failed response</td></tr>
+            <tr><td><code>/rename</code></td><td><code>[title]</code></td><td>Rename the active session</td></tr>
+            <tr><td><code>/archive</code></td><td>—</td><td>Archive the active session</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4 class="h4" id="h-catalog-runtime">Runtime（运行时）· 7 条</h4>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>命令</th><th>参数</th><th>描述</th></tr></thead>
+          <tbody>
+            <tr><td><code>/permission</code></td><td><code>[status | ask | auto | full]</code></td><td>Choose or inspect the Runtime permission mode</td></tr>
+            <tr><td><code>/tasks</code></td><td>—</td><td>Inspect background agents and Runtime tasks</td></tr>
+            <tr><td><code>/config</code></td><td>—</td><td>Show the effective read-only configuration</td></tr>
+            <tr><td><code>/steer</code></td><td><code>&lt;message&gt;</code></td><td>Steer current work without interrupting it</td></tr>
+            <tr><td><code>/login</code></td><td>—</td><td>Sign in to use MiniMax Code Agent features</td></tr>
+            <tr><td><code>/logout</code></td><td>—</td><td>Sign out of the shared Desktop account</td></tr>
+            <tr><td><code>/provider</code></td><td>—</td><td>View providers and edit MiniMax credentials</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4 class="h4" id="h-catalog-capability">Capability（能力）· 1 条</h4>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>命令</th><th>参数</th><th>描述</th></tr></thead>
+          <tbody>
+            <tr><td><code>/plugins</code></td><td><code>[filter]</code></td><td>Browse, install, enable, and remove Plugins</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4 class="h4" id="h-catalog-input">Input（输入）· 2 条</h4>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>命令</th><th>参数</th><th>描述</th></tr></thead>
+          <tbody>
+            <tr><td><code>/add-dir</code></td><td><code>&lt;path&gt;</code></td><td>Add a readable and writable workspace directory</td></tr>
+            <tr><td><code>/queue</code></td><td>—</td><td>Manage messages that run after the current response</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4 class="h4" id="h-catalog-transcript">Transcript（对话记录）· 2 条</h4>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>命令</th><th>描述</th></tr></thead>
+          <tbody>
+            <tr><td><code>/transcript</code></td><td>Browse, search, and inspect the full conversation</td></tr>
+            <tr><td><code>/copy</code></td><td>Copy last response as Markdown</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4 class="h4" id="h-catalog-decision">Decision（决策）· 5 条</h4>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>命令</th><th>描述</th></tr></thead>
+          <tbody>
+            <tr><td><code>/decision</code></td><td>Reopen the pending action panel</td></tr>
+            <tr><td><code>/allow</code></td><td>Allow the pending tool once（本次允许）</td></tr>
+            <tr><td><code>/always</code></td><td>Always allow this action class（始终允许该类操作）</td></tr>
+            <tr><td><code>/deny</code></td><td>Deny the pending tool（拒绝）</td></tr>
+            <tr><td><code>/permissions</code></td><td>Show pending Runtime-owned permission requests</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4 class="h4" id="h-catalog-application">Application（应用）· 11 条</h4>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>命令</th><th>描述</th></tr></thead>
+          <tbody>
+            <tr><td><code>/settings</code></td><td>Configure the MCode terminal interface</td></tr>
+            <tr><td><code>/statusline</code></td><td>Choose, reorder, and preview status line items</td></tr>
+            <tr><td><code>/theme</code></td><td>Choose the MCode color theme and terminal appearance</td></tr>
+            <tr><td><code>/hotkeys</code></td><td>View and customize TUI keyboard shortcuts</td></tr>
+            <tr><td><code>/reload</code></td><td>Reload TUI configuration and Plugins</td></tr>
+            <tr><td><code>/stop</code></td><td>Interrupt the running turn</td></tr>
+            <tr><td><code>/feedback</code></td><td>Review and submit redacted product feedback（<code>&lt;message&gt;</code>）</td></tr>
+            <tr><td><code>/checkin</code></td><td>Claim the daily MiniMax account reward</td></tr>
+            <tr><td><code>/changelog</code></td><td>Show the packaged MCode update history</td></tr>
+            <tr><td><code>/update</code></td><td>Check for and install an MCode update</td></tr>
+            <tr><td><code>/quit</code></td><td>Exit Minimax Code（别名 <code>/exit</code>）</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="h3" id="h-history-commands">/history、/fork、/rewind、/edit 的实际行为</h3>
+      <p>这四条共享一套「历史变更」交互（会话空闲时才可用）：</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>命令</th><th>英文文案</th><th>中文文案</th><th>行为</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><code>/fork</code></td><td>Fork from here</td><td>从这里创建分支</td>
+              <td>创建<strong>子会话</strong>，不修改当前会话或文件</td>
+            </tr>
+            <tr>
+              <td><code>/edit</code></td><td>Edit this input</td><td>编辑此输入</td>
+              <td>替换该提示词并<strong>从这里重新生成</strong>；后续对话与文件改动将被移除</td>
+            </tr>
+            <tr>
+              <td><code>/rewind</code></td><td>Rewind conversation / Rewind conversation and files</td><td>回退会话 / 回退会话和文件</td>
+              <td>移除后续消息；可选<strong>保持文件不变</strong>或<strong>同时还原可安全恢复的文件改动</strong></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>前置条件：开始或恢复一个 Session 后才能浏览历史；有回复正在运行时不可用（<code>Stop the running response before changing Session history.</code>）。</p>
+
+      <h3 class="h3" id="h-btw">侧会话（BTW）只读命令</h3>
+      <p><code>/btw</code>（别名 <code>/side</code>）从最近一个已提交的会话边界 fork 出临时侧会话，主任务继续运行不被中断。侧会话以只读上下文继承主会话历史，工具权限与主会话一致，并被要求除非明确请求否则不做修改。</p>
+      <p>侧会话视图中仅以下命令可用（源码 <code>SIDE_MODE_READ_ONLY_COMMANDS</code>）：</p>
+      <p class="cmd-strip"><code>help</code><code>changelog</code><code>context</code><code>status</code><code>usage</code><code>export</code><code>transcript</code><code>copy</code><code>parent</code></p>
+      <ul>
+        <li><code>/parent</code>（或 <code>Ctrl+/</code>）在侧会话与主会话视图间切换而不结束任何一方。</li>
+        <li>侧会话是临时的：不出现在 <code>/sessions</code> 中，切换到其他 Session 时自动清理。</li>
+        <li>空 Composer 中按 <code>Ctrl+C</code> 关闭并丢弃侧会话。</li>
+      </ul>
+
+      <h3 class="h3" id="h-statusline">状态栏项（/statusline）</h3>
+      <p>合法项 4 个：</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>项</th><th>含义</th></tr></thead>
+          <tbody>
+            <tr><td><code>cache-read-ratio</code></td><td>缓存读取比例</td></tr>
+            <tr><td><code>context-remaining</code></td><td>剩余上下文</td></tr>
+            <tr><td><code>context-meter</code></td><td>上下文刻度（默认关闭）</td></tr>
+            <tr><td><code>custom-command</code></td><td>自定义命令</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>源码提供的别名映射：</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>别名</th><th>归一到</th></tr></thead>
+          <tbody>
+            <tr><td><code>status-protocol</code>、<code>vela</code></td><td><code>build-mode</code></td></tr>
+            <tr><td><code>workspace</code>、<code>cwd</code>、<code>project-dir</code></td><td><code>current-dir</code></td></tr>
+            <tr><td><code>git</code></td><td><code>git-branch</code></td></tr>
+            <tr><td><code>context-window</code></td><td><code>context-remaining</code></td></tr>
+            <tr><td><code>context-bar</code>、<code>context-gauge</code></td><td><code>context-meter</code></td></tr>
+            <tr><td><code>custom</code></td><td><code>custom-command</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="h3" id="h-shell-mode">终端内直接执行命令</h3>
+      <p>在 Composer 中输入 <code>!pwd</code>、<code>!git status</code>，按 Enter 立即在当前 Session 工作目录执行，实时显示 stdout、stderr 与退出码。输入框显示 <code>Shell · Enter run</code>。</p>
+      <ul>
+        <li><code>!命令</code> 的结果随下一条消息交给模型；执行本身<strong>不发起</strong>模型请求。</li>
+        <li><code>!!命令</code> <strong>仅在 TUI 本地显示</strong>输出，不发给模型。</li>
+        <li>两者输出与待发送上下文各保留最近 <strong>64 KiB</strong> 字符，超出显示截断提示。</li>
+        <li>按 <code>Tab</code> 请求本地补全（只读本地目录，不调用模型、不执行草稿）。</li>
+        <li>每条命令启动<strong>独立 Shell</strong>，<code>cd</code> 与 <code>export</code> 的效果仅限该条命令。</li>
+        <li>命令以当前操作系统用户权限执行；macOS 使用 Bash，Windows 优先 PowerShell。</li>
+      </ul>
+    </section>
+
+    <!-- ══════════════════ 5. 配置 ══════════════════ -->
+    <section class="doc-section" id="config" aria-labelledby="h-config">
+      <h2 class="h2" id="h-config">配置</h2>
+
+      <h3 class="h3" id="h-config-paths">配置文件位置</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>用途</th><th>路径</th></tr></thead>
+          <tbody>
+            <tr><td>主配置</td><td><code>&lt;数据目录&gt;/config.yaml</code>（本机为 <code>~/.minimax/config.yaml</code>）</td></tr>
+            <tr><td>用户级 MCP</td><td><code>&lt;数据目录&gt;/mcp.json</code>（本机 <code>~/.minimax/mcp.json</code>）</td></tr>
+            <tr><td>项目级 MCP</td><td><code>&lt;workspace&gt;/.mcp.json</code></td></tr>
+            <tr><td>运行时权限状态</td><td><code>&lt;数据目录&gt;/permission.json</code></td></tr>
+            <tr><td>项目规则</td><td><code>&lt;workspace&gt;/AGENTS.md</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>数据目录可通过 <code>MINIMAX_DATA_DIR</code> 指定（用于隔离测试配置）。TUI 内用 <code>/config</code> 查看<strong>生效的只读配置</strong>；<code>mcode exec --config &lt;path&gt;</code> 可为单次进程指定配置文件。</p>
+
+      <h3 class="h3" id="h-config-keys">已验证的顶层键</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>键</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td><code>logLevel</code></td><td>日志级别</td></tr>
+            <tr><td><code>provider</code></td><td>内置 Provider 配置</td></tr>
+            <tr><td><code>defaultModel</code></td><td>默认模型，形如 <code>minimax/MiniMax-M3.1-Flash-Preview</code></td></tr>
+            <tr><td><code>permissionMode</code></td><td>权限模式，取值见 <a href="#permissions">权限与会话</a></td></tr>
+            <tr><td><code>custom_provider</code></td><td>自定义 Provider 映射</td></tr>
+            <tr><td><code>tui</code></td><td>终端界面行为</td></tr>
+            <tr><td><code>statusLine</code> / <code>customStatusLine</code></td><td>状态栏项</td></tr>
+            <tr><td><code>defaultModelContextWindow</code></td><td>默认上下文窗口</td></tr>
+            <tr><td><code>defaultModelVariant</code></td><td>默认模型变体，如 <code>thinking</code></td></tr>
+            <tr><td><code>defaultModelThinking</code></td><td>含 <code>.effort</code>，保存默认思考强度</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="h3" id="h-config-tui">tui 段</h3>
+      <div class="code-block" data-lang="yaml">
+        <div class="code-head"><span class="code-lang">yaml</span></div>
+        <pre><code>tui:
+  terminalTitle: [status, session-name, app-name]
+  notifications:
+    when: unfocused
+    method: auto
+    events: [turn-complete, turn-failed, permission-required, question-required]</code></pre>
+      </div>
+
+      <h4 class="h4" id="h-terminal-title">terminalTitle</h4>
+      <ul>
+        <li>可用项：<code>status</code>、<code>session-name</code>、<code>app-name</code>、<code>project-name</code>，可排序或省略。</li>
+        <li>设为 <code>null</code> 或 <code>[]</code> 可禁用标题更新。</li>
+        <li>未知项被忽略。</li>
+        <li>终端标题形如 <code>Needs approval | Fix login | MCode</code>；重命名或切换 Session 会更新。</li>
+        <li>未命名 Session 使用项目名与短 Session ID。</li>
+      </ul>
+
+      <h4 class="h4" id="h-notifications">notifications</h4>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>键</th><th>取值</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td><code>when</code></td><td><code>unfocused</code> / <code>always</code> / <code>never</code></td><td>何时通知</td></tr>
+            <tr><td><code>method</code></td><td><code>auto</code> / <code>osc9</code> / <code>osc777</code> / <code>bel</code></td><td>通知协议</td></tr>
+            <tr><td><code>events</code></td><td>事件数组</td><td>省略 = 全部四项；<code>[]</code> = 关闭</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <ul>
+        <li>通知标识 Session 并抑制重复；完成通知会等待该 Session 的队列结束。</li>
+        <li><code>auto</code> 使用检测到的终端通知协议，失败回退到响铃。</li>
+        <li>已知前台聚焦默认抑制通知；焦点未知时为尽力而为。</li>
+        <li>tmux 内 OSC 通知需要外层终端透传支持，可用 <code>method: bel</code> 回退。</li>
+        <li><strong>配置改动需重启 mcode 生效。</strong></li>
+      </ul>
+      <p>VS Code 终端默认显示进程名；要显示 mcode 的 Session 标题：</p>
+      <div class="code-block" data-lang="json">
+        <div class="code-head"><span class="code-lang">json</span></div>
+        <pre><code>"terminal.integrated.tabs.title": "${sequence}"</code></pre>
+      </div>
+
+      <h3 class="h3" id="h-config-agents">能力开关 agents</h3>
+      <div class="code-block" data-lang="yaml">
+        <div class="code-head"><span class="code-lang">yaml</span></div>
+        <pre><code>agents:
+  default:
+    persona:
+      enabled: false
+    tools: [read, write, edit, bash, grep, glob]
+    builtinTools: []
+    skills: []
+    features:
+      mavis: false
+      delegation: false
+      webSearch: false</code></pre>
+      </div>
+      <ul>
+        <li><code>tools</code> —— 基础工具白名单</li>
+        <li><code>builtinTools</code> —— 额外启用的内置工具</li>
+        <li><code>skills</code> —— 启用的 Skill</li>
+        <li><code>features.mavis</code> / <code>delegation</code> / <code>webSearch</code> —— 子 Agent、委派、联网搜索开关</li>
+        <li><code>persona.enabled</code> —— 人格设定</li>
+      </ul>
+
+      <h3 class="h3" id="h-config-memory">Memory 与其它开关</h3>
+      <div class="code-block" data-lang="yaml">
+        <div class="code-head"><span class="code-lang">yaml</span></div>
+        <pre><code>memory:
+  enabled: false
+  proactive: false
+
+askUser:
+  enabled: false
+
+skills:
+  external:
+    enabled: false
+
+skillEvolve:
+  enabled: false</code></pre>
+      </div>
+
+      <h3 class="h3" id="h-config-beta">beta.* 开关全量（19 个）</h3>
+      <p>以下为随包 <code>configs/data-minimal.yaml</code> 中列出的<strong>全部</strong> beta 开关，默认均为 <code>false</code>：</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>开关</th><th>作用</th></tr></thead>
+          <tbody>
+            <tr><td><code>autoMemory</code></td><td>自动记忆</td></tr>
+            <tr><td><code>skillEvolve</code></td><td>Skill 自演进</td></tr>
+            <tr><td><code>skillEvolveBuiltinMr</code></td><td>内置 Skill 自演进</td></tr>
+            <tr><td><code>skillProposal</code></td><td>Skill 提案</td></tr>
+            <tr><td><code>browserBridge</code></td><td>Browser 桥接</td></tr>
+            <tr><td><code>filePanelBrowser</code></td><td>文件面板 Browser Provider</td></tr>
+            <tr><td><code>filePanelBrowserMultiTab</code></td><td>文件面板多标签</td></tr>
+            <tr><td><code>browserUseTooling</code></td><td><strong>Browser 工具装配的前提</strong></td></tr>
+            <tr><td><code>browserUseAutoOpenPanel</code></td><td>自动打开 Browser 面板</td></tr>
+            <tr><td><code>browserAgentCursor</code></td><td>Agent 光标</td></tr>
+            <tr><td><code>desktopPlanMode</code></td><td>桌面端 Plan Mode</td></tr>
+            <tr><td><code>peek</code></td><td>Peek</td></tr>
+            <tr><td><code>keepAlive</code></td><td>Keep Alive</td></tr>
+            <tr><td><code>promptOverride</code></td><td>Prompt 覆盖</td></tr>
+            <tr><td><code>asr</code></td><td>语音识别</td></tr>
+            <tr><td><code>taskHistoryProjectGrouping</code></td><td>任务历史按项目分组</td></tr>
+            <tr><td><code>threadGoal</code></td><td>Thread Goal</td></tr>
+            <tr><td><code>mcodeTools</code></td><td>mcode-tools</td></tr>
+            <tr><td><code>codexOAuth</code></td><td>Codex OAuth</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="h3" id="h-config-proxy">网络代理</h3>
+      <p>读取 <code>HTTP_PROXY</code>、<code>HTTPS_PROXY</code>、<code>ALL_PROXY</code>、<code>NO_PROXY</code> 及其小写形式。<strong>无需</strong>设置 <code>NODE_USE_ENV_PROXY</code>。<code>localhost</code>、<code>127.0.0.1</code>、<code>::1</code> 始终直连。</p>
+      <div class="code-block" data-lang="bash">
+        <div class="code-head"><span class="code-lang">bash</span></div>
+        <pre><code>HTTPS_PROXY=http://127.0.0.1:7890 mcode</code></pre>
+      </div>
+      <p>交互会话、<code>exec</code>、更新下载与 Matrix 工具请求使用相同代理规则。</p>
+
+      <h3 class="h3" id="h-config-telemetry">Telemetry</h3>
+      <p>默认全部关闭，需分别开启（<code>telemetry.diagnostics</code> 等）。<code>MCODE_DISABLE_TELEMETRY</code> 或 <code>DO_NOT_TRACK</code> 覆盖全部分析通道。</p>
+
+      <h3 class="h3" id="h-config-reload">修改配置后的生效方式</h3>
+      <ul>
+        <li>大部分配置<strong>重启 mcode 生效</strong>（尤其 <code>tui</code> 段）。</li>
+        <li>TUI 内可用 <code>/reload</code> 重载 TUI 配置与 Plugins。</li>
+        <li>改完建议用 <code>/config</code> 核对生效值。</li>
+      </ul>
+    </section>
+
+    <!-- ══════════════════ 6. Agent 与 Skill ══════════════════ -->
+    <section class="doc-section" id="agents-skills" aria-labelledby="h-agents-skills">
+      <h2 class="h2" id="h-agents-skills">Agent 与 Skill</h2>
+
+      <h3 class="h3" id="h-agents">内置 Agent（4 个）</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Agent</th><th>用途</th></tr></thead>
+          <tbody>
+            <tr><td><code>mavis</code></td><td>主 Agent</td></tr>
+            <tr><td><code>explore</code></td><td>只读探索：不创建或编辑文件</td></tr>
+            <tr><td><code>worker</code></td><td>有界执行任务</td></tr>
+            <tr><td><code>verifier</code></td><td>独立验证交付物</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>双源互证：包内 <code>assets/agents/builtin-agents.json</code> 内容为 <code>["mavis", "explore", "worker", "verifier"]</code>，与运行时数据目录下的实际 Agent 目录完全一致。</p>
+      <div class="callout callout-note">
+        <p><strong>注意</strong>：包内 <code>assets/agents/</code> 另有 <code>_default</code>、<code>desktop-task</code>、<code>workflow</code> 等目录，属于配置/模板资产，<strong>不是</strong>内置 Agent 列表的一部分。</p>
+      </div>
+
+      <h4 class="h4" id="h-sub-session">子会话</h4>
+      <ul>
+        <li>子 Agent 会话中用 <code>/parent</code> 返回父会话。</li>
+        <li>侧会话（<code>/btw</code>）以只读上下文继承主会话历史，权限与主会话一致，除非明确请求否则不做任何修改。</li>
+      </ul>
+
+      <h4 class="h4" id="h-agent-config">Agent 配置</h4>
+      <p>在 <code>config.yaml</code> 的 <code>agents</code> 段控制，详见 <a href="#h-config-agents">能力开关 agents</a>：</p>
+      <div class="code-block" data-lang="yaml">
+        <div class="code-head"><span class="code-lang">yaml</span></div>
+        <pre><code>agents:
+  default:
+    tools: [read, write, edit, bash, grep, glob]
+    builtinTools: []
+    skills: []
+    features:
+      mavis: false
+      delegation: false
+      webSearch: false</code></pre>
+      </div>
+      <p><code>features.delegation</code> 控制是否能委派子任务，<code>features.mavis</code> 控制主 Agent 能力，<code>features.webSearch</code> 控制联网搜索。</p>
+
+      <h3 class="h3" id="h-skills">内置 Skill（17 个）</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Skill</th><th>用途</th></tr></thead>
+          <tbody>
+            <tr><td><code>code-review</code></td><td>代码审查</td></tr>
+            <tr><td><code>deep-research</code></td><td>深度研究（分步执行）</td></tr>
+            <tr><td><code>deploy-website</code></td><td>发布网站到公网 URL</td></tr>
+            <tr><td><code>edit-deployed-website</code></td><td>编辑已部署的网站</td></tr>
+            <tr><td><code>docx</code></td><td>Word 文档创建/读取/编辑/修复</td></tr>
+            <tr><td><code>pdf</code></td><td>PDF 生成、格式化、填写与读取</td></tr>
+            <tr><td><code>pptx</code></td><td>PowerPoint 读取、创建与编辑</td></tr>
+            <tr><td><code>xlsx</code></td><td>Excel/CSV 读取、创建、公式与图表</td></tr>
+            <tr><td><code>init</code></td><td>分析代码库生成 <code>AGENTS.md</code></td></tr>
+            <tr><td><code>lark-tools</code></td><td>飞书/Lark 全能力（CLI + 原生通道）</td></tr>
+            <tr><td><code>llm-call</code></td><td>直接调用配置的 LLM 模型</td></tr>
+            <tr><td><code>mcode-tools-master</code></td><td>发现并调用 App/Connector 工具</td></tr>
+            <tr><td><code>resume-codex</code></td><td>从 Codex CLI 或 VS Code 会话继续任务</td></tr>
+            <tr><td><code>skill-creator</code></td><td>创建/改进 Skill</td></tr>
+            <tr><td><code>skill-refiner</code></td><td>用证据驱动的最小补丁精修 Skill</td></tr>
+            <tr><td><code>visual-page</code></td><td>主动生成可视化 HTML 页面</td></tr>
+            <tr><td><code>x-link-reader</code></td><td>读取链接内容</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>TUI 内 <code>/skills</code> 列出内置与用户 Skill。</p>
+      <div class="callout callout-note">
+        <p><strong>注意</strong>：<code>xlsx</code>、<code>pdf</code>、<code>pptx</code>、<code>docx</code> 等在 Linux 上需要可用的本地字体；<code>visual-page</code>、<code>deploy-website</code> 属于产出型 Skill，需要相应宿主能力或网络可达。</p>
+      </div>
+
+      <h3 class="h3" id="h-custom-skill">自定义 Skill</h3>
+      <p>Skill 以 <code>SKILL.md</code> 为入口，通过插件 manifest 的 <code>skills</code> 数组挂载：</p>
+      <div class="code-block" data-lang="json">
+        <div class="code-head"><span class="code-lang">json</span></div>
+        <pre><code>{ "skills": ["skills/my-skill/SKILL.md"] }</code></pre>
+      </div>
+      <p><code>SKILL.md</code> 带 YAML frontmatter（至少 <code>name</code> 与 <code>description</code>）。相关开关：<code>skills.external.enabled</code>（外部 Skill）、<code>skillEvolve.enabled</code>（自演进）。</p>
+
+      <h3 class="h3" id="h-tools">宿主工具（12 个基础工具）</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>工具</th><th>作用</th></tr></thead>
+          <tbody>
+            <tr><td><code>read</code></td><td>读取文件</td></tr>
+            <tr><td><code>write</code></td><td>写文件</td></tr>
+            <tr><td><code>edit</code></td><td>精确编辑文件</td></tr>
+            <tr><td><code>bash</code></td><td>执行终端命令</td></tr>
+            <tr><td><code>grep</code></td><td>内容搜索（ripgrep）</td></tr>
+            <tr><td><code>glob</code></td><td>按文件名/路径搜索</td></tr>
+            <tr><td><code>task</code></td><td>派发子 Agent</td></tr>
+            <tr><td><code>todowrite</code></td><td>维护任务清单</td></tr>
+            <tr><td><code>skill</code></td><td>调用 Skill</td></tr>
+            <tr><td><code>ask_user</code></td><td>向用户收集结构化决策</td></tr>
+            <tr><td><code>web_search</code></td><td>联网搜索</td></tr>
+            <tr><td><code>web_fetch</code></td><td>抓取 URL 原始文本</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>此外还有 MCP 提供的 <code>mcp__*</code> 工具，以及需显式开启 beta 开关后才装配的 Browser 工具。</p>
+
+      <h3 class="h3" id="h-bash-behaviour">Bash 工具的真实行为</h3>
+      <ul>
+        <li><strong>退出码 0 才算成功</strong>；结果保留退出、信号、超时、取消与部分输出等事实。</li>
+        <li>大输出保留<strong>首尾</strong>，首响应文本预算 <strong>24 KiB</strong>，持久化成功时给出完整日志引用。</li>
+        <li>前台等待：有原生 <code>task_output</code> 时最多等 <strong>60 秒</strong>，之后返回同一命令的后台任务 ID；总命令超时默认 <strong>600 秒</strong>，上限 <strong>600 秒</strong>。无 <code>task_output</code> 时保持前台，默认 <strong>120 秒</strong>、上限 <strong>300 秒</strong>。</li>
+        <li><code>task_output</code> 按字节偏移读取；一次成功读取也可能报告命令失败。</li>
+        <li>可选的 <code>description</code> 只影响 TUI 摘要，不影响执行与权限检查。</li>
+      </ul>
+
+      <h3 class="h3" id="h-stopping-work">停止对话与后台工作</h3>
+      <ul>
+        <li>显式停止（如 TUI 中按 <code>Esc</code>）会取消该对话在当前进程内拥有的后台 Bash 命令与子 Agent，包括 <code>task_append</code> 续跑及其子回合派生的工作。完成通知不再自动唤醒对话。</li>
+        <li>用 <code>/clear</code> 或切换 Session 离开对话时，会停止当前回合并暂停 Goal 与排队指令，但<strong>后台工作继续运行</strong>。</li>
+        <li>只取消本地拥有的运行中任务；由其它 Runtime 进程持有的任务不受影响。</li>
+      </ul>
+    </section>
+
+    <!-- ══════════════════ 7. 插件与 Hook ══════════════════ -->
+    <section class="doc-section" id="plugins-hooks" aria-labelledby="h-plugins-hooks">
+      <h2 class="h2" id="h-plugins-hooks">插件与 Hook</h2>
+
+      <h3 class="h3" id="h-plugin-mgmt">插件管理</h3>
+      <div class="code-block" data-lang="bash">
+        <div class="code-head"><span class="code-lang">bash</span></div>
+        <pre><code>mcode plugin list --available
+mcode plugin add &lt;plugin-id&gt;
+mcode plugin enable &lt;plugin-id&gt;
+mcode plugin disable &lt;plugin-id&gt;
+mcode plugin remove &lt;plugin-id&gt;
+mcode plugin marketplace</code></pre>
+      </div>
+      <p>直接运行 <code>mcode plugin</code> 打开交互式 Plugin manager；TUI 内用 <code>/plugins [filter]</code>。</p>
+      <div class="callout callout-note">
+        <p>插件来源为官方目录中的插件与已被发现的本地插件；<code>mcode plugin marketplace</code> 用于浏览与管理这些来源。</p>
+      </div>
+
+      <h3 class="h3" id="h-manifest">Manifest 契约</h3>
+      <p>MiniMax 格式插件清单路径：<code>.minimax-plugin/plugin.json</code>，<code>schemaVersion</code> <strong>必须</strong>为 <code>1</code>，字段之外的键会被拒绝。</p>
+      <p><strong>合法字段全集</strong>（源码 <code>MANIFEST_FIELDS</code>）：</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>字段</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td><code>$schema</code></td><td>JSON Schema 地址</td></tr>
+            <tr><td><code>schemaVersion</code></td><td>固定为 <code>1</code></td></tr>
+            <tr><td><code>name</code></td><td>插件标识</td></tr>
+            <tr><td><code>displayName</code></td><td>展示名</td></tr>
+            <tr><td><code>version</code></td><td>版本</td></tr>
+            <tr><td><code>description</code></td><td>描述</td></tr>
+            <tr><td><code>author</code></td><td>作者</td></tr>
+            <tr><td><code>icon</code> / <code>darkIcon</code></td><td>明暗图标</td></tr>
+            <tr><td><code>category</code></td><td>分类</td></tr>
+            <tr><td><code>exampleQueries</code></td><td>示例查询</td></tr>
+            <tr><td><code>apps</code></td><td>应用引用</td></tr>
+            <tr><td><code>mcpServers</code></td><td>MCP 服务器文件引用</td></tr>
+            <tr><td><code>skills</code></td><td>SKILL.md 路径列表</td></tr>
+            <tr><td><code>hooks</code></td><td>Hook 文件引用</td></tr>
+            <tr><td><code>hostBindings</code></td><td>宿主能力绑定</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4 class="h4" id="h-host-bindings">hostBindings</h4>
+      <p>元素须为严格 <code>schemaVersion: 1</code>，包含：</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>字段</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td><code>bindingId</code></td><td>绑定标识</td></tr>
+            <tr><td><code>logicalToolName</code></td><td>逻辑工具名</td></tr>
+            <tr><td><code>hostCapability</code></td><td><code>{ id, version }</code></td></tr>
+            <tr><td><code>requiredSkills</code></td><td>依赖的 Skill</td></tr>
+            <tr><td><code>allowedSurfaces</code></td><td>允许的宿主表面，当前仅支持 <code>interactive</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4 class="h4" id="h-placeholders">路径占位符</h4>
+      <p>插件内路径支持 <code>${PLUGIN_ROOT}</code>（插件根目录）与 <code>${PLUGIN_DATA}</code>（插件数据目录）。</p>
+
+      <h4 class="h4" id="h-manifest-example">示例</h4>
+      <div class="code-block" data-lang="json">
+        <div class="code-head"><span class="code-lang">json</span></div>
+        <pre><code>{
+  "schemaVersion": 1,
+  "name": "example-plugin",
+  "displayName": "Example Plugin",
+  "version": "0.1.0",
+  "description": "示例插件",
+  "author": "you",
+  "icon": "icon.png",
+  "category": "Other",
+  "exampleQueries": ["用这个插件做……"],
+  "apps": [],
+  "mcpServers": [],
+  "skills": ["skills/example/SKILL.md"],
+  "hooks": ["hooks/notify.json"]
+}</code></pre>
+      </div>
+
+      <h3 class="h3" id="h-hooks">Hook 系统</h3>
+      <p>mcode 的 Hook 是<strong>插件级同步 command Hook</strong>，事件模型<strong>兼容 Claude Code</strong>。来源格式支持 <code>MINIMAX</code>、<code>CLAUDE</code>、<code>CODEX</code> 三种。</p>
+      <div class="callout callout-warn">
+        <p><strong>仅同步 <code>type: "command"</code> 处理器受支持。</strong>注册文档中的 <code>async</code> 与 <code>asyncRewake</code> 虽在语法上被接受为布尔值，但任一为 <code>true</code> 即判定为 <code>HOOK_HANDLER_UNSUPPORTED</code>。</p>
+      </div>
+
+      <h4 class="h4" id="h-hook-events">事件全集（11 个）</h4>
+      <div class="cmd-strip cmd-strip-wrap">
+        <code>SessionStart</code><code>SessionEnd</code><code>UserPromptSubmit</code><code>PreToolUse</code><code>PermissionRequest</code><code>PostToolUse</code><code>SubagentStart</code><code>SubagentStop</code><code>Stop</code><code>PreCompact</code><code>PostCompact</code>
+      </div>
+      <p><code>SessionStart</code> 携带来源标识，取值为 <code>startup</code> / <code>resume</code> / <code>clear</code> / <code>compact</code> / <code>fork</code> / <code>plugin_activation</code>。</p>
+
+      <h4 class="h4" id="h-hook-registration">注册文档</h4>
+      <p>manifest 的 <code>hooks</code> 字段接受五种形式：字符串路径、<code>{ "path": "…" }</code> 对象、上述两者的数组、<strong>内联注册文档对象</strong>（此时 <code>sourcePath</code> 记为 <code>&lt;manifest&gt;</code>），以及省略时按默认路径自动纳入。注册文档的信封有两种等价写法：外层带 <code>"hooks"</code> 键，或直接以事件名为顶层键。</p>
+      <div class="code-block" data-lang="json">
+        <div class="code-head"><span class="code-lang">json</span></div>
+        <pre><code>{
+  "hooks": {
+    "Stop": [{
+      "hooks": [{
+        "type": "command",
+        "command": "node \"${PLUGIN_ROOT}/scripts/notice.cjs\"",
+        "timeout": 5
+      }]
+    }]
+  }
+}</code></pre>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>字段</th><th>必需</th><th>约束</th></tr></thead>
+          <tbody>
+            <tr><td><code>type</code></td><td>是</td><td>恒为 <code>"command"</code></td></tr>
+            <tr><td><code>command</code></td><td>是</td><td>非空字符串</td></tr>
+            <tr><td><code>commandWindows</code> / <code>command_windows</code></td><td>否</td><td>仅 win32 生效，优先于 <code>command</code></td></tr>
+            <tr><td><code>timeout</code></td><td>否</td><td><strong>整数秒</strong>，取值 1–10；缺省 5000 ms；上限 10000 ms</td></tr>
+            <tr><td><code>matcher</code></td><td>否</td><td>事件分组级；上限 256 字符；校验规则见下</td></tr>
+            <tr><td><code>args</code></td><td>否</td><td>字符串数组；<strong>仅 <code>CLAUDE</code></strong>；给出即采用 exec 形式</td></tr>
+            <tr><td><code>shell</code></td><td>否</td><td><code>bash</code> 或 <code>powershell</code>；<strong>仅 <code>CLAUDE</code></strong>；<code>args</code> 存在时忽略</td></tr>
+            <tr><td><code>if</code></td><td>否</td><td>工具谓词，形如 <code>Bash(rm *)</code>；<strong>仅 <code>CLAUDE</code></strong>；仅 <code>PreToolUse</code>／<code>PermissionRequest</code>／<code>PostToolUse</code></td></tr>
+            <tr><td><code>additionalContextLimit</code></td><td>否</td><td>非负安全整数；<strong>仅 <code>CODEX</code></strong>；仅 5 个事件</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><code>timeout</code> 若为非整数、<code>&lt; 1</code> 或 <code>&gt; 10</code>，整条处理器记 <code>HOOK_SCHEMA_INVALID</code>；<code>MINIMAX</code> 格式下空白 <code>matcher</code> 非法。解析后的处理器结构如下：</p>
+      <div class="code-block" data-lang="ts">
+        <div class="code-head"><span class="code-lang">ts</span></div>
+        <pre><code>{
+  kind: 'command',
+  sourceFormat: 'MINIMAX' | 'CLAUDE' | 'CODEX',
+  pluginName: string,
+  pluginRoot: string,
+  pluginDataDir?: string,
+  activationKey?: string,
+  sourcePath: string,
+  event: &lt;上述 11 个之一&gt;,
+  matcher?: string,
+  command: string,
+  args?: string[],
+  shell?: 'bash' | 'powershell',
+  condition?: string,
+  timeoutMs: number,
+  additionalContextLimit?: number,
+  declarationOrder: number
+}</code></pre>
+      </div>
+      <p><strong><code>matcher</code> 校验</strong>依次为：<code>*</code> 恒合法；<code>UserPromptSubmit</code> 与 <code>Stop</code> 不校验内容；<code>CODEX</code> 仅接受 <code>[A-Za-z0-9_|]+</code>；其余格式以 <code>|</code> 或 <code>,</code> 分支，每支须整体匹配 <code>[A-Za-z0-9_.:/-]+</code>；否则按<strong>可移植正则</strong>校验——仅允许非捕获组 <code>(?:...)</code>，拒绝环视、命名组、反向引用与悬空转义，且同一原子重复量词达 4 次即拒绝。</p>
+      <p>单个插件可执行处理器至多 <strong>64</strong> 个，超出部分记 <code>HOOK_HANDLER_LIMIT_EXCEEDED</code>。</p>
+      <p><strong>命令解析</strong>：存在 <code>args</code> 时走 exec 形式，不经 shell；<code>MINIMAX</code> 无 <code>args</code> 时经系统默认 shell，<code>shell: bash</code> 转为 <code>bash -c</code>，<code>shell: powershell</code> 转为 pwsh；<code>CLAUDE</code> 在 POSIX 下默认 <code>sh -c</code>，win32 下优先 Git Bash，否则 PowerShell。<code>command</code> 形式要求 Hook 进程的 <code>PATH</code> 上存在 Node.js。</p>
+
+      <h4 class="h4" id="h-hook-io">进程环境与 stdin 输入</h4>
+      <p><strong>继承白名单仅 17 个变量</strong>：</p>
+      <div class="cmd-strip cmd-strip-wrap">
+        <code>PATH</code><code>HOME</code><code>LANG</code><code>TERM</code><code>SHELL</code><code>USER</code><code>TMPDIR</code><code>TEMP</code><code>TMP</code><code>PATHEXT</code><code>SystemRoot</code><code>ComSpec</code><code>USERPROFILE</code><code>HOMEDRIVE</code><code>HOMEPATH</code><code>APPDATA</code><code>LOCALAPPDATA</code>
+      </div>
+      <p><strong>宿主注入</strong>：</p>
+      <div class="cmd-strip cmd-strip-wrap">
+        <code>PLUGIN_ROOT</code><code>MINIMAX_PLUGIN_ROOT</code><code>CLAUDE_PLUGIN_ROOT</code><code>CODEX_PLUGIN_ROOT</code><code>PLUGIN_DATA</code><code>CLAUDE_PLUGIN_DATA</code><code>MINIMAX_PROJECT_DIR</code><code>CLAUDE_PROJECT_DIR</code><code>CODEX_PROJECT_DIR</code>
+      </div>
+      <p><code>CLAUDE</code> 格式且事件位于工具使用上下文内时，追加 <code>CLAUDE_EFFORT</code>（取 <code>low</code> / <code>medium</code> / <code>high</code> / <code>xhigh</code> / <code>max</code>）。</p>
+      <div class="callout callout-note">
+        <p>因此 Hook 脚本<strong>不得</strong>依赖白名单以外的环境变量，其中包含任何凭据；所需变量须由插件自身声明。插件包根目录为<strong>只读</strong>，可写状态应写入 <code>PLUGIN_DATA</code>，该目录由宿主以 <code>0700</code> 权限创建。</p>
+      </div>
+      <p>Hook 进程从 stdin 读取<strong>单个</strong> UTF-8 JSON 对象。事件特有字段先行展开，其后写入下列固定键：</p>
+      <div class="code-block" data-lang="json">
+        <div class="code-head"><span class="code-lang">json</span></div>
+        <pre><code>{
+  "hook_event_name": "PreToolUse",
+  "session_id": "…",
+  "turn_id": "…",
+  "prompt_id": "…",
+  "transcript_path": "…",
+  "cwd": "…",
+  "model": "…",
+  "permission_mode": "…",
+  "effort": { "level": "high" },
+  "tool_name": "Bash",
+  "tool_input": { }
+}</code></pre>
+      </div>
+      <p><code>turn_id</code>、<code>prompt_id</code>、<code>model</code>、<code>permission_mode</code>、<code>effort</code> 缺省时不出现在对象中；<code>transcript_path</code> 在尚无转录时为 <code>null</code>；序列化结果超过 <strong>1 MiB</strong> 时不投递输入。<code>MINIMAX</code> 格式仅要求 <code>session_id</code> 与 <code>cwd</code> 非空，<code>CLAUDE</code> 另校验回合级字段。</p>
+
+      <h4 class="h4" id="h-hook-output">退出码、控制输出与裁决合并</h4>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>情形</th><th>结果</th></tr></thead>
+          <tbody>
+            <tr><td>空输出</td><td>采用事件默认裁决</td></tr>
+            <tr><td>以 <code>{</code> 开头（<code>CODEX</code> 另接受 <code>[</code>）</td><td>按 JSON 解析</td></tr>
+            <tr><td>其余文本</td><td>该事件支持纯文本上下文时并入 <code>additionalContext</code>，否则采用默认裁决</td></tr>
+            <tr><td><strong>exit 2</strong>（非 <code>MINIMAX</code>）</td><td>触发事件级阻断效果，<strong>JSON 无法覆盖</strong></td></tr>
+            <tr><td><code>CODEX</code> 且退出码非零</td><td>不解释 stdout，采用默认裁决</td></tr>
+            <tr><td><code>CLAUDE</code> 且任意退出码</td><td>均解析 JSON</td></tr>
+            <tr><td>被信号终止</td><td><code>HOOK_PROCESS_ERROR</code>，并终止同进程组残余进程</td></tr>
+            <tr><td>超时</td><td><code>HOOK_TIMEOUT</code></td></tr>
+            <tr><td>stdout 或 stderr 超过 <strong>64 KiB</strong></td><td><code>HOOK_INVALID_OUTPUT</code></td></tr>
+            <tr><td>非法 JSON 或含未授权键</td><td><code>HOOK_INVALID_OUTPUT</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><code>hookSpecificOutput.hookEventName</code> 若出现，必须与当前事件一致，否则整份输出作废。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>字段</th><th>取值</th><th>作用</th></tr></thead>
+          <tbody>
+            <tr><td><code>decision</code></td><td><code>allow</code> / <code>deny</code> / <code>ask</code> / <code>defer</code></td><td>通用裁决</td></tr>
+            <tr><td><code>reason</code></td><td>≤ 4096 字符</td><td>裁决理由</td></tr>
+            <tr><td><code>continue</code></td><td><code>false</code> 终止当前运行</td><td>通用控制</td></tr>
+            <tr><td><code>stopReason</code></td><td>字符串</td><td>终止原因</td></tr>
+            <tr><td><code>continuePrompt</code></td><td>字符串</td><td>续跑提示</td></tr>
+            <tr><td><code>defer</code></td><td>布尔</td><td>交回宿主裁决</td></tr>
+            <tr><td><code>suppressOutput</code></td><td>布尔</td><td><strong>不</strong>控制 <code>systemMessage</code></td></tr>
+            <tr><td><code>additionalContext</code></td><td>≤ 65536 字符</td><td>注入模型上下文</td></tr>
+            <tr><td><code>updatedInput</code></td><td>对象</td><td>改写工具入参</td></tr>
+            <tr><td><code>updatedResult</code></td><td>任意</td><td>替换模型可见的工具结果；审计与持久化保留原值</td></tr>
+            <tr><td><code>updatedResultFormat</code></td><td><code>CLAUDE</code> / <code>MINIMAX</code></td><td><code>updatedResult</code> 的所属方契约</td></tr>
+            <tr><td><code>postToolFeedback</code></td><td>字符串</td><td><code>CODEX</code> 的 <code>PostToolUse</code> 错误反馈，<strong>不</strong>构成硬停止</td></tr>
+            <tr><td><code>terminalSequence</code></td><td>字符串</td><td><code>CLAUDE</code> 专用、经白名单过滤的终端通知字节</td></tr>
+            <tr><td><code>systemMessage</code></td><td>字符串</td><td>仅供用户阅读，见下节</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><code>decision: "block"</code> 或 <code>continue: false</code> 均标记为结构化阻断。空输出时的默认裁决为：<code>PermissionRequest</code> 取 <code>decision: "allow"</code> 加 <code>permissionDecision: "abstain"</code>，<code>PreToolUse</code> 取 <code>decision: "allow"</code> 加 <code>toolPermissionDecision: "abstain"</code>，其余事件取 <code>decision: "allow"</code>。</p>
+      <div class="callout callout-note">
+        <p>多个处理器作用于同一事件时按<strong>最强裁决合并</strong>（<code>deny</code> 优先于 <code>ask</code>，<code>ask</code> 优先于 <code>defer</code>，<code>defer</code> 优先于 <code>allow</code>），而非后者覆盖前者。</p>
+      </div>
+
+      <h4 class="h4" id="h-hook-perm">权限更新</h4>
+      <p><code>PermissionRequest</code> 可返回 <code>updatedPermissions</code> 数组，宿主以<strong>原子</strong>方式整体应用：</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>形态</th><th>必填字段</th></tr></thead>
+          <tbody>
+            <tr><td><code>addRules</code> / <code>replaceRules</code> / <code>removeRules</code></td><td><code>rules</code>、<code>behavior</code>（<code>allow</code> / <code>deny</code> / <code>ask</code>）、<code>destination</code></td></tr>
+            <tr><td><code>setMode</code></td><td><code>mode</code>、<code>destination</code></td></tr>
+            <tr><td><code>addDirectories</code> / <code>removeDirectories</code></td><td><code>directories</code>、<code>destination</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><code>destination</code> 取值 <code>session</code> / <code>localSettings</code> / <code>projectSettings</code> / <code>userSettings</code>；<code>mode</code> 取值 <code>default</code> / <code>auto</code> / <code>acceptEdits</code> / <code>dontAsk</code> / <code>bypassPermissions</code> / <code>plan</code>。</p>
+      <ul>
+        <li><code>permissionDecision</code>：<code>allow</code>（授权且不呈现产品界面）/ <code>deny</code> / <code>abstain</code>（缺省）；</li>
+        <li><code>permissionAutoApproval</code>：<code>ordinary_only</code> / <code>any_prompt</code>；<code>CLAUDE</code> 仍复核 deny 与 ask 规则，<code>CODEX</code> 将 Hook 裁决视为最终批准；</li>
+        <li><code>interrupt</code>：<code>CLAUDE</code> 的 <code>PermissionRequest</code> 专用，仅在 deny 时请求中止活动运行；</li>
+        <li><code>toolPermissionDecision</code>：<code>PreToolUse</code> 专用，取值 <code>allow</code> / <code>deny</code> / <code>ask</code> / <code>defer</code> / <code>abstain</code>，与「无裁决」相区分。</li>
+      </ul>
+
+      <h4 class="h4" id="h-hook-budget">时间预算与诊断码</h4>
+      <p>单个处理器的实际超时取声明值与事件剩余预算之较小者。普通事件总预算 <strong>15 000 ms</strong>，<code>SessionEnd</code> 为 <strong>3 000 ms</strong>，进程回收窗口为 <strong>500 ms</strong>。</p>
+      <p>解析期诊断码为 <code>HOOK_SCHEMA_INVALID</code>、<code>HOOK_EVENT_UNSUPPORTED</code>、<code>HOOK_HANDLER_UNSUPPORTED</code>、<code>HOOK_HANDLER_LIMIT_EXCEEDED</code>；运行期诊断码为 <code>HOOK_ABORTED</code>、<code>HOOK_INVALID_INPUT</code>、<code>HOOK_INVALID_OUTPUT</code>、<code>HOOK_PROCESS_ERROR</code>、<code>HOOK_PROCESS_EXITED</code>、<code>HOOK_TIMEOUT</code>。</p>
+
+      <h4 class="h4" id="h-system-message">systemMessage：只给用户看，不进模型上下文</h4>
+      <p>向 stdout 写<strong>一个</strong> JSON 对象并以 <strong>exit 0</strong> 退出：</p>
+      <div class="code-block" data-lang="js">
+        <div class="code-head"><span class="code-lang">js</span></div>
+        <pre><code>console.log(JSON.stringify({ systemMessage: "Checks complete. The report is ready." }));</code></pre>
+      </div>
+      <ul>
+        <li>在 TUI 中作为 <code>Hook · Stop</code> 形式显示在回复之后。</li>
+        <li><strong>不进入</strong> canonical model history、compaction 输入、最终回答复制与默认 Markdown 导出；但<strong>确实</strong>写入本地显示存储。</li>
+        <li>单独返回 <code>systemMessage</code> <strong>不</strong>触发额外的模型调用。</li>
+        <li>支持多行；消息与标题中的终端控制序列会被剥离。</li>
+        <li>提示颜色只是表现，不代表回合失败。</li>
+        <li>通知持久化在 Session 显示历史中，重开 Session 会恢复；重放同一消息不会重复。</li>
+        <li>相互独立的 Hook 调用可重复输出同一文本，各自产生独立通知。</li>
+        <li>通知归属其所在 Session；子 Session 的通知<strong>不</strong>向父 Session 广播。</li>
+      </ul>
+      <p>若同时返回 <code>additionalContext</code>、<code>decision</code> 等控制字段，这些字段仍按各事件的既有语义生效。<code>suppressOutput</code> <strong>不</strong>控制该通知。</p>
+      <div class="callout callout-note">
+        <p>这只是脚本的<strong>输出</strong>，不是 Hook 注册文档本身。</p>
+      </div>
+
+      <h4 class="h4" id="h-hook-limits">事件限制</h4>
+      <ul>
+        <li>同一显示行为适用于 Runtime 已发出通知的事件：<code>SessionStart</code> / <code>UserPromptSubmit</code>、<code>PreToolUse</code>、<code>PermissionRequest</code>、<code>PostToolUse</code>、<code>SubagentStart</code> / <code>SubagentStop</code>，以及<strong>自动</strong> <code>PostCompact</code>。</li>
+        <li><code>PreCompact</code> 与<strong>手动</strong> <code>PostCompact</code> 当前<strong>不</strong>发出该通知。</li>
+        <li><code>SessionEnd</code> 为尽力而为，不保证退出前显示。</li>
+        <li><strong>Claude 兼容适配器</strong>会丢弃 <code>PreCompact</code>、<code>PostCompact</code>、<code>SessionEnd</code> 的 <code>systemMessage</code>；<strong>Codex 适配器</strong>会丢弃 <code>SessionEnd</code> 的。上述按格式的差异不随时间变化。</li>
+        <li>上述只覆盖<strong>同步 command Hook</strong>。</li>
+        <li>被取消或失败的回合<strong>不会</strong>触发正常的 <code>Stop</code> Hook。</li>
+        <li>只有带分类的插件用户消息会显示；诊断消息、终端控制通知与无分类的旧事件保持隐藏。</li>
+        <li>该行为仅涉及交互式 TUI 的呈现，headless 与 ACP 的输出策略不变。</li>
+      </ul>
+    </section>
+
+    <!-- ══════════════════ 8. MCP / 工具 / Browser ══════════════════ -->
+    <section class="doc-section" id="mcp-browser" aria-labelledby="h-mcp-browser">
+      <h2 class="h2" id="h-mcp-browser">MCP / 工具 / Browser</h2>
+
+      <h3 class="h3" id="h-mcp-config">MCP 配置</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>层级</th><th>路径</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>用户级</td><td><code>&lt;数据目录&gt;/mcp.json</code>（本机 <code>~/.minimax/mcp.json</code>）</td><td>跨 workspace 生效</td></tr>
+            <tr><td>项目级</td><td><code>&lt;workspace&gt;/.mcp.json</code></td><td>由 Runtime 自动加载</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>项目级 MCP 与 Desktop、<code>exec</code>、ACP <strong>共用配置规则</strong>。TUI 内用 <code>/mcp</code> 查看 MCP 能力与项目配置。</p>
+
+      <h4 class="h4" id="h-mcp-format">用户级格式</h4>
+      <div class="code-block" data-lang="json">
+        <div class="code-head"><span class="code-lang">json</span></div>
+        <pre><code>{
+  "mcpServers": {
+    "codegraph": {
+      "type": "stdio",
+      "command": "codegraph",
+      "args": ["serve", "--mcp"]
+    },
+    "my-server": {
+      "command": "python3",
+      "args": ["${PLUGIN_ROOT}/scripts/server.py"],
+      "env": {
+        "MCP_STATE_DIR": "${PLUGIN_DATA}/state"
+      },
+      "description": "说明文字",
+      "enabled": true,
+      "configured": true
+    }
+  }
+}</code></pre>
+      </div>
+      <p>字段：<code>type</code>、<code>command</code>、<code>args</code>、<code>env</code>、<code>description</code>、<code>enabled</code>、<code>configured</code>。<code>env</code> 中可使用 <code>${PLUGIN_ROOT}</code> 与 <code>${PLUGIN_DATA}</code> 占位符。</p>
+      <p>本机 <code>~/.minimax/mcp.json</code> 实测含 <code>codegraph</code>、<code>playwright</code>、<code>codebuddy</code>（D 级）。</p>
+
+      <h3 class="h3" id="h-mcp-tools">工具</h3>
+      <p>12 个基础工具见 <a href="#h-tools">宿主工具</a>。MCP 服务器提供的工具以 <code>mcp__&lt;server&gt;__&lt;tool&gt;</code> 形式出现。</p>
+
+      <h3 class="h3" id="h-browser">Browser</h3>
+      <p>Browser Use <strong>默认关闭</strong>，必须通过 beta 开关显式启用：</p>
+      <div class="code-block" data-lang="yaml">
+        <div class="code-head"><span class="code-lang">yaml</span></div>
+        <pre><code># &lt;数据目录&gt;/config.yaml
+beta:
+  browserUseTooling: true
+browser:
+  chromePath: /Applications/Google Chrome.app/Contents/MacOS/Google Chrome</code></pre>
+      </div>
+      <ul>
+        <li>系统能自动发现 Chrome 时可省略 <code>browser.chromePath</code>，但仍需保留 <code>beta.browserUseTooling: true</code>。</li>
+        <li><code>MCODE_CHROME_PATH</code> 可在单次启动中覆盖 <code>browser.chromePath</code>；否则 macOS、Linux、Windows 会自动查找常见的 Chrome/Chromium。</li>
+        <li>Linux <strong>root</strong> 环境自动为 Chrome 加 <code>--no-sandbox</code>；非 root 仍保留 Chrome 进程沙箱。</li>
+        <li><code>MCODE_BROWSER_BACKEND</code> <strong>不再需要</strong>，也不再控制启停。</li>
+        <li><code>beta.filePanelBrowser</code> 只控制 Electron FilePanel Provider，与 Browser Use 无关。</li>
+        <li>模型侧的 <code>navigate</code> / <code>open_tab</code> <strong>只接受 HTTP(S) URL</strong>；<code>file:</code>、<code>data:</code> 等本地或内联 scheme 会在启动 Chrome 前被拒绝。上传本地文件应使用经过 workspace 授权的 Browser upload 输入。</li>
+      </ul>
+      <p>TUI、<code>mcode exec</code> 与 ACP 共用同一进程内 Runtime 生命周期，因此 Browser 在三者中行为一致：</p>
+      <div class="code-block" data-lang="bash">
+        <div class="code-head"><span class="code-lang">bash</span></div>
+        <pre><code>mcode exec "请使用 Browser 打开 https://example.com，告诉我页面标题并截一张图。"</code></pre>
+      </div>
+
+      <h3 class="h3" id="h-attachments">附件与引用</h3>
+      <h4 class="h4" id="h-attach-cli">命令行</h4>
+      <div class="code-block" data-lang="bash">
+        <div class="code-head"><span class="code-lang">bash</span></div>
+        <pre><code>mcode exec --file error.log --file ./trace.json "定位这次构建失败的原因。"</code></pre>
+      </div>
+      <p><code>--file</code> <strong>可重复</strong>。</p>
+
+      <h4 class="h4" id="h-attach-tui">TUI</h4>
+      <ul>
+        <li>粘贴图片后 Composer 标出 <code>[Image #1]</code> 形式的编号，并在输入框上方显示预览。</li>
+        <li>继续输入或移开光标会收起预览；用左右方向键移回图片标签可再次查看。</li>
+        <li>空输入框连续按两次 <code>Esc</code>，或用 <code>/edit</code> 编辑上一条消息时，图片恢复为可操作的标签，支持删除、撤销和重新发送。</li>
+        <li>支持 Kitty 图片协议的终端，以及 regular 模式的 iTerm2 可直接显示图片；其它终端显示格式、尺寸与大小。</li>
+        <li>预览最多读取 <strong>20 MB</strong>、处理 <strong>2500 万像素</strong>；超限或读取失败时，保留文字信息与原附件。预览副本不影响原图发送，也不自动去重。</li>
+      </ul>
+      <p>带空格的图片绝对路径在 macOS/Linux 终端支持直接粘贴、外层引号包裹（如 <code>"/path/Screenshot 2026.png"</code>）或裸转义路径（如 <code>/path/Screenshot\ 2026.png</code>）。</p>
+
+      <h3 class="h3" id="h-mcp-network">网络</h3>
+      <p><code>HTTP_PROXY</code>、<code>HTTPS_PROXY</code>、<code>ALL_PROXY</code>、<code>NO_PROXY</code> 及其小写形式均被读取；<code>localhost</code>、<code>127.0.0.1</code>、<code>::1</code> 始终直连。详见 <a href="#h-config-proxy">网络代理</a>。</p>
+    </section>
+
+    <!-- ══════════════════ 9. 权限与会话 ══════════════════ -->
+    <section class="doc-section" id="permissions" aria-labelledby="h-permissions">
+      <h2 class="h2" id="h-permissions">权限与会话</h2>
+
+      <h3 class="h3" id="h-permission-modes">权限模式</h3>
+      <p><code>PermissionMode</code> 共 <strong>5</strong> 个取值（源码 <code>packages/config/src</code>）：</p>
+      <div class="code-block" data-lang="text">
+        <div class="code-head"><span class="code-lang">text</span></div>
+        <pre><code>"default" | "acceptEdits" | "bypassPermissions" | "auto" | "off"</code></pre>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>内部取值</th><th>界面文案</th><th>含义</th></tr></thead>
+          <tbody>
+            <tr><td><code>default</code></td><td>Ask</td><td>Confirm sensitive actions（敏感操作先确认）</td></tr>
+            <tr><td><code>auto</code></td><td>Auto</td><td>Ask only when risk is high（仅高风险时确认）</td></tr>
+            <tr><td><code>bypassPermissions</code></td><td>Full access</td><td>Run without confirmation（不确认）</td></tr>
+            <tr><td><code>acceptEdits</code></td><td>—</td><td>自动接受编辑类操作</td></tr>
+            <tr><td><code>off</code></td><td>—</td><td>关闭权限管控</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4 class="h4" id="h-permission-namespaces">三套命名空间，不要混用</h4>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>场景</th><th>取值</th></tr></thead>
+          <tbody>
+            <tr><td>TUI <code>/permission [status | ask | auto | full]</code></td><td><code>ask</code> / <code>auto</code> / <code>full</code>（界面语义）</td></tr>
+            <tr><td><code>config.yaml</code> 的 <code>permissionMode</code></td><td><code>default</code> / <code>acceptEdits</code> / <code>bypassPermissions</code> / <code>auto</code> / <code>off</code></td></tr>
+            <tr><td><code>mcode exec --permission</code></td><td><code>smart</code> / <code>full</code> / <code>off</code>（<code>ask</code> 需 TUI/ACP）</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><strong>建议</strong>：在不熟悉的代码库中，选择能够完成任务的<strong>最小权限</strong>。</p>
+      <p>本机 <code>~/.minimax/config.yaml</code> 实测 <code>permissionMode: bypassPermissions</code>（D 级）；运行时另存在 <code>~/.minimax/permission.json</code>（D 级）。</p>
+
+      <h3 class="h3" id="h-decisions">处理单次决策</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>命令</th><th>作用</th></tr></thead>
+          <tbody>
+            <tr><td><code>/allow</code></td><td>本次允许该待决工具</td></tr>
+            <tr><td><code>/always</code></td><td>始终允许该类操作</td></tr>
+            <tr><td><code>/deny</code></td><td>拒绝该待决工具</td></tr>
+            <tr><td><code>/decision</code></td><td>重新打开待决操作面板</td></tr>
+            <tr><td><code>/permissions</code></td><td>查看 Runtime 持有的待决权限请求</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout callout-warn">
+        <p><strong>注意</strong>：<code>/always</code> 授予的是<strong>操作类别</strong>（action class）级别的永久允许，范围大于单次工具。在陌生仓库中慎用。</p>
+      </div>
+
+      <h3 class="h3" id="h-plan-mode">Plan Mode</h3>
+      <p><code>/plan [on | off | status | view]</code> —— 在修改代码前先审阅实现计划。</p>
+      <ul>
+        <li>进入或退出 Plan 的下一条消息会走恢复选择流程。</li>
+        <li>选择 <code>Keep my draft</code> 或按 <code>Esc</code> 后，草稿可继续编辑、重新发送，不会发布本次发送的结果。</li>
+        <li>未生效的 Plan 切换会被保留。</li>
+        <li>若恢复发送时会话已被另一轮占用，草稿保留并提示失败，由用户再次发送。</li>
+      </ul>
+
+      <h3 class="h3" id="h-session-mgmt">会话管理</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>能力</th><th>入口</th></tr></thead>
+          <tbody>
+            <tr><td>新建</td><td><code>/new</code>（别名 <code>/clear</code>）、命令行 <code>mcode</code></td></tr>
+            <tr><td>浏览 / 继续 / 管理</td><td><code>/sessions [query]</code>（别名 <code>/resume</code>）、<code>mcode --session</code>、<code>mcode --continue</code></td></tr>
+            <tr><td>重命名</td><td><code>/rename [title]</code></td></tr>
+            <tr><td>归档</td><td><code>/archive</code></td></tr>
+            <tr><td>命名</td><td><code>/name</code>（会话显示名）</td></tr>
+            <tr><td>历史回溯</td><td><code>/history</code>、<code>/fork</code>、<code>/rewind</code>、<code>/edit</code></td></tr>
+            <tr><td>导出</td><td><code>/export [path.md]</code></td></tr>
+            <tr><td>复制最近回复</td><td><code>/copy</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><code>/sessions</code> 支持普通文本搜索，也支持 <code>id:</code>、<code>path:</code>、<code>type:</code>、<code>status:</code>、<code>model:</code> 筛选。</p>
+
+      <h4 class="h4" id="h-history-three">历史变更三命令</h4>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>命令</th><th>行为</th></tr></thead>
+          <tbody>
+            <tr><td><code>/fork</code></td><td>从历史用户消息创建<strong>子会话</strong>，不修改当前会话或文件</td></tr>
+            <tr><td><code>/edit</code></td><td>替换该提示词并从这里<strong>重新生成</strong>；后续对话与文件改动将被移除</td></tr>
+            <tr><td><code>/rewind</code></td><td>移除后续消息；可选「仅回退会话（文件不变）」或「回退会话和文件（还原可安全恢复的文件改动）」</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>前置条件：需已启动或恢复 Session；回复运行中不可用（<code>Stop the running response before changing Session history.</code>）。</p>
+
+      <h3 class="h3" id="h-run-control">运行控制</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>命令</th><th>作用</th></tr></thead>
+          <tbody>
+            <tr><td><code>/stop</code></td><td>中断当前回合</td></tr>
+            <tr><td><code>/queue</code></td><td>管理当前回复之后才运行的消息；暂停队列按 <code>c</code> 可从队首继续</td></tr>
+            <tr><td><code>/steer &lt;message&gt;</code></td><td>不中断地引导当前工作</td></tr>
+            <tr><td><code>/tasks</code></td><td>查看后台 Agent 与 Runtime 任务</td></tr>
+            <tr><td><code>/goal &lt;objective | action&gt;</code></td><td>启动或管理当前 Session Goal</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Composer 中按 <code>Enter</code> 将输入 steer 给当前回合；按 <code>Alt+Enter</code> 放入 Queue 留给下一回合。已排队的最新消息可用 <code>Alt+↑</code>（macOS 为 <code>Option+↑</code>）或 <code>Shift+←</code> 召回。</p>
+
+      <h3 class="h3" id="h-side-session">Side 会话（/btw）</h3>
+      <ul>
+        <li><code>/btw [question]</code>（别名 <code>/side</code>）从最近一个已提交的会话边界 fork 出临时侧会话，<strong>主任务继续运行且不被中断</strong>。</li>
+        <li>侧会话以只读上下文继承主会话历史，工具权限与主会话一致，沿用当前权限模式且不追加独立确认。</li>
+        <li><code>/parent</code> 或 <code>Ctrl+/</code> 在侧会话与主会话视图间切换，不结束任何一方。</li>
+        <li>侧会话是<strong>临时</strong>的：不出现在 <code>/sessions</code> 中，切换 Session 时自动清理。</li>
+        <li>切换快捷键只切换已创建的侧会话，<strong>不会创建</strong>侧会话；尚未执行 <code>/btw</code> 时会黄色提示。</li>
+      </ul>
+      <p>侧会话视图中只有只读命令可用：<code>help</code>、<code>changelog</code>、<code>context</code>、<code>status</code>、<code>usage</code>、<code>export</code>、<code>transcript</code>、<code>copy</code>、<code>parent</code>。</p>
+
+      <h3 class="h3" id="h-timing">计时口径</h3>
+      <p>运行状态行、单轮结束后的耗时与 Goal 计时统一使用 <code>s</code> / <code>min</code> / <code>h</code>（如 <code>30s</code>、<code>9min30s</code>、<code>2h9min30s</code>），超过一小时仍显示秒。<strong>运行耗时统计当前轮，Goal 统计累计 active 时间，两者数值可以不同。</strong></p>
+    </section>
+
+    <!-- ══════════════════ 10. 分享 ══════════════════ -->
+    <section class="doc-section" id="sharing" aria-labelledby="h-sharing">
+      <h2 class="h2" id="h-sharing">分享</h2>
+      <p>本文档及其所属插件以 <code>Apache-2.0</code> 许可证发布，可自由分享、引用与再分发。下列两个仓库均由 <strong>MiniMax 官方</strong>维护：</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>仓库</th><th>地址</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>插件仓库</td>
+              <td><a href="https://github.com/MiniMax-AI/MiniMax-Code-Plugins" target="_blank" rel="noreferrer noopener">github.com/MiniMax-AI/<wbr>MiniMax-Code-Plugins</a></td>
+              <td>MiniMax Code 插件的社区注册表与贡献工具包（<code>Apache-2.0</code>）。本插件依该规范组织，可直接向上游贡献</td>
+            </tr>
+            <tr>
+              <td>MiniApps 仓库</td>
+              <td><a href="https://github.com/MiniMax-AI/MiniMax-Code-MiniApps" target="_blank" rel="noreferrer noopener">github.com/MiniMax-AI/<wbr>MiniMax-Code-MiniApps</a></td>
+              <td>MiniMax Code 的 MiniApp 插件集合（<code>MIT</code>）</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>mcode 本体的官方源码仓库为 <a href="https://github.com/MiniMax-AI/minimax-code" target="_blank" rel="noreferrer noopener">github.com/MiniMax-AI/<wbr>minimax-code</a>。顶栏 <span aria-hidden="true">⟨⟩</span> 按钮可直接跳转。</p>
+    </section>
+
+  </main>
+
+  <aside class="toc" id="toc" aria-label="本页大纲">
+    <p class="toc-title">本页大纲</p>
+    <nav id="tocNav" aria-label="本页大纲导航"></nav>
+  </aside>
+</div>
+
+<div class="search-modal" id="searchModal" role="dialog" aria-modal="true" aria-labelledby="searchTitle" hidden>
+  <div class="search-backdrop" id="searchBackdrop"></div>
+  <div class="search-panel" role="document">
+    <h2 class="sr-only" id="searchTitle">搜索文档</h2>
+    <div class="search-head">
+      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="6.2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M15.6 15.6L20 20" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+      <input type="text" id="searchInput" class="search-input" placeholder="搜索章节、slash 命令或正文…" autocomplete="off" spellcheck="false" aria-label="搜索章节、slash 命令或正文" aria-controls="searchResults" aria-expanded="false">
+      <button type="button" class="icon-btn" id="searchClose" aria-label="关闭搜索">
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <ul class="search-results" id="searchResults" role="listbox" aria-label="搜索结果"></ul>
+    <p class="search-hint" id="searchHint">
+      <kbd class="kbd">↑</kbd><kbd class="kbd">↓</kbd> 选择 · <kbd class="kbd">Enter</kbd> 跳转 · <kbd class="kbd">Esc</kbd> 关闭
+    </p>
+  </div>
+</div>
+
+<script src="assets/app.js" defer></script>
+</body>
+</html>
