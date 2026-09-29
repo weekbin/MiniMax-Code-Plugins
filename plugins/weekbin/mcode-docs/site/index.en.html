@@ -80,7 +80,7 @@
 
       <p class="sidenav-group">TUI Commands</p>
       <ul class="sidenav-list">
-        <li><a href="#commands">All 52 slash commands</a></li>
+        <li><a href="#commands">Session / Runtime / Input / Decision / App</a></li>
       </ul>
 
       <p class="sidenav-group">Configuration</p>
@@ -91,7 +91,7 @@
       <p class="sidenav-group">Capabilities</p>
       <ul class="sidenav-list">
         <li><a href="#agents-skills">Agents, Skills &amp; Tools</a></li>
-        <li><a href="#plugins-hooks">Plugins &amp; Hooks</a></li>
+        <li><a href="#plugins-hooks">Capabilities &amp; Plugins</a></li>
         <li><a href="#mcp-browser">MCP &amp; Tools</a></li>
       </ul>
 
@@ -343,7 +343,7 @@ mcode plugin disable &lt;plugin-id&gt;
 mcode plugin remove &lt;plugin-id&gt;
 mcode plugin marketplace</code></pre>
       </div>
-      <p>Running <code>mcode plugin</code> directly opens the interactive Plugin manager. See <a href="#plugins-hooks">Plugins &amp; Hooks</a>.</p>
+      <p>Running <code>mcode plugin</code> directly opens the interactive Plugin manager. See <a href="#plugins-hooks">Capabilities &amp; Plugins</a>.</p>
 
       <h3 class="h3" id="h-troubleshooting">Installation Troubleshooting</h3>
       <h4 class="h4" id="h-trouble-sqlite">npm 12 blocks install scripts / missing native SQLite dependency</h4>
@@ -367,7 +367,23 @@ mcode plugin marketplace</code></pre>
     <!-- ══════════════════ 4. TUI Commands ══════════════════ -->
     <section class="doc-section" id="commands" aria-labelledby="h-commands">
       <h2 class="h2" id="h-commands">TUI Commands (52)</h2>
-      <p>Type <code>/</code> in the TUI composer to call any of the <strong>52 commands</strong>, grouped into 7 categories: <strong>Session</strong>, <strong>Runtime</strong>, <strong>Capability</strong>, <strong>Input</strong>, <strong>Transcript</strong>, <strong>Decision</strong>, and <strong>Application</strong>. All of them are listed below by category.</p>
+      <p>Type <code>/</code> in the TUI composer to call any of the <strong>52 commands</strong>, sorted into 7 groups plus a set of basic commands:</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Group</th><th>Count</th><th>What it covers</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Basic commands</strong></td><td>11</td><td>Switch model, check status, inspect config and usage, compact, export</td></tr>
+            <tr><td><strong>Session</strong></td><td>13</td><td>Create, switch, and archive sessions; rewind, resend, edit a prompt, ask a side question</td></tr>
+            <tr><td><strong>Application</strong></td><td>11</td><td>App-level settings: sidebar, status line, theme, keybindings</td></tr>
+            <tr><td><strong>Runtime</strong></td><td>7</td><td>Permission mode, background tasks, effective config, sign-in, providers</td></tr>
+            <tr><td><strong>Decision</strong></td><td>5</td><td>Answer the Agent one at a time: allow, deny, or add information</td></tr>
+            <tr><td><strong>Input</strong></td><td>2</td><td>Add and remove working directories, manage queued messages</td></tr>
+            <tr><td><strong>Transcript</strong></td><td>2</td><td>Browse and search this Session's input history</td></tr>
+            <tr><td><strong>Capability</strong></td><td>1</td><td>Browse, install, enable, and remove Plugins</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Every command is listed below by group, with its arguments and purpose.</p>
 
       <p><strong>Aliases</strong>: <code>/clear</code> → <code>/new</code>, <code>/exit</code> → <code>/quit</code>, <code>/resume</code> → <code>/sessions</code>, <code>/side</code> → <code>/btw</code></p>
 
@@ -853,12 +869,65 @@ skillEvolve:
       </ul>
     </section>
 
-    <!-- ══════════════════ 7. Plugins and Hooks ══════════════════ -->
+    <!-- ══════════════════ 7. Capabilities and Plugins ══════════════════ -->
     <section class="doc-section" id="plugins-hooks" aria-labelledby="h-plugins-hooks">
-      <h2 class="h2" id="h-plugins-hooks">Plugins &amp; Hooks</h2>
-      <p>A <strong>plugin</strong> is how you add capabilities to mcode. A plugin is just a folder containing <code>.minimax-plugin/plugin.json</code> (which states what the plugin is and what it provides), plus the Skills, MCP servers, or scripts you want. Once installed, mcode has one more capability.</p>
-      <p>A <strong>Hook</strong> is a small command inside a plugin that mcode runs automatically at a chosen moment — for example "send a notification every time a reply finishes". Think of it as an automatic trigger; you never run it by hand.</p>
-      <p>If you only want to use an existing capability, installing the plugin is all you need. The <a href="#h-manifest">manifest</a> and <a href="#h-hooks">Hook</a> details below only matter when you write a plugin yourself.</p>
+      <h2 class="h2" id="h-plugins-hooks">Capabilities &amp; Plugins</h2>
+      <p>This section works in two layers. First the four <strong>basic capability units</strong>, each of which is useful on its own. Then <strong>plugins</strong>, the packaging layer that bundles them for distribution. A plugin is not a capability of its own — it is the box they ship in.</p>
+
+      <h3 class="h3" id="h-concepts">The Four Basic Concepts</h3>
+
+      <h4 class="h4" id="h-c-skill">Skill: a written method of working</h4>
+      <p>A Skill is a set of instructions telling the Agent what to do first for a given task, which tools to use, and how to check the result. It <strong>adds no new tools</strong> — it just makes the Agent more consistent at a particular kind of work.</p>
+      <p>Once installed, call it in the TUI with <code>/&lt;skill name&gt;</code>. mcode ships 16 built-in Skills, and you can write your own inside a plugin.</p>
+
+      <h4 class="h4" id="h-c-mcp">MCP server: new tools for the Agent</h4>
+      <p>MCP (Model Context Protocol) is an open protocol whose job is to <strong>give the Agent tools it can really call</strong> — a database, an internal API, a company system. It answers "what can the Agent do", not "how should the Agent work".</p>
+      <p>An MCP server declares which tools it offers; the Agent calls them and gets results back. See <a href="#h-mcp-config">MCP configuration</a> for the file format and fields.</p>
+
+      <h4 class="h4" id="h-c-hook">Hook: a command that runs by itself at the right moment</h4>
+      <p>A Hook is a command mcode executes automatically at a chosen moment, so you never run it by hand. Typical uses: "notify me when a reply finishes", "check before anything deletes a file".</p>
+      <p>Hooks are registered by a plugin. Event names come from Claude Code, so an existing Claude Code Hook configuration can be moved over as-is. See <a href="#h-hooks">Hook details</a> for the fields and registration format.</p>
+
+      <h4 class="h4" id="h-c-miniapp">MiniApp: an interactive app with a UI</h4>
+      <p>A MiniApp is an <strong>interface a person operates</strong>, not a tool the model calls. It ships as a plugin too; once installed you open it on the desktop app and get an interactive page — a usage dashboard, a report, an approval panel.</p>
+      <div class="callout callout-warn">
+        <p><strong>MiniApps are a desktop-app feature only.</strong> The terminal build <code>mcode</code> has no such capability — <code>mcode --help</code> lists no miniapp command, which was confirmed by running it. <code>mcode exec</code> and ACP cannot use one either.</p>
+      </div>
+      <p>Installation matches a normal plugin: copy the whole plugin directory (including the hidden <code>.minimax-plugin/</code>) into <code>&lt;data dir&gt;/plugins/</code>, restart the desktop app, then open it from the Mini App entry point. The official community repository is <a href="https://github.com/MiniMax-AI/MiniMax-Code-MiniApps" target="_blank" rel="noopener">MiniMax-AI/MiniMax-Code-MiniApps</a>.</p>
+
+      <h3 class="h3" id="h-c-compare">Which One Should You Use?</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Concept</th><th>What it is</th><th>Who uses it</th><th>Typical shape</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Skill</strong></td><td>Knowledge / workflow</td><td>The Agent (reads it)</td><td>A <code>SKILL.md</code> folder</td></tr>
+            <tr><td><strong>MCP server</strong></td><td>Tool access</td><td>The Agent (calls it)</td><td>An external process or service</td></tr>
+            <tr><td><strong>Hook</strong></td><td>Automatic trigger</td><td>The system (runs it)</td><td>A one-line command script</td></tr>
+            <tr><td><strong>MiniApp</strong></td><td>Interactive app</td><td>A person (clicks it)</td><td>A page with a UI</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="h3" id="h-c-miniapp-vs-mcp">How MiniApp Differs from MCP</h3>
+      <p>These two are easiest to confuse, because both "extend mcode". The difference is <strong>who uses them and how</strong>:</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th></th><th>MCP server</th><th>MiniApp</th></tr></thead>
+          <tbody>
+            <tr><td>What it adds</td><td><strong>Tools</strong> for the model</td><td>An <strong>interface</strong> for the user</td></tr>
+            <tr><td>Who drives it</td><td>The model calls it by itself</td><td>The user opens it and clicks</td></tr>
+            <tr><td>Interaction</td><td>No UI; returns text or structured results</td><td>Has a UI: tables, charts, forms, dashboards</td></tr>
+            <tr><td>When it happens</td><td>The model decides</td><td>You open it</td></tr>
+            <tr><td>Model required?</td><td>Yes, otherwise the tool is pointless</td><td>Not always — pure front-end interactivity works alone</td></tr>
+            <tr><td>Where it runs</td><td>Desktop app, <code>mcode exec</code>, and ACP</td><td><strong>Desktop app only</strong></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>They are not mutually exclusive — <strong>a MiniApp can use MCP to fetch its data</strong>. The "Token Usage Board" in the official community repository is the textbook case: the panel itself is the MiniApp (charts for you to look at), while reading the local database is done by MCP or by a script the plugin ships. Put plainly: <strong>MCP fetches the data, the MiniApp shows it to a person</strong>.</p>
+
+      <h3 class="h3" id="h-plugin-what">Plugins: bundling all of the above</h3>
+      <p>Each of the four concepts above can exist on its own. A <strong>plugin is the folder that packages them for distribution</strong>: it contains a manifest at <code>.minimax-plugin/plugin.json</code> declaring which Skills, MCP servers, and Hooks it provides — and a MiniApp uses the very same format.</p>
+      <p>For the person installing it, the point is that <strong>one install brings everything into place</strong> — no separate Skill install, no MCP wiring, no manual hook registration.</p>
 
       <h3 class="h3" id="h-plugin-mgmt">Installing &amp; Managing Plugins</h3>
       <div class="code-block" data-lang="bash">
@@ -884,7 +953,7 @@ mcode plugin marketplace</code></pre>
         <p>Plugins come from two places: the official catalogue, and local plugin folders already discovered on your machine. <code>--available</code> lists only what can be installed. <code>disable</code> only switches a plugin off temporarily and <strong>does not</strong> delete it — <code>remove</code> is what uninstalls.</p>
       </div>
 
-      <h3 class="h3" id="h-manifest">What a Plugin Manifest Looks Like</h3>
+      <h3 class="h3" id="h-manifest">Writing the Plugin Manifest</h3>
       <p>The manifest is always named <code>.minimax-plugin/plugin.json</code>, its <code>schemaVersion</code> <strong>must</strong> be <code>1</code>, and any key not in the field set below is rejected outright. Start from this minimal example:</p>
       <div class="table-wrap">
         <table>
@@ -947,7 +1016,7 @@ mcode plugin marketplace</code></pre>
 }</code></pre>
       </div>
 
-      <h3 class="h3" id="h-hooks">Hooks: Automatic Actions at Chosen Moments</h3>
+      <h3 class="h3" id="h-hooks">Hook Details: Registering One in a Plugin</h3>
       <p>A Hook is simply "a command that runs by itself at the right time". You write the command in your plugin and say when it should run; mcode then executes it every time that moment comes around.</p>
       <p>The most common example: to get notified whenever a reply finishes, listen for the <code>Stop</code> event and point it at a small notification script. Event names come from Claude Code, so an existing Claude Code Hook configuration can be moved over as-is. Three source formats are supported: <code>MINIMAX</code>, <code>CLAUDE</code> and <code>CODEX</code>.</p>
       <div class="callout callout-warn">

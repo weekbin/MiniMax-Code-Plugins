@@ -1,14 +1,69 @@
-# 插件与 Hook
+# 能力与插件
 
-**插件**是给 mcode 装上额外能力的方式：一个插件就是一个文件夹，里面放好
-`.minimax-plugin/plugin.json`（说明我是谁、我提供什么），再加上你要的 Skill、
-MCP 服务器或脚本。装上之后 mcode 就多出一项能力。
+本文件分两层：先讲四个**最基础的能力单位**（各自独立可用），再讲**插件**这个
+打包分发的维度。插件本身不是新能力，是「装东西的盒子」。
 
-**Hook**是插件里的一小段命令，让 mcode 在特定时机自动执行它——比如
-「每次回答结束时发个通知」。可以理解成「自动化触发器」，不需要你每次手动运行。
+## 四个基础概念
 
-只想用现成能力的话，装完插件就结束了；只有写自己的插件时才需要看下面的
-Manifest 与 Hook 细节。
+### Skill：一套写好的工作方法
+
+说明书性质，告诉 Agent「遇到这类任务先做什么、用哪些工具、怎么检查结果」。
+**不新增任何工具**，只让 Agent 在特定任务上更专业、更一致。装好后用
+`/<skill 名>` 调用。0.5.8 内置 16 个。
+
+### MCP 服务器：给 Agent 接上新的工具
+
+MCP（Model Context Protocol）是开放协议，作用是**给 Agent 增加可真正调用的工具**
+（数据库、内部 API、公司系统）。对应「Agent 能做什么」，不是「Agent 知道怎么做」。
+配置见 `mcp-tools.md`。
+
+### Hook：到点自动跑的一条命令
+
+「在某个时机自动执行的一条命令」，不用每次手动运行。依附于插件注册，事件名取自
+Claude Code。详见本文「Hook 详解」。
+
+### MiniApp：一个带界面的交互式应用
+
+**给人操作的有界面应用**，不是给模型调的工具。官方口径：「MiniApps are
+interactive apps packaged as MiniMax Plugins」（官方社区仓库 README）。
+
+**仅桌面端提供**：0.5.8 随包 CLI 的 `mcode --help` 中无 miniapp 相关命令（A 级实跑），
+`mcode exec` 与 ACP 同样用不到。安装方式与插件一致：整个插件目录（含隐藏的
+`.minimax-plugin/`）放入 `<数据目录>/plugins/`，重启桌面端后从 Mini App 入口打开。
+官方社区仓库：<https://github.com/MiniMax-AI/MiniMax-Code-MiniApps>。
+
+随包代码佐证（C 级）：`chunks/chunk-4ESEMCSG.js` 导出
+`computeMiniAppPackageDigests` / `computePluginDirectoryDigest`，并含
+`MINIAPP_ARTIFACTS_EXCLUDED` 诊断码，说明 MiniApp 走独立的包摘要与产物排除逻辑。
+
+## 四个概念怎么选
+
+| 概念 | 本质 | 给谁用 | 典型形态 |
+| --- | --- | --- | --- |
+| Skill | 知识 / 工作流 | Agent（读） | 一个 `SKILL.md` 文件夹 |
+| MCP 服务器 | 工具接入 | Agent（调） | 外部进程或服务 |
+| Hook | 自动化触发 | 系统（自动执行） | 一条命令行脚本 |
+| MiniApp | 交互式应用 | 人（点） | 一个带 UI 的页面 |
+
+## MiniApp 与 MCP 的差异
+
+| | MCP 服务器 | MiniApp |
+| --- | --- | --- |
+| 本质 | 给模型加工具 | 给人加界面 |
+| 使用者 | 模型自行调用 | 用户自己打开、自己点 |
+| 交互形态 | 无界面，返回文本/结构化结果 | 有界面：表格、图表、表单、看板 |
+| 何时发生 | 模型判断 | 用户点开 |
+| 是否需要模型 | 是 | 不一定 |
+| 运行环境 | 桌面端 / exec / ACP | **仅桌面端** |
+
+两者不互斥：**MiniApp 内部可用 MCP 取数**。官方社区「Token 用量看板」即此形态——
+面板是 MiniApp，读本地数据库靠 MCP 或插件自带脚本。概括：**MCP 负责取数，
+MiniApp 负责人看**。
+
+## 插件：把上面这些打包分发
+
+一个插件 = 一个文件夹 + 一份 `.minimax-plugin/plugin.json`，声明提供哪些 Skill、
+MCP 服务器、Hook；做成 MiniApp 也是这个格式。对使用者的意义是**一次安装全部就位**。
 
 ## 安装与管理插件
 
@@ -32,7 +87,7 @@ TUI 内用 `/plugins [filter]`。
 **范围限制**：官方目录支持安装官方插件与发现的本地插件；
 **任意 marketplace 注册与 GitHub URL 导入未在 CLI/TUI 中开放**。
 
-## 插件清单长什么样
+## 插件清单（manifest）怎么写
 
 清单文件固定叫 `.minimax-plugin/plugin.json`，其中 `schemaVersion` **必须**写成 `1`，
 写了清单之外的键会被直接拒绝。**合法字段全集**（源码 `MANIFEST_FIELDS`）：
@@ -94,7 +149,7 @@ TUI 内用 `/plugins [filter]`。
 
 ---
 
-# Hook：让插件在特定时机自动做事
+# Hook 详解：在插件里注册
 
 Hook 就是「到点自动执行的一条命令」。你在插件里写好一条命令，再指明它在什么时候跑，
 mcode 每次遇到那个时机就会执行它。

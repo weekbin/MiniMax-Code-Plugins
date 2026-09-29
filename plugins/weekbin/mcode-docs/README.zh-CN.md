@@ -44,11 +44,11 @@ mcode-docs/
 ├── skills/mcode-docs/
 │   ├── SKILL.md                 # 可复用 Skill
 │   └── reference/               # 八份参考文档
-│       ├── commands.md          # 52 条 slash 命令全表
+│       ├── commands.md          # 52 条 slash 命令(7 类 + 基础)
 │       ├── cli.md               # CLI、无头执行与 ACP
 │       ├── config.md            # 配置结构与数据目录
 │       ├── agents-skills.md     # Agent、Skill 与工具
-│       ├── plugins-hooks.md     # 插件 manifest 契约与 Hook 系统
+│       ├── plugins-hooks.md     # 四个基础概念、插件 manifest 与 Hook
 │       ├── mcp-tools.md         # MCP 与附件
 │       ├── permissions.md       # 权限模式、Plan Mode 与会话
 │       └── coverage.md          # opencode v2 章节能力边界对照

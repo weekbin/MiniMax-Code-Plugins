@@ -573,6 +573,70 @@ TUI 章节原以「两个源码注册表 + 具体文件路径」开篇。仅保�
 
 ---
 
+## 15. MiniApp 概念与能力层级（2026 复核）
+
+站点批注指出原「插件与 Hook」章节的概念层级不合理：Skill / MCP / Hook 三者都能被
+插件包含，却直接以「插件」开场。本轮改为**先讲四个基础概念，再讲插件维度**，并补齐
+此前遗漏的 **MiniApp** 概念。
+
+### 15.1 能力层级（概念层，非取证项）
+
+| 概念 | 本质 | 使用者 | 运行范围 |
+| --- | --- | --- | --- |
+| Skill | 知识 / 工作流 | Agent（读） | 桌面端 / CLI |
+| MCP 服务器 | 工具接入 | Agent（调用） | 桌面端 / CLI / `exec` / ACP |
+| Hook | 自动化触发 | 系统（自动执行） | 桌面端 / CLI |
+| MiniApp | 交互式应用（有 UI） | 人（操作） | **仅桌面端** |
+| 插件 | 打包分发的容器 | —— | —— |
+
+### 15.2 MiniApp 存在性与定位（B/C/D 级）
+
+- **官方文档**（`https://agent.minimax.io/docs/code/welcome`）在 Core Features 表中
+  列有 `Plugins, memory, and Mini Apps`，描述为「Extend domain capabilities,
+  preserve useful preferences, and **create custom Mini Apps**」（B 级）。
+- **官方社区仓库** `MiniMax-AI/MiniMax-Code-MiniApps` README 首段原文：
+  **「About MiniApps are interactive apps packaged as MiniMax Plugins.」**
+  即 MiniApp 是**打包成插件形态的交互式应用**（B 级）。
+- **随包代码**（C 级）：0.5.8 `chunks/chunk-4ESEMCSG.js` 导出
+  `computeMiniAppPackageDigests` / `computePluginDirectoryDigest` /
+  `computePluginContentDigest` / `PLUGIN_PACKAGE_V1_LIMITS`，并含诊断码
+  `MINIAPP_ARTIFACTS_EXCLUDED`（`<path> is excluded inside a declared runtime artifact`），
+  说明 MiniApp 走**独立的包摘要计算与运行时产物排除**路径。
+- **宿主工具**（D 级）：本会话可用的 `miniapp` 工具提供
+  `list / init / open / inspect / publish / restart / stop` 七种动作；
+  `list` 实测返回 `{"miniApps":[]}`。其说明明确
+  「Stop releases an installed runtime **without deleting its Mini App package**;
+  use the Mini App Plugin's own Skills, MCP servers, and Connectors for business operations」。
+
+### 15.3 MiniApp 属桌面端，终端不可用（A 级实跑）
+
+`mcode --help` 与 `mcode plugin --help` 中**均无** miniapp 相关命令（实跑确认）。
+0.5.8 随包 `assets/agents/mavis/skills/` 只有
+`control-in-app-browser` 与 `minimax-code-product` 两个 Skill，无 MiniApp 相关产物。
+官方社区仓库 README 亦要求「Use a MiniMax Code **desktop** version that supports
+MiniApps」（B 级）。
+
+故文档中明确标注：**MiniApp 仅桌面端**，`mcode exec` / ACP / TUI 均不可用。
+这一点与 §14.5「TUI 不暴露 Browser」同源——桌面端专属能力不得在终端文档中
+暗示可用。
+
+### 15.4 MiniApp 与 MCP 的差异（概念对照）
+
+差异在**谁在用、怎么用**：MCP 给模型加工具（无界面，模型自决何时调用）；
+MiniApp 给人加界面（用户点开自己操作）。二者**不互斥**——MiniApp 内部可用 MCP 取数。
+官方社区「Token Usage Board」即该形态：面板是 MiniApp，读本地数据库由 MCP 或
+插件自带脚本完成。据此文档表述为「**MCP 负责取数，MiniApp 负责人看**」。
+
+### 15.5 TUI 分类写具体（批注）
+
+上一轮删除源码注册表路径后，分类名被简化为「7 类」而未给出条数与职责，偏笼统。
+本轮补回**可操作的具体分类**（分组 / 条数 / 管什么），仍**不暴露源码路径**：
+
+基础 11、Session 13、Application 11、Runtime 7、Decision 5、Input 2、
+Transcript 2、Capability 1，合计 52（已用脚本按表格行数复核，与标题一致）。
+
+---
+
 ## 13. 本插件自身声明
 
 本插件**不提供 MCP 服务**，交付物为：一个可复用 Skill（`skills/mcode-docs/SKILL.md` +
@@ -581,8 +645,9 @@ TUI 章节原以「两个源码注册表 + 具体文件路径」开篇。仅保�
 
 站点为**中英双语**：`site/index.html`（中文，默认入口）与 `site/index.en.html`（英文），
 共享同一套 `assets/style.css` 与 `assets/app.js`。两版的 `id` 集合与顺序经脚本比对**完全一致**
-（各 **113** 个，顺序完全一致，无重复、无断裂内部链接），标签配平已校验。
-（计数由 115 降为 113：本轮移除了 `h-config-beta` 与 `h-browser` 两个小节。）
+（各 **121** 个，顺序完全一致，无重复、无断裂内部链接），标签配平已校验。
+（计数轨迹：115 → 113（移除 `h-config-beta`、`h-browser`）→ 121（新增四个基础概念与
+对照小节，见 §15）。）
 
 语言规则（`app.js` §9）：**不做任何自动判定**。`index.html` 打开即中文，
 `index.en.html` 打开即英文，两者互不跳转；主题默认浅色，深色为手动 opt-in 并记住选择。

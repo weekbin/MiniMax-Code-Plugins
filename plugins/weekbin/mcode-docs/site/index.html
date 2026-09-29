@@ -80,7 +80,7 @@
 
       <p class="sidenav-group">TUI 命令</p>
       <ul class="sidenav-list">
-        <li><a href="#commands">52 条 slash 命令全表</a></li>
+        <li><a href="#commands">会话/运行时/输入/审批/应用等 7 类</a></li>
       </ul>
 
       <p class="sidenav-group">配置</p>
@@ -91,7 +91,7 @@
       <p class="sidenav-group">能力</p>
       <ul class="sidenav-list">
         <li><a href="#agents-skills">Agent、Skill 与工具</a></li>
-        <li><a href="#plugins-hooks">插件与 Hook</a></li>
+        <li><a href="#plugins-hooks">能力与插件</a></li>
         <li><a href="#mcp-browser">MCP 与工具</a></li>
       </ul>
 
@@ -366,7 +366,23 @@ mcode plugin marketplace</code></pre>
     <!-- ══════════════════ 4. TUI 命令 ══════════════════ -->
     <section class="doc-section" id="commands" aria-labelledby="h-commands">
       <h2 class="h2" id="h-commands">TUI 命令（52 条）</h2>
-      <p>在 TUI 输入框以 <code>/</code> 开头即可调用，共有 <strong>52 条</strong>，按用途分为 7 类：<strong>会话</strong>、<strong>运行时</strong>、<strong>能力</strong>、<strong>输入</strong>、<strong>对话记录</strong>、<strong>审批</strong>、<strong>应用</strong>。下面按类列出全部命令。</p>
+      <p>在 TUI 输入框以 <code>/</code> 开头即可调用，共 <strong>52 条</strong>，按用途分为 7 类加一组基础命令：</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>分组</th><th>条数</th><th>管什么</th></tr></thead>
+          <tbody>
+            <tr><td><strong>基础命令</strong></td><td>11</td><td>换模型、看状态、查配置与用量、压缩与导出</td></tr>
+            <tr><td><strong>Session</strong> 会话与对话</td><td>13</td><td>新建/切换/归档会话，回退、重发、改写提问，问侧问题</td></tr>
+            <tr><td><strong>Application</strong> 应用</td><td>11</td><td>应用本身的设置：侧栏、状态栏、主题、快捷键等</td></tr>
+            <tr><td><strong>Runtime</strong> 运行时</td><td>7</td><td>权限模式、后台任务、当前生效配置、登录与 Provider</td></tr>
+            <tr><td><strong>Decision</strong> 决策</td><td>5</td><td>逐个回答 Agent 的提问：允许、拒绝、补充说明</td></tr>
+            <tr><td><strong>Input</strong> 输入</td><td>2</td><td>增删工作目录、管理排队消息</td></tr>
+            <tr><td><strong>Transcript</strong> 对话记录</td><td>2</td><td>浏览与检索本会话的输入历史</td></tr>
+            <tr><td><strong>Capability</strong> 能力</td><td>1</td><td>浏览、安装、启用与移除插件</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>下面按类列出全部命令，每条都注明参数与用途。</p>
 
       <p><strong>别名</strong>：<code>/clear</code> → <code>/new</code>、<code>/exit</code> → <code>/quit</code>、<code>/resume</code> → <code>/sessions</code>、<code>/side</code> → <code>/btw</code></p>
 
@@ -852,12 +868,65 @@ skillEvolve:
       </ul>
     </section>
 
-    <!-- ══════════════════ 7. 插件与 Hook ══════════════════ -->
+    <!-- ══════════════════ 7. 能力与插件 ══════════════════ -->
     <section class="doc-section" id="plugins-hooks" aria-labelledby="h-plugins-hooks">
-      <h2 class="h2" id="h-plugins-hooks">插件与 Hook</h2>
-      <p><strong>插件</strong>是给 mcode 装上额外能力的方式：一个插件就是一个文件夹，里面放好 <code>.minimax-plugin/plugin.json</code>（说明我是谁、我提供什么），再加上你要的 Skill、MCP 服务器或脚本。装上之后，mcode 就多出一项能力。</p>
-      <p><strong>Hook</strong>是插件里的一小段命令，让 mcode 在特定时机自动执行它——比如「每次回答结束时发个通知」。可以理解成「自动化触发器」，不需要你每次手动运行。</p>
-      <p>只想用现成能力的话，装完插件就结束了；只有当你要写自己的插件时，才需要看下面的 <a href="#h-manifest">Manifest</a> 与 <a href="#h-hooks">Hook</a> 细节。</p>
+      <h2 class="h2" id="h-plugins-hooks">能力与插件</h2>
+      <p>这一节分两层讲。先说四个<strong>最基础的能力单位</strong>——它们各自独立就能用；再说<strong>插件</strong>这个把它们打包分发的维度。插件本身不是一种新能力，它是「装东西的盒子」。</p>
+
+      <h3 class="h3" id="h-concepts">四个基础概念</h3>
+
+      <h4 class="h4" id="h-c-skill">Skill：一套写好的工作方法</h4>
+      <p>Skill 就是一份说明书，告诉 Agent「遇到这类任务，先做什么、用哪些工具、怎么检查结果」。它<strong>不新增任何工具</strong>，只是让 Agent 在特定任务上更专业、更一致。</p>
+      <p>装好后直接在 TUI 里用 <code>/&lt;skill 名&gt;</code> 调用。mcode 自带 16 个 Skill，也可以自己写一个放进插件里。</p>
+
+      <h4 class="h4" id="h-c-mcp">MCP 服务器：给 Agent 接上新的工具</h4>
+      <p>MCP（Model Context Protocol）是一个开放协议，作用是<strong>给 Agent 增加可以真正调用的工具</strong>：连数据库、连内部 API、连公司系统。它对应的是「Agent 能做什么」，而不是「Agent 知道怎么做」。</p>
+      <p>一个 MCP 服务器在配置里声明自己提供哪些工具，Agent 调用后拿到结果。配置与字段见 <a href="#h-mcp-config">MCP 配置</a>。</p>
+
+      <h4 class="h4" id="h-c-hook">Hook：到点自动跑的一条命令</h4>
+      <p>Hook 是「在某个时机自动执行的一条命令」，你不用每次手动运行。典型用途是「每次回答结束发个通知」「每次要删文件前先检查一下」。</p>
+      <p>Hook 依附于插件注册：事件名取自 Claude Code，所以已有的 Claude Code Hook 配置可以直接迁过来。字段与注册方式见 <a href="#h-hooks">Hook 详解</a>。</p>
+
+      <h4 class="h4" id="h-c-miniapp">MiniApp：一个带界面的交互式应用</h4>
+      <p>MiniApp 是<strong>给人操作的有界面应用</strong>，不是给模型调的工具。它同样打包成插件，安装后在桌面端打开就是一个可交互的页面——比如用量看板、报表、审批面板。</p>
+      <div class="callout callout-warn">
+        <p><strong>MiniApp 只在 MiniMax Code 桌面端提供</strong>，终端版 <code>mcode</code> 没有这个能力（<code>mcode --help</code> 中无 miniapp 相关命令，实测确认）。它是桌面端概念，<code>mcode exec</code> 与 ACP 同样用不到。</p>
+      </div>
+      <p>安装方式与插件一致：把整个插件目录（含隐藏的 <code>.minimax-plugin/</code>）放进 <code>&lt;数据目录&gt;/plugins/</code>，重启桌面端后从 Mini App 入口打开。官方社区仓库是 <a href="https://github.com/MiniMax-AI/MiniMax-Code-MiniApps" target="_blank" rel="noopener">MiniMax-AI/MiniMax-Code-MiniApps</a>。</p>
+
+      <h3 class="h3" id="h-c-compare">四个概念怎么选</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>概念</th><th>本质</th><th>给谁用</th><th>典型形态</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Skill</strong></td><td>知识 / 工作流</td><td>Agent（读）</td><td>一个 <code>SKILL.md</code> 文件夹</td></tr>
+            <tr><td><strong>MCP 服务器</strong></td><td>工具接入</td><td>Agent（调）</td><td>一个外部进程或服务</td></tr>
+            <tr><td><strong>Hook</strong></td><td>自动化触发</td><td>系统（自动执行）</td><td>一条命令行脚本</td></tr>
+            <tr><td><strong>MiniApp</strong></td><td>交互式应用</td><td>人（点）</td><td>一个带 UI 的页面</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="h3" id="h-c-miniapp-vs-mcp">MiniApp 和 MCP 到底差在哪</h3>
+      <p>这两个最容易混，因为它们都是「扩展 mcode 的东西」。区别在<strong>谁在用、怎么用</strong>：</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th></th><th>MCP 服务器</th><th>MiniApp</th></tr></thead>
+          <tbody>
+            <tr><td>本质</td><td>给模型加<strong>工具</strong></td><td>给人加<strong>界面</strong></td></tr>
+            <tr><td>使用者</td><td>模型在对话中自动调用</td><td>用户自己打开、自己点</td></tr>
+            <tr><td>交互形态</td><td>无界面，调用后返回文本或结构化结果</td><td>有界面，表格 / 图表 / 表单 / 看板</td></tr>
+            <tr><td>谁决定何时发生</td><td>模型自己判断</td><td>用户点开</td></tr>
+            <tr><td>是否需要模型参与</td><td>是，否则工具没意义</td><td>不一定，纯前端交互也能独立工作</td></tr>
+            <tr><td>运行环境</td><td>桌面端、<code>mcode exec</code>、ACP 都可用</td><td><strong>仅桌面端</strong></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>两者不是互斥的，<strong>MiniApp 内部照样可以用 MCP 拿数据</strong>。官方社区里的「Token 用量看板」就是典型：面板本身是 MiniApp（给你看图表），读本地数据库那一步靠 MCP 或插件自带脚本完成。所以更准确的说法是——<strong>MCP 负责「取数」，MiniApp 负责「给人看」</strong>。</p>
+
+      <h3 class="h3" id="h-plugin-what">插件：把上面这些打包分发</h3>
+      <p>前面四个概念都可以单独存在，而<strong>插件是把它们装在一起、分发出去的那个盒子</strong>。一个插件就是一个文件夹：里面有一份清单 <code>.minimax-plugin/plugin.json</code>，声明自己提供哪些 Skill、哪些 MCP 服务器、哪些 Hook——想做成 MiniApp 也是这个格式。</p>
+      <p>对使用者来说，插件的意义是<strong>一次安装，全部就位</strong>；不用分别去装 Skill、配 MCP、挂 Hook。</p>
 
       <h3 class="h3" id="h-plugin-mgmt">安装与管理插件</h3>
       <div class="code-block" data-lang="bash">
@@ -883,7 +952,7 @@ mcode plugin marketplace</code></pre>
         <p>插件来源有两处：官方目录中的插件，以及本机已被发现的本地插件文件夹。<code>--available</code> 只列出可安装的，<code>disable</code> 只是临时停用而<strong>不会</strong>删除，<code>remove</code> 才是真正卸载。</p>
       </div>
 
-      <h3 class="h3" id="h-manifest">插件清单长什么样</h3>
+      <h3 class="h3" id="h-manifest">插件清单（manifest）怎么写</h3>
       <p>清单文件固定叫 <code>.minimax-plugin/plugin.json</code>，其中 <code>schemaVersion</code> <strong>必须</strong>写成 <code>1</code>，写了清单之外的键会被直接拒绝。下面是最小可用的一个例子，照着改就行：</p>
       <div class="table-wrap">
         <table>
@@ -946,7 +1015,7 @@ mcode plugin marketplace</code></pre>
 }</code></pre>
       </div>
 
-      <h3 class="h3" id="h-hooks">Hook：让插件在特定时机自动做事</h3>
+      <h3 class="h3" id="h-hooks">Hook 详解：在插件里注册</h3>
       <p>Hook 就是「到点自动执行的一条命令」。你在插件里写好一条命令，再指明它在什么时候跑，mcode 每次遇到那个时机就会执行它。</p>
       <p>举个最常见的例子：想让每次回答结束后都收到通知，就监听 <code>Stop</code> 事件，指向一个发通知的脚本。事件名取自 Claude Code，因此已有的 Claude Code Hook 配置可以直接迁过来；来源格式支持 <code>MINIMAX</code>、<code>CLAUDE</code>、<code>CODEX</code> 三种。</p>
       <div class="callout callout-warn">
