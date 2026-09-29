@@ -6,14 +6,22 @@
 
 | # | 来源 | 版本 | 用途 |
 | --- | --- | --- | --- |
-| S1 | 本机安装 `~/.minimax-code/releases/0.5.7/lib/node_modules/@minimax-ai/code` | **0.5.7** | 随包 README、`configs/data-minimal.yaml`、命令注册数组、运行时真实配置 |
-| S2 | `https://github.com/MiniMax-AI/minimax-code`（官方开源仓库，`main` @ `4fdf523`） | **0.5.8** | TypeScript 源码级权威定义 |
-| S3 | `https://platform.minimax.cn/docs/api-reference/api-overview` 及其文档子页 | 线上 | **样式基准**：404 个 CSS 变量、官方样式表源码、`.prose` 排版系统、组件实测值、暗色 callout 实测 |
+| S1 | 本机安装 `<npm root -g>/@minimax-ai/code` | **0.5.8** | 随包 README、`configs/data-minimal.yaml`、命令注册数组、运行时真实配置 |
+| S2 | `https://github.com/MiniMax-AI/minimax-code`（官方开源仓库，`main`） | **0.5.8** | TypeScript 源码级权威定义 |
+| S3 | `https://platform.minimax.cn/docs/api-reference/api-overview` 及其文档子页 | 线上 | **样式基准**：官方 CSS 变量、样式表源码、`.prose` 排版系统、组件实测值、暗色 callout 实测 |
 
-> **版本差异声明**：本机运行版本为 **0.5.7**，官方仓库 `main` 为 **0.5.8**。
+> **版本声明**：本机运行版本为 **0.5.8**，与官方仓库 `main` 同版本，双源对齐。
 > 文档以 **S2 源码**为功能定义的权威来源（源码含类型定义，语义无歧义），
-> 并以 **S1 实跑**验证「该能力在本机 0.5.7 上确实存在」。
-> 两版之间的差异（如 0.5.8 新增命令）会在文中显式标注。
+> 并以 **S1 实跑**验证「该能力在本机 0.5.8 上确实存在」。
+
+> **复核记录（2026-09-29）**：本台账初版以 0.5.7 实跑 + 0.5.8 源码为基线。
+> 复核时发现两处失准，已按 0.5.8 实测修正：
+> 1. 内置 Skill 实为 **16 个**，初版所列的 `x-link-reader` 在 0.5.8 包内与运行时均不存在；
+> 2. 内置 Skill 的包内布局已由单一 `assets/skills/` 改为按 Agent 分散
+>    （`assets/agents/mavis/skills/`），初版对包内路径的描述已过时。
+>
+> **内置 Agent 仍为 4 个**（`assets/agents/builtin-agents.json` 实测）。
+> 运行时 `~/.minimax/agents/` 下若存在更多目录，属用户自建 Agent，不计入内置清单。
 
 ## 证据等级
 
@@ -48,7 +56,7 @@
 ### 1.1 不存在的 CLI 子命令（反例，已实跑确认）
 
 `mcode mcp`、`mcode config`、`mcode agent`、`mcode skill`、`mcode hook`、`mcode workflow`
-**全部回落到根帮助**，0.5.7 无这些子命令。对应能力通过**配置文件**与 **TUI slash 命令**提供。
+**全部回落到根帮助**，0.5.8 无这些子命令。对应能力通过**配置文件**与 **TUI slash 命令**提供。
 
 ### 1.2 `mcode exec` 完整参数（A 级实跑 `--help`）
 
@@ -260,10 +268,15 @@ TUI 界面文案（C 级）：`default` → "Confirm sensitive actions"、
 **Agent**：`assets/agents/builtin-agents.json`（B 级）= `["mavis", "explore", "worker", "verifier"]`；
 运行时 `~/.minimax/agents/`（D 级）实际目录一致。两个独立来源吻合。
 
-**Skill**（B 级，包内 `assets/skills/`，实测 17 个）：
+**Skill**（B + D 级，运行时 `~/.minimax/.builtin-skills/`，实测 16 个）：
 `code-review`、`deep-research`、`deploy-website`、`docx`、`edit-deployed-website`、`init`、
 `lark-tools`、`llm-call`、`mcode-tools-master`、`pdf`、`pptx`、`resume-codex`、`skill-creator`、
-`skill-refiner`、`visual-page`、`x-link-reader`、`xlsx`。
+`skill-refiner`、`visual-page`、`xlsx`。
+
+> 初版此处记为「包内 `assets/skills/`，实测 17 个」并含 `x-link-reader`。
+> 0.5.8 复核：该 Skill 在包内与运行时**均不存在**，已移除。
+> 包内路径亦已由 `assets/skills/` 改为 `assets/agents/mavis/skills/`，
+> 故本项证据等级由 B 调整为 B + D（包内 + 运行时双证）。
 
 ---
 
@@ -348,7 +361,7 @@ hooks, hostBindings
 
 | 事实 | 证据 |
 | --- | --- |
-| 版本 `0.5.7`；Node `>=22.19 <23 \|\| >=24 <27` | A + B |
+| 版本 `0.5.8`；Node `>=22.19 <23 \|\| >=24 <27` | A + B |
 | 安装同时提供 `mcode` 与 `mcode-tools` 两个命令 | B1 |
 | Shell 模式：`!cmd` 结果交给模型，`!!cmd` 仅本地显示；每条命令独立 Shell | B1 |
 | Shell 补全只读本地目录，不调用模型、不执行草稿 | B1 |

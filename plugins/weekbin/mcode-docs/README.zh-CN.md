@@ -25,11 +25,11 @@ English | [简体中文](./README.zh-CN.md)
 
 | 来源 | 版本 | 作用 |
 | --- | --- | --- |
-| 本机安装 `~/.minimax-code/releases/0.5.7` | **0.5.7** | 逐条实跑 `--help`、随包 README、运行时真实配置 |
+| 本机安装 `<npm root -g>/@minimax-ai/code` | **0.5.8** | 逐条实跑 `--help`、随包 README、运行时真实配置 |
 | [`MiniMax-AI/minimax-code`](https://github.com/MiniMax-AI/minimax-code) `main` | **0.5.8** | TypeScript 权威定义 |
 
 功能定义以**源码**为准：源码携带显式类型，语义无歧义。**实跑**承担互补职能，用以确认某项能力
-确在本机 0.5.7 上存在。台账 `VERIFICATION.md` 按 A–D 四级对每条主张的证据强度评级。
+确在本机 0.5.8 上存在。台账 `VERIFICATION.md` 按 A–D 四级对每条主张的证据强度评级。
 
 ## 交付内容
 

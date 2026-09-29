@@ -110,7 +110,7 @@ skillEvolve:
 
 ## `beta.*` 开关全量
 
-以下为 0.5.7 随包 `configs/data-minimal.yaml` 中出现的**全部** beta 开关，
+以下为 0.5.8 随包 `configs/data-minimal.yaml` 中出现的**全部** beta 开关，
 默认均为 `false`：
 
 | 开关 | 作用 |

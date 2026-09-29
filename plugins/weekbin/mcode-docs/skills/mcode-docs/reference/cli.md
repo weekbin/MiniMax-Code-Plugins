@@ -1,6 +1,6 @@
 # mcode CLI、Headless 与 ACP
 
-全部参数均在本机 `mcode 0.5.7` 实跑 `--help` 验证。
+全部参数均在本机 `mcode 0.5.8` 实跑 `--help` 验证。
 
 ## 安装与版本
 
@@ -15,7 +15,7 @@ npm install -g @minimax-ai/code \
 同时安装 `mcode` 与 `mcode-tools` 两个命令。`mcode-tools` 无需先启动 TUI 即在 `PATH` 上。
 
 ```bash
-mcode --version          # 0.5.7
+mcode --version          # 0.5.8
 mcode update             # 检查并安装更新
 npm uninstall -g @minimax-ai/code
 ```
@@ -51,7 +51,7 @@ npm uninstall -g @minimax-ai/code
 ## 经核实不存在的子命令
 
 `mcode mcp`、`mcode config`、`mcode agent`、`mcode skill`、`mcode hook`、`mcode workflow`
-全部回落到根帮助，**0.5.7 没有这些子命令**。对应能力请用配置文件或 TUI slash 命令。
+全部回落到根帮助，**0.5.8 没有这些子命令**。对应能力请用配置文件或 TUI slash 命令。
 
 ## `mcode exec`（Headless）
 

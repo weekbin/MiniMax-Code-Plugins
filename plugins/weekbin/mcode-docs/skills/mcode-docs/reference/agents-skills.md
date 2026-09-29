@@ -12,6 +12,10 @@
 双源互证：包内 `assets/agents/builtin-agents.json` 内容为
 `["mavis", "explore", "worker", "verifier"]`，与运行时数据目录下的实际 Agent 目录完全一致。
 
+> **注意**：运行时 `~/.minimax/agents/` 下若出现更多目录（如项目自建的 `coder`、
+> `spec-expert` 等），属**用户自建 Agent**，不属于内置清单。判定内置 Agent 时
+> 以包内 `builtin-agents.json` 为唯一依据，不要用运行时目录做统计。
+
 **注意**：包内 `assets/agents/` 另有 `_default`、`desktop-task`、`workflow` 等目录，
 属于配置/模板资产，**不是**内置 Agent 列表的一部分。
 
@@ -40,7 +44,7 @@ agents:
 `features.delegation` 控制是否能委派子任务，`features.mavis` 控制主 Agent 能力，
 `features.webSearch` 控制联网搜索。
 
-## 内置 Skill（17 个）
+## 内置 Skill（16 个）
 
 | Skill | 用途 |
 | --- | --- |
@@ -60,7 +64,6 @@ agents:
 | `skill-creator` | 创建/改进 Skill |
 | `skill-refiner` | 用证据驱动的最小补丁精修 Skill |
 | `visual-page` | 主动生成可视化 HTML 页面 |
-| `x-link-reader` | 读取链接内容 |
 
 TUI 内 `/skills` 列出内置与用户 Skill。
 

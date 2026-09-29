@@ -15,7 +15,7 @@ opencode v2 文档站（<https://opencode.ai/v2/docs/>）共 24 个章节。下�
 | 4 | Troubleshooting | 常见问题与安装修复 | ✅ |
 | 5 | Agents | 4 个内置 Agent + `agents.*` 配置 | ✅ |
 | 6 | Models | `/model`、上下文档位、effort | ✅ |
-| 7 | Skills | 17 个内置 Skill + SKILL.md 扩展 | ✅ |
+| 7 | Skills | 16 个内置 Skill + SKILL.md 扩展 | ✅ |
 | 8 | Themes | `/theme` | ✅ |
 | 9 | Commands | 52 条 slash 命令 | ✅ |
 | 10 | Plugins | `/plugins` + `mcode plugin` + manifest 契约 | ✅ |
@@ -82,7 +82,7 @@ mcode 没有 V1/V2 分代。需要升级版本时用 `mcode update`（会检查�
 
 ### 7. Skills ✅
 
-17 个内置 Skill，见 `agents-skills.md`。TUI 内 `/skills` 列出内置与用户 Skill。
+16 个内置 Skill，见 `agents-skills.md`。TUI 内 `/skills` 列出内置与用户 Skill。
 Skill 以 `SKILL.md` 为入口，通过插件的 `skills` 数组挂载。
 
 ### 8. Themes ✅
@@ -203,6 +203,6 @@ mcode **没有** Gist 或远程会话分享。
 
 ## 文档口径提醒
 
-本对照表基于 **mcode 0.5.7（实跑）+ 0.5.8（官方仓库源码）**。
+本对照表基于 **mcode 0.5.8（实跑，与官方仓库 `main` 同版本）**。
 用户版本不同（尤其更新版本）时，`/changelog` 可查看随包更新记录，
 并以 `mcode --help`、`<cmd> --help` 与 `/help` 为准。

@@ -32,12 +32,12 @@ inspectable rather than merely asserted.
 
 | Source | Version | Role |
 | --- | --- | --- |
-| Local installation `~/.minimax-code/releases/0.5.7` | **0.5.7** | Live `--help` execution, packaged README, actual runtime configuration |
+| Local installation `<npm root -g>/@minimax-ai/code` | **0.5.8** | Live `--help` execution, packaged README, actual runtime configuration |
 | [`MiniMax-AI/minimax-code`](https://github.com/MiniMax-AI/minimax-code) `main` | **0.5.8** | Authoritative TypeScript definitions |
 
 Feature definitions are taken from the **source**, which carries explicit types and is
 therefore semantically unambiguous. **Live execution** serves a complementary purpose:
-it establishes that a capability is genuinely present on the locally installed 0.5.7.
+it establishes that a capability is genuinely present on the locally installed 0.5.8.
 The ledger `VERIFICATION.md` grades every claim A–D by evidence strength.
 
 ## Contents

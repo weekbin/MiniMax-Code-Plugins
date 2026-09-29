@@ -22,7 +22,7 @@ mcode 迭代频次较高，功能随版本变动。**回答任何功能性问题
 mcode --version
 ```
 
-本 Skill 的取证基线为 **0.5.7（本机实跑）+ 0.5.8（官方开源仓库 `main`）**。
+本 Skill 的取证基线为 **0.5.8**（本机实跑，与官方开源仓库 `main` 同版本）。
 若用户版本与之不符，应明确提示版本差异，不得将新版本能力作为既有事实陈述。
 
 ## 三类高频误判
@@ -168,11 +168,15 @@ MCP 单独放 `~/.minimax/mcp.json`（用户级）与 `<workspace>/.mcp.json`（
 
 ## 内置 Agent 与 Skill
 
-- **Agent（4 个）**：`mavis`、`explore`、`worker`、`verifier`
-- **内置 Skill（17 个）**：`code-review`、`deep-research`、`deploy-website`、`docx`、
+- **Agent（4 个内置）**：`mavis`、`explore`、`worker`、`verifier`
+- **内置 Skill（16 个）**：`code-review`、`deep-research`、`deploy-website`、`docx`、
   `edit-deployed-website`、`init`、`lark-tools`、`llm-call`、`mcode-tools-master`、`pdf`、
-  `pptx`、`resume-codex`、`skill-creator`、`skill-refiner`、`visual-page`、
-  `x-link-reader`、`xlsx`
+  `pptx`、`resume-codex`、`skill-creator`、`skill-refiner`、`visual-page`、`xlsx`
+
+> 内置 Agent 以包内 `assets/agents/builtin-agents.json` 为准。用户在 `~/.minimax/agents/`
+> 下自建的 Agent 不属于内置清单，不要混入。内置 Skill 以运行时 `~/.minimax/.builtin-skills/`
+> 目录为准；在 0.5.8 中包内布局已改为按 Agent 分散（`assets/agents/mavis/skills/`），
+> 不再是文档早期描述的单一 `assets/skills/` 目录。
 
 详见 `reference/agents-skills.md`。
 
