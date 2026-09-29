@@ -101,23 +101,40 @@
     return Promise.resolve(legacyCopy(text));
   }
 
+  // 复制按钮按官方代码块实测做成 26x26 纯图标按钮，不放文字。
+  // 三个状态各一枚图标：待复制 / 已完成 / 失败；文案只留在 aria-label 与 title 上。
+  var ICON_COPY = '<path d="M9 9.5A2.5 2.5 0 0111.5 7h6A2.5 2.5 0 0120 9.5v6a2.5 2.5 0 01-2.5 2.5h-6A2.5 2.5 0 019 15.5z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M15 7V6.5A2.5 2.5 0 0012.5 4h-6A2.5 2.5 0 004 6.5v6A2.5 2.5 0 006.5 15H7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>';
+  var ICON_DONE = '<path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>';
+  var ICON_FAIL = '<path d="M12 7.5v5.2" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/><circle cx="12" cy="16.6" r="1.05" fill="currentColor"/>';
+
+  function makeIcon(paths) {
+    var svg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('width', '15');
+    svg.setAttribute('height', '15');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('focusable', 'false');
+    svg.innerHTML = paths;
+    return svg;
+  }
+
   function flashButton(btn, ok) {
     var original = btn.getAttribute('data-label') || '复制';
-    btn.setAttribute('data-label', original);
-    btn.textContent = ok ? '已复制' : '复制失败';
+    btn.textContent = '';
+    btn.appendChild(makeIcon(ok ? ICON_DONE : ICON_FAIL));
+    btn.setAttribute('aria-label', ok ? '已复制' : '复制失败');
+    btn.setAttribute('title', ok ? '已复制' : '复制失败');
     btn.classList.add('is-done');
-    if (ok) {
-      window.clearTimeout(btn._t);
-      btn._t = window.setTimeout(function () {
-        btn.textContent = original;
-        btn.classList.remove('is-done');
-      }, 1800);
-    } else {
-      window.setTimeout(function () {
-        btn.textContent = original;
-        btn.classList.remove('is-done');
-      }, 2400);
-    }
+    if (!ok) { btn.classList.add('is-fail'); }
+    window.clearTimeout(btn._t);
+    btn._t = window.setTimeout(function () {
+      btn.textContent = '';
+      btn.appendChild(makeIcon(ICON_COPY));
+      btn.setAttribute('aria-label', '复制此代码块内容');
+      btn.setAttribute('title', '复制');
+      btn.classList.remove('is-done');
+      btn.classList.remove('is-fail');
+    }, ok ? 1800 : 2400);
   }
 
   $$('.code-block').forEach(function (block) {
@@ -126,9 +143,10 @@
     var btn = doc.createElement('button');
     btn.type = 'button';
     btn.className = 'copy-btn';
-    btn.textContent = '复制';
+    btn.appendChild(makeIcon(ICON_COPY));
     btn.setAttribute('data-label', '复制');
     btn.setAttribute('aria-label', '复制此代码块内容');
+    btn.setAttribute('title', '复制');
     btn.addEventListener('click', function () {
       writeClipboard(codeEl.textContent).then(function (ok) {
         flashButton(btn, ok !== false);
