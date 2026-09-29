@@ -40,7 +40,6 @@ npm uninstall -g @minimax-ai/code
 | --- | --- |
 | `-V, --version` | 输出版本号 |
 | `-m, --model <provider/model>` | 仅为本次 Session 选择模型 |
-| `--lane <lane>` | 托管后端通道（测试或预发布构建） |
 | `--session [id]` | 省略 id 时打开 Session 浏览器 |
 | `-c, --continue` | 继续当前 workspace 最近的 Session |
 | `--tui-mode <mode>` | `regular`（默认）或 `fullscreen` |
@@ -56,21 +55,30 @@ npm uninstall -g @minimax-ai/code
 ## `mcode exec`（Headless）
 
 ```bash
-mcode exec "审查当前改动，并运行相关测试。"
-mcode exec --cwd ./repo --file error.log "定位这次构建失败的原因。"
-mcode exec --output-format json "总结当前分支。"
-mcode exec --model custom_provider:work/deep-reasoner-1 --effort xhigh "规划这次迁移。"
-mcode exec review --cwd ./repo
+# 基本用法
+mcode exec "只回复 OK 两个字"
+# 换工作目录
+mcode exec --cwd ./repo "总结这个目录的结构。"
+# 带文件（须在 workspace 内）
+mcode exec --file ./error.log "定位这次构建失败的原因。"
+# 结构化输出
+mcode exec --output-format json "只回复 OK"
+# 写入文件
+mcode exec -o ./answer.md "只回复 OK"
+# 从 stdin 读任务，此时不能再传提示词参数
+echo "只回复 OK" | mcode exec --input -
 ```
+
+以上命令均已在 0.5.8 实跑通过（A 级）。
 
 ### 参数全集
 
 | 参数 | 说明 |
 | --- | --- |
-| `--input <source>` | 读取显式输入，**仅支持 `-`**（stdin） |
+| `--input <source>` | 读取显式输入，**仅支持 `-`**（stdin）；**与提示词参数互斥** |
 | `--input-format <format>` | `text`（默认）或 `json` |
 | `--cwd <path>` | workspace 目录 |
-| `--file <path>` | 附加文件，**可重复** |
+| `--file <path>` | 附加文件，**可重复**；须在 workspace 内，否则 headless 无法授权 |
 | `--model <provider/model>` | 仅本次 Run 覆盖 |
 | `--effort <level>` | 仅本次 Run 覆盖推理强度 |
 | `--prompt-mode <mode>` | `tui`（默认）/ `coding` / `work` |
@@ -79,7 +87,7 @@ mcode exec review --cwd ./repo
 | `--config <path>` | 本进程使用显式 Runtime 配置文件 |
 | `--permission <policy>` | `smart`（默认）/ `full` / `off`（`ask` 需 TUI/ACP） |
 | `--timeout <duration>` | Run 超时，如 `30s`、`2m` |
-| `--max-steps <count>` | 最大 assistant 步数 |
+| `--max-steps <count>` | 最大 assistant 步数；过小会返回 `limit_exceeded` |
 | `--output-format <format>` | `text` / `json` / `stream-json` |
 | `--diagnostics-dir <path>` | 保存有界执行诊断到**全新空目录** |
 | `--output-schema <schema>` | JSON Schema 文件或内联对象，约束最终回答 |
@@ -87,6 +95,10 @@ mcode exec review --cwd ./repo
 
 ### 关键语义
 
+- **`--input` 与提示词参数互斥**：同时给出会直接失败，报
+  `The prompt argument and --input cannot be combined.`。从管道读取时只写 `--input -`。
+- `--file` 指向 workspace 之外的路径时，headless 无法弹交互授权，会被拒绝。
+- `--max-steps` 给小了会在需要读文件的任务上返回 `limit_exceeded`，不是任务失败。
 - `--effort` 只对本次 Run 生效，与 `--model` **相互独立**；启动前会用模型声明的强度校验，
   不支持的强度以非零退出码失败，**不会静默回退**。覆盖**不写回 Session**。
 - `--model provider/model#xhigh` 后缀**不是**思考强度：Runtime 会把它当作模型身份的一部分，

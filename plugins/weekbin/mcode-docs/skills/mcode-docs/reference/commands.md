@@ -1,9 +1,6 @@
 # mcode TUI slash 命令全表（52 条）
 
-命令面由两个源码注册表构成，**共 52 条，无重叠**：
-
-- `packages/tui/src/tui/commands/catalog.ts` → 41 条
-- `packages/tui/src/application/command-descriptors.ts` → 11 条
+在 TUI 输入框以 `/` 开头即可调用，**共 52 条**，按用途分为 7 类。
 
 **别名**：`/clear` → `/new`、`/exit` → `/quit`、`/resume` → `/sessions`、`/side` → `/btw`
 
@@ -24,7 +21,7 @@ Composer 会把当前输入标记为 `Prompt`、`Command`、`Shell` 或 `Skill`�
 
 ---
 
-## 核心命令（descriptors 注册表，11 条）
+## 基础命令（11 条）
 
 | 命令 | 别名 | 描述 |
 | --- | --- | --- |
@@ -42,7 +39,7 @@ Composer 会把当前输入标记为 `Prompt`、`Command`、`Shell` 或 `Skill`�
 
 ---
 
-## Catalog 注册表（41 条）
+## 分类命令（41 条）
 
 ### Session（会话与对话）
 

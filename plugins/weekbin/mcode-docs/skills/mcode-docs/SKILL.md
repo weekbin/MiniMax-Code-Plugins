@@ -78,7 +78,7 @@ mcode plugin list|add|remove|enable|disable|marketplace
 
 ## TUI slash 命令：52 条
 
-由两个源码注册表构成，共 **52** 条（catalog 41 + descriptors 11），二者**无重叠**。
+在 TUI 输入框以 `/` 开头即可调用，共 **52** 条，按用途分 7 类（基础 11 + 分类 41）。
 
 **核心命令**
 
@@ -210,6 +210,6 @@ MCP 单独放 `~/.minimax/mcp.json`（用户级）与 `<workspace>/.mcp.json`（
 | `reference/config.md` | 配置文件结构与全部已知键 |
 | `reference/agents-skills.md` | 内置 Agent、Skill 与扩展机制 |
 | `reference/plugins-hooks.md` | 插件 manifest 契约与 Hook 系统 |
-| `reference/mcp-tools.md` | 内置工具、MCP、Browser |
+| `reference/mcp-tools.md` | 内置工具、MCP、附件 |
 | `reference/permissions.md` | 权限模式、Plan Mode、会话管理 |
 | `reference/coverage.md` | opencode v2 章节 → mcode 能力逐条对照 |

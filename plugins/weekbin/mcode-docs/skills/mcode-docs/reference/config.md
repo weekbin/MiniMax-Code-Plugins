@@ -2,15 +2,28 @@
 
 ## 配置文件位置
 
+「数据目录」是 mcode 保存全部配置与状态的根目录，各系统默认位置不同，且不随系统语言或区域变化。
+`<用户名>` 指当前登录用户的名称。
+
+| 系统 | 数据目录默认位置 |
+| --- | --- |
+| Windows | `C:\Users\<用户名>\.minimax\` |
+| macOS | `/Users/<用户名>/.minimax/` |
+| Ubuntu / Linux | `/home/<用户名>/.minimax/` |
+
+三套系统都取**用户主目录**下的 `.minimax`，不使用 `%APPDATA%`、`%LOCALAPPDATA%` 或
+`$XDG_DATA_HOME`（依据：0.5.8 随包源码中数据目录由 `homedir()` + `.minimax` 拼接，
+无平台分支，C 级）。
+
+可用 `MINIMAX_DATA_DIR` 环境变量改写到别处（例如隔离测试配置）。
+
 | 用途 | 路径 |
 | --- | --- |
-| 主配置 | `<数据目录>/config.yaml`（本机为 `~/.minimax/config.yaml`） |
-| 用户级 MCP | `<数据目录>/mcp.json`（本机 `~/.minimax/mcp.json`） |
+| 主配置 | `<数据目录>/config.yaml` |
+| 用户级 MCP | `<数据目录>/mcp.json` |
 | 项目级 MCP | `<workspace>/.mcp.json` |
 | 运行时权限状态 | `<数据目录>/permission.json` |
 | 项目规则 | `<workspace>/AGENTS.md` |
-
-数据目录可通过 `MINIMAX_DATA_DIR` 指定（用于隔离测试配置）。
 
 TUI 内用 `/config` 查看**生效的只读配置**；`mcode exec --config <path>` 可为单次进程指定配置文件。
 
@@ -107,33 +120,6 @@ skills:
 skillEvolve:
   enabled: false
 ```
-
-## `beta.*` 开关全量
-
-以下为 0.5.8 随包 `configs/data-minimal.yaml` 中出现的**全部** beta 开关，
-默认均为 `false`：
-
-| 开关 | 作用 |
-| --- | --- |
-| `autoMemory` | 自动记忆 |
-| `skillEvolve` | Skill 自演进 |
-| `skillEvolveBuiltinMr` | 内置 Skill 自演进 |
-| `skillProposal` | Skill 提案 |
-| `browserBridge` | Browser 桥接 |
-| `filePanelBrowser` | 文件面板 Browser Provider |
-| `filePanelBrowserMultiTab` | 文件面板多标签 |
-| `browserUseTooling` | **Browser 工具装配的前提** |
-| `browserUseAutoOpenPanel` | 自动打开 Browser 面板 |
-| `browserAgentCursor` | Agent 光标 |
-| `desktopPlanMode` | 桌面端 Plan Mode |
-| `peek` | Peek |
-| `keepAlive` | Keep Alive |
-| `promptOverride` | Prompt 覆盖 |
-| `asr` | 语音识别 |
-| `taskHistoryProjectGrouping` | 任务历史按项目分组 |
-| `threadGoal` | Thread Goal |
-| `mcodeTools` | mcode-tools |
-| `codexOAuth` | Codex OAuth |
 
 ## 网络代理
 

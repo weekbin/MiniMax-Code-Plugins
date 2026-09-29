@@ -72,9 +72,10 @@
 
 ---
 
-## 2. TUI slash 命令：**52 条**（C 级，两个权威注册表）
+## 2. TUI slash 命令：**52 条**（C 级 + A 级实跑）
 
-mcode TUI 的命令面由**两个源码注册表**共同构成，二者无重叠：
+对外口径只讲「共 52 条，按 7 类分组」，**不暴露源码注册表路径**（源码位置属于内部实现，
+对用户无操作价值）。分组的 41 + 11 拆分保留在内部台账：
 
 - `packages/tui/src/tui/commands/catalog.ts` → **41** 条
 - `packages/tui/src/application/command-descriptors.ts`（`TUI_COMMAND_DESCRIPTORS`）→ **11** 条
@@ -259,7 +260,10 @@ TUI 界面文案（C 级）：`default` → "Confirm sensitive actions"、
 `skill`、`ask_user`、`web_search`、`web_fetch`
 
 - 本会话实际注入的工具列表与之吻合（含 `mcp__*` 前缀的 MCP 工具、`request_feature_enable` 等宿主工具）。
-- Browser 工具需显式开启 beta 开关后才装配（见 §9）。
+- **实测反证**：在本机（其 `config.yaml` 确有 `beta.browserUseTooling: true`）让
+  `mcode exec` 自列可用工具，返回的工具清单中**不含任何 Browser 工具**
+  （无 `navigate`／`open_tab`／`screenshot` 等），仅有 12 个基础工具与 `mcp__*`。
+  即便 beta 开关为真，**Browser 也不会装配到 TUI/CLI**（A 级，见 §14）。
 
 ---
 
@@ -297,18 +301,22 @@ tui:
     events: [turn-complete, turn-failed, permission-required, question-required]   # 省略=全部，[] = 关闭
 ```
 
-**`beta.*` 开关全量**（B 级 `configs/data-minimal.yaml`）：
-`autoMemory`、`skillEvolve`、`skillEvolveBuiltinMr`、`skillProposal`、`browserBridge`、
-`filePanelBrowser`、`filePanelBrowserMultiTab`、`browserUseTooling`、`browserUseAutoOpenPanel`、
-`browserAgentCursor`、`desktopPlanMode`、`peek`、`keepAlive`、`promptOverride`、`asr`、
-`taskHistoryProjectGrouping`、`threadGoal`、`mcodeTools`、`codexOAuth`。
+**`beta.*` 开关：判定为「未暴露给用户，已从文档移除」**（C 级 + A 级）。
 
-**能力开关**（B 级）：`agents.default.tools`、`agents.default.builtinTools`、
-`agents.default.skills`、`agents.default.features.{mavis,delegation,webSearch}`、
-`agents.default.persona.enabled`、`memory.{enabled,proactive}`、`askUser.enabled`、
-`skills.external.enabled`、`skillEvolve.enabled`。
+原口径把随包 `configs/data-minimal.yaml` 的 19 个 beta 开关全量写进文档。本轮复核后移除，理由：
 
----
+1. 该文件**自述为数据生产基线**，不是用户配置样例——
+   文件头注释原文：`Minimax Code M1 data-generation baseline. Run it with an isolated
+   MINIMAX_DATA_DIR so user, workspace, Plugin, and configured MCP state from a Desktop
+   profile cannot enter the capability set.`（B 级）。
+2. 对 0.5.8 全部 chunk 逐个匹配 `beta.<key>`，**19 个键中只有 6 个被随包 CLI 代码读取**
+   （`browserUseTooling`、`peek`、`promptOverride`、`threadGoal`、`mcodeTools`、`codexOAuth`），
+   其余 13 个在 CLI 侧**零引用**（C 级）。
+3. 这 6 个也都带额外门槛，非用户可自选：`peek` 需 `buildEnv!=="prod"`；
+   `threadGoal` 走 `internalBuild` 开关；`codexOAuth` 赋值为 `e.isInternalBuild`；
+   `mcodeTools` 需内建标志 `i`；`promptOverride` 读 `<dataDir>/internal/prompts/*.md`。
+
+结论：属于生产管线/内部构建开关，**不写入面向用户的文档**。
 
 ## 8. 插件 manifest 契约（C 级 `MANIFEST_FIELDS`）
 
@@ -333,8 +341,7 @@ hooks, hostBindings
   实测含 `codegraph`、`playwright`、`codebuddy`；`env` 支持 `${PLUGIN_ROOT}`、`${PLUGIN_DATA}`。
 - 项目级 MCP：`<workspace>/.mcp.json`，与 Desktop、exec、ACP 共用规则（B1）。
 - TUI 查看入口：`/mcp`（descriptors，Inspect MCP capabilities and project configuration）。
-- Browser（B1）：默认关闭，需 `beta.browserUseTooling: true`；可用 `browser.chromePath`
-  或环境变量 `MCODE_CHROME_PATH`；模型侧仅接受 HTTP(S) URL。
+- **Browser：判定为「未暴露给 TUI/CLI，已从文档移除」**（A 级实测，见 §14）。
 - 网络代理（B1）：读取 `HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY`、`NO_PROXY` 及小写形式；
   `localhost`、`127.0.0.1`、`::1` 始终直连；无需 `NODE_USE_ENV_PROXY`。
 
@@ -487,6 +494,85 @@ LANCZOS 缩放生成，未重绘、未改色。
 
 ---
 
+## 14. 面向用户文档的取舍口径（2026 复核）
+
+本轮按站点批注做了一次「什么该进用户手册」的复核，结论与取证如下。
+
+### 14.1 移除生产管线参数 `--lane`
+
+`--lane` 出现在 `mcode --help` 中（`managed backend lane for test or staging builds`），
+原文档照抄了这一行。**决定移除**，依据：
+
+- 随包代码中，lane 只用于生成**路由头** `bedrock-lane` / `bedrock_lane` / `lane`，
+  且函数入口即写明
+  `if(this.options.buildEnv!=="test"&&this.options.buildEnv!=="staging")return{}`——
+  **非 test/staging 构建直接返回空**（C 级）。
+- lane 值集合为 `{test:"test", pre:"staging", staging:"staging", prod:"prod"}`（C 级）。
+- 本机安装的是公开正式版 0.5.8，实跑 `mcode exec --lane staging …` **成功但不改路由**，
+  即该参数对正式版用户是**无效参数**（A 级）。
+
+即：`--lane` 属于内部构建/生产管线路由开关，不是用户能力，故不出现在用户手册。
+
+### 14.2 `mcode exec` 示例与参数逐条实跑（A 级）
+
+在临时 git 仓库中对 0.5.8 真实执行，实测通过：`--input -`（stdin 单用）、
+`--input-format text`、`--cwd`、`--file`（workspace 内）、`--output-format text`、
+`--output-format json`、`-o/--output-last-message`、`--prompt-mode work`、
+`--permission off`、`--timeout`、`--max-steps`。
+
+**实测纠正了两处原文档缺陷**：
+
+1. `--input -` **不能**与提示词参数同时给，否则直接失败：
+   `mcode exec failed: The prompt argument and --input cannot be combined.`
+   原文档两者并列示例，属错误用法，已改写并在参数表中标注。
+2. `--file` 指向 workspace **之外**的路径时，headless 无法弹交互授权而被拒绝
+   （实测返回「该路径在 workspace 之外，此宿主无法在不弹交互提示的情况下授权」）。
+   原文档未提示，已补。
+3. `--max-steps` 过小在需要读文件的任务上返回
+   `limit_exceeded`，易被误读为任务失败，已在关键语义中说明。
+
+参数表 17 条与 `mcode exec --help` **逐条对齐，无遗漏无自造**；未实跑的 7 条
+（`--model`／`--effort`／`--session`／`--continue`／`--config`／`--diagnostics-dir`／
+`--output-schema`）在表中以「—」如实标注，不谎称已验证。
+
+### 14.3 数据目录改为跨平台权威表述（C 级）
+
+原文档写「本机为 `~/.minimax/`」，属于单机事实、无法迁移。改为按系统列表。
+
+依据：0.5.8 随包 chunk 中数据目录由
+`join(homedir(), ".minimax")` 拼接（`Wd=".minimax"`；`Hs(e)=e??os.homedir()`；
+`Jd(e,t)=t?`${e}-${t}`:e`），**无任何平台分支**；对全部 chunk 搜索
+`APPDATA`／`XDG_CONFIG_HOME`／`XDG_DATA_HOME` 的命中均属**其它**用途
+（安装根目录、子进程环境白名单、第三方库），与数据目录无关。故三系统统一为
+用户主目录下的 `.minimax`。
+
+### 14.4 移除 `beta.*` 全量清单
+
+见 §7 更新后的判定：19 个键中 13 个在 CLI 侧零引用，余 6 个均带 internal/build 门槛，
+不属用户可配置项。
+
+### 14.5 移除 TUI Browser 章节
+
+见 §14.2 前的实测：本机配置已开 `beta.browserUseTooling: true`，`mcode exec` 自列工具
+仍**无任何 Browser 工具**。同时随包代码中 Browser 的启用判定依赖
+`runtimeOwnerKind` / Electron FilePanel Provider（`Pw(a)=a===void 0||a==="electron"`、
+`provider!=="electron-file-panel"`），属**桌面端宿主**能力。
+结论：TUI/CLI 未暴露该能力，从用户文档移除。
+
+### 14.6 不暴露源码位置
+
+TUI 章节原以「两个源码注册表 + 具体文件路径」开篇。仅保留「共 52 条、按 7 类分组」
+这一用户可操作的事实，删除 `packages/tui/src/...` 路径；41+11 的拆分仅留在本台账内部。
+
+### 14.7 「插件与 Hook」改为通俗表述
+
+该章节原以实现契约开场（`schemaVersion` 约束、解析后处理器结构体、诊断码等）。
+改写为「插件 = 装能力」「Hook = 到点自动跑的命令」的人话开场，命令示例加注释，
+并删除**解析后处理器结构体**代码块（纯内部表示，用户无从使用）。
+事实性内容（字段表、11 个事件、退出码语义、诊断码）**全部保留**，只改叙述方式。
+
+---
+
 ## 13. 本插件自身声明
 
 本插件**不提供 MCP 服务**，交付物为：一个可复用 Skill（`skills/mcode-docs/SKILL.md` +
@@ -495,8 +581,9 @@ LANCZOS 缩放生成，未重绘、未改色。
 
 站点为**中英双语**：`site/index.html`（中文，默认入口）与 `site/index.en.html`（英文），
 共享同一套 `assets/style.css` 与 `assets/app.js`。两版的 `id` 集合与顺序经脚本比对**完全一致**
-（各 115 个，无重复、无断裂内部链接），标签配平已校验。
+（各 **113** 个，顺序完全一致，无重复、无断裂内部链接），标签配平已校验。
+（计数由 115 降为 113：本轮移除了 `h-config-beta` 与 `h-browser` 两个小节。）
 
-语言解析规则（`app.js` §9）：顶栏切换按钮在点击时把偏好写入 `localStorage`
-（键 `mcode-docs-lang`）；首访无偏好时按 `navigator.language` 判定，非中文界面跳转到英文页；
-**只有默认入口页**参与自动判定，显式打开 `index.en.html` 一律视为明确选择而不跳转。
+语言规则（`app.js` §9）：**不做任何自动判定**。`index.html` 打开即中文，
+`index.en.html` 打开即英文，两者互不跳转；主题默认浅色，深色为手动 opt-in 并记住选择。
+顶栏切换按钮在点击时才把偏好写入 `localStorage`（键 `mcode-docs-lang`），仅作留痕。

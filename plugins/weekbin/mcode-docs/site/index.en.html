@@ -92,7 +92,7 @@
       <ul class="sidenav-list">
         <li><a href="#agents-skills">Agents, Skills &amp; Tools</a></li>
         <li><a href="#plugins-hooks">Plugins &amp; Hooks</a></li>
-        <li><a href="#mcp-browser">MCP, Tools &amp; Browser</a></li>
+        <li><a href="#mcp-browser">MCP &amp; Tools</a></li>
       </ul>
 
       <p class="sidenav-group">Permissions &amp; Sessions</p>
@@ -127,7 +127,6 @@
         <div class="stat"><span class="stat-num">4</span><span class="stat-label">Built-in agents</span></div>
         <div class="stat"><span class="stat-num">16</span><span class="stat-label">Built-in skills</span></div>
         <div class="stat"><span class="stat-num">11</span><span class="stat-label">Hook events</span></div>
-        <div class="stat"><span class="stat-num">19</span><span class="stat-label">beta switches</span></div>
         <div class="stat"><span class="stat-num">0</span><span class="stat-label">MCP services</span></div>
       </div>
 
@@ -227,7 +226,6 @@ npm uninstall -g @minimax-ai/code</code></pre>
           <tbody>
             <tr><td><code>-V, --version</code></td><td>Print the version number</td></tr>
             <tr><td><code>-m, --model &lt;provider/model&gt;</code></td><td>Select a model for this Session only</td></tr>
-            <tr><td><code>--lane &lt;lane&gt;</code></td><td>Hosted backend lane (test or prerelease build)</td></tr>
             <tr><td><code>--session [id]</code></td><td>Opens the Session browser when the id is omitted</td></tr>
             <tr><td><code>-c, --continue</code></td><td>Resume the most recent Session in the current workspace</td></tr>
             <tr><td><code>--tui-mode &lt;mode&gt;</code></td><td><code>regular</code> (default) or <code>fullscreen</code></td></tr>
@@ -239,43 +237,60 @@ npm uninstall -g @minimax-ai/code</code></pre>
       </div>
 
       <h3 class="h3" id="h-exec">mcode exec (Headless)</h3>
+      <p>Runs a single task without starting the TUI. Every command below was actually run against 0.5.8 on this machine:</p>
       <div class="code-block" data-lang="bash">
         <div class="code-head"><span class="code-lang">bash</span></div>
-        <pre><code>mcode exec "Review the current changes and run the relevant tests."
-mcode exec --cwd ./repo --file error.log "Determine why this build failed."
-mcode exec --output-format json "Summarize the current branch."
-mcode exec --model custom_provider:work/deep-reasoner-1 --effort xhigh "Plan this migration."
-mcode exec review --cwd ./repo</code></pre>
+        <pre><code># Basic: just give it a sentence
+mcode exec "Reply with OK only."
+
+# Run against a different working directory
+mcode exec --cwd ./repo "Summarize the structure of this directory."
+
+# Attach a file to analyze (the file must be inside the workspace)
+mcode exec --file ./error.log "Determine why this build failed."
+
+# Structured output, for scripts
+mcode exec --output-format json "Reply with OK only."
+
+# Save the final answer to a file
+mcode exec -o ./answer.md "Reply with OK only."
+
+# Read the task from stdin — do not pass a prompt argument in this form
+echo "Reply with OK only." | mcode exec --input -</code></pre>
       </div>
 
       <h4 class="h4" id="h-exec-flags">Full Flag Set</h4>
+      <p>This table matches <code>mcode exec --help</code> line by line, with <strong>nothing missing and nothing invented</strong>. The "Verified" column records what actually ran on 0.5.8:</p>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Flag</th><th>Description</th></tr></thead>
+          <thead><tr><th>Flag</th><th>Description</th><th>Verified</th></tr></thead>
           <tbody>
-            <tr><td><code>--input &lt;source&gt;</code></td><td>Read explicit input; <strong><code>-</code> (stdin) only</strong></td></tr>
-            <tr><td><code>--input-format &lt;format&gt;</code></td><td><code>text</code> (default) or <code>json</code></td></tr>
-            <tr><td><code>--cwd &lt;path&gt;</code></td><td>Workspace directory</td></tr>
-            <tr><td><code>--file &lt;path&gt;</code></td><td>Additional file, <strong>repeatable</strong></td></tr>
-            <tr><td><code>--model &lt;provider/model&gt;</code></td><td>Override for this Run only</td></tr>
-            <tr><td><code>--effort &lt;level&gt;</code></td><td>Override reasoning effort for this Run only</td></tr>
-            <tr><td><code>--prompt-mode &lt;mode&gt;</code></td><td><code>tui</code> (default) / <code>coding</code> / <code>work</code></td></tr>
-            <tr><td><code>--session &lt;id&gt;</code></td><td>Run inside an existing active Session</td></tr>
-            <tr><td><code>--continue</code></td><td>Continue the most recent active Session in <code>--cwd</code></td></tr>
-            <tr><td><code>--config &lt;path&gt;</code></td><td>Use an explicit Runtime configuration file for this process</td></tr>
-            <tr><td><code>--permission &lt;policy&gt;</code></td><td><code>smart</code> (default) / <code>full</code> / <code>off</code> (<code>ask</code> requires TUI/ACP)</td></tr>
-            <tr><td><code>--timeout &lt;duration&gt;</code></td><td>Run timeout, e.g. <code>30s</code>, <code>2m</code></td></tr>
-            <tr><td><code>--max-steps &lt;count&gt;</code></td><td>Maximum assistant steps</td></tr>
-            <tr><td><code>--output-format &lt;format&gt;</code></td><td><code>text</code> / <code>json</code> / <code>stream-json</code></td></tr>
-            <tr><td><code>--diagnostics-dir &lt;path&gt;</code></td><td>Write bounded execution diagnostics to a <strong>brand-new empty directory</strong></td></tr>
-            <tr><td><code>--output-schema &lt;schema&gt;</code></td><td>JSON Schema file or inline object constraining the final answer</td></tr>
-            <tr><td><code>-o, --output-last-message &lt;path&gt;</code></td><td>Write the final message to a file</td></tr>
+            <tr><td><code>--input &lt;source&gt;</code></td><td>Read explicit input, <strong><code>-</code> (stdin) only</strong>; <strong>cannot be combined with a prompt argument</strong></td><td>✅ combining fails with <code>The prompt argument and --input cannot be combined.</code></td></tr>
+            <tr><td><code>--input-format &lt;format&gt;</code></td><td><code>text</code> (default) or <code>json</code></td><td>✅</td></tr>
+            <tr><td><code>--cwd &lt;path&gt;</code></td><td>Workspace directory</td><td>✅</td></tr>
+            <tr><td><code>--file &lt;path&gt;</code></td><td>Additional file, <strong>repeatable</strong>; must be inside the workspace, otherwise it needs interactive authorization</td><td>✅</td></tr>
+            <tr><td><code>--model &lt;provider/model&gt;</code></td><td>Override for this Run only</td><td>—</td></tr>
+            <tr><td><code>--effort &lt;level&gt;</code></td><td>Override reasoning effort for this Run only</td><td>—</td></tr>
+            <tr><td><code>--prompt-mode &lt;mode&gt;</code></td><td><code>tui</code> (default) / <code>coding</code> / <code>work</code></td><td>✅ <code>work</code></td></tr>
+            <tr><td><code>--session &lt;id&gt;</code></td><td>Run inside an existing active Session</td><td>—</td></tr>
+            <tr><td><code>--continue</code></td><td>Continue the most recent active Session in <code>--cwd</code></td><td>—</td></tr>
+            <tr><td><code>--config &lt;path&gt;</code></td><td>Use an explicit Runtime configuration file for this process</td><td>—</td></tr>
+            <tr><td><code>--permission &lt;policy&gt;</code></td><td><code>smart</code> (default) / <code>full</code> / <code>off</code> (<code>ask</code> requires TUI/ACP)</td><td>✅ <code>off</code></td></tr>
+            <tr><td><code>--timeout &lt;duration&gt;</code></td><td>Run timeout, e.g. <code>30s</code>, <code>2m</code></td><td>✅</td></tr>
+            <tr><td><code>--max-steps &lt;count&gt;</code></td><td>Maximum assistant steps; give it headroom when the task has to read files</td><td>✅ too small returns <code>limit_exceeded</code></td></tr>
+            <tr><td><code>--output-format &lt;format&gt;</code></td><td><code>text</code> / <code>json</code> / <code>stream-json</code></td><td>✅ <code>text</code>, <code>json</code></td></tr>
+            <tr><td><code>--diagnostics-dir &lt;path&gt;</code></td><td>Write bounded execution diagnostics to a <strong>brand-new empty directory</strong></td><td>—</td></tr>
+            <tr><td><code>--output-schema &lt;schema&gt;</code></td><td>JSON Schema file or inline object constraining the final answer</td><td>—</td></tr>
+            <tr><td><code>-o, --output-last-message &lt;path&gt;</code></td><td>Write the final message to a file</td><td>✅</td></tr>
           </tbody>
         </table>
       </div>
 
       <h4 class="h4" id="h-exec-semantics">Key Semantics</h4>
       <ul>
+        <li><strong><code>--input</code> and the prompt argument are mutually exclusive</strong>: supplying both fails immediately with <code>The prompt argument and --input cannot be combined.</code> When reading from a pipe, pass only <code>--input -</code>.</li>
+        <li>A <code>--file</code> outside the workspace cannot be authorized interactively in headless mode and is rejected; move the file into the workspace or authorize it first.</li>
+        <li>Setting <code>--max-steps</code> too low returns <code>limit_exceeded</code> on tasks that need to read files. That is not a task failure — rerun with a larger limit.</li>
         <li><code>--effort</code> applies to this Run only and is <strong>independent</strong> of <code>--model</code>; the declared strength is validated before launch, and validation failure ends the process with a non-zero exit code. The override is <strong>not written back to the Session</strong>.</li>
         <li>The <code>--model provider/model#xhigh</code> suffix is <strong>not</strong> a reasoning effort: the Runtime treats it as part of the model identity and the requested strength is dropped silently. Use <code>--effort xhigh</code> to apply an effort.</li>
         <li>Relative paths for <code>--diagnostics-dir</code> resolve against <code>--cwd</code>, and <strong>an existing non-empty directory is rejected</strong> so that prior evidence is not overwritten.</li>
@@ -352,13 +367,9 @@ mcode plugin marketplace</code></pre>
     <!-- ══════════════════ 4. TUI Commands ══════════════════ -->
     <section class="doc-section" id="commands" aria-labelledby="h-commands">
       <h2 class="h2" id="h-commands">TUI Commands (52)</h2>
-      <p>The command surface is defined by <strong>two source registries</strong> that <strong>do not overlap, totalling 52 commands</strong>:</p>
-      <ul>
-        <li><code>packages/tui/src/tui/commands/catalog.ts</code> → 41 commands</li>
-        <li><code>packages/tui/src/application/command-descriptors.ts</code> (<code>TUI_COMMAND_DESCRIPTORS</code>) → 11 commands</li>
-      </ul>
+      <p>Type <code>/</code> in the TUI composer to call any of the <strong>52 commands</strong>, grouped into 7 categories: <strong>Session</strong>, <strong>Runtime</strong>, <strong>Capability</strong>, <strong>Input</strong>, <strong>Transcript</strong>, <strong>Decision</strong>, and <strong>Application</strong>. All of them are listed below by category.</p>
+
       <p><strong>Aliases</strong>: <code>/clear</code> → <code>/new</code>, <code>/exit</code> → <code>/quit</code>, <code>/resume</code> → <code>/sessions</code>, <code>/side</code> → <code>/btw</code></p>
-      <p><strong>Categories</strong>: <code>Session</code> / <code>Runtime</code> / <code>Capability</code> / <code>Input</code> / <code>Transcript</code> / <code>Decision</code> / <code>Application</code></p>
 
       <h3 class="h3" id="h-input-disambiguation">Input Disambiguation Rules</h3>
       <p>The Composer labels the current input as <code>Prompt</code>, <code>Command</code>, <code>Shell</code> or <code>Skill</code>, and indicates whether pressing Enter sends, executes or invokes it.</p>
@@ -368,7 +379,7 @@ mcode plugin marketplace</code></pre>
         <li>A Skill invocation such as <code>/docs explain the API</code> is displayed as a Skill call with instructions.</li>
       </ul>
 
-      <h3 class="h3" id="h-core-commands">Core Commands (descriptors registry, 11)</h3>
+      <h3 class="h3" id="h-core-commands">Basic Commands (11)</h3>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Command</th><th>Alias</th><th>Description</th></tr></thead>
@@ -388,7 +399,7 @@ mcode plugin marketplace</code></pre>
         </table>
       </div>
 
-      <h3 class="h3" id="h-catalog-commands">Catalog Registry (41)</h3>
+      <h3 class="h3" id="h-catalog-commands">Categorized Commands (41)</h3>
 
       <h4 class="h4" id="h-catalog-session">Session · 13 commands</h4>
       <div class="table-wrap">
@@ -572,19 +583,33 @@ mcode plugin marketplace</code></pre>
       <h2 class="h2" id="h-config">Configuration</h2>
 
       <h3 class="h3" id="h-config-paths">Configuration File Locations</h3>
+      <div class="callout callout-note">
+        <p>The "data directory" is the root where mcode keeps all configuration and state. Its <strong>default location differs per operating system</strong> and <strong>does not depend on system language or region</strong>. In the table below, <code>&lt;username&gt;</code> is the name of the signed-in user.</p>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>System</th><th>Default data directory</th></tr></thead>
+          <tbody>
+            <tr><td>Windows</td><td><code>C:\Users\&lt;username&gt;\.minimax\</code></td></tr>
+            <tr><td>macOS</td><td><code>/Users/&lt;username&gt;/.minimax/</code></td></tr>
+            <tr><td>Ubuntu / Linux</td><td><code>/home/&lt;username&gt;/.minimax/</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>All three systems use <code>.minimax</code> under the <strong>user home directory</strong> — <code>%APPDATA%</code>, <code>%LOCALAPPDATA%</code> and <code>$XDG_DATA_HOME</code> are not used. Set the <code>MINIMAX_DATA_DIR</code> environment variable to move it elsewhere (for example to isolate a test configuration).</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Purpose</th><th>Path</th></tr></thead>
           <tbody>
-            <tr><td>Main configuration</td><td><code>&lt;data dir&gt;/config.yaml</code> (<code>~/.minimax/config.yaml</code> on this machine)</td></tr>
-            <tr><td>User-level MCP</td><td><code>&lt;data dir&gt;/mcp.json</code> (<code>~/.minimax/mcp.json</code> on this machine)</td></tr>
+            <tr><td>Main configuration</td><td><code>&lt;data dir&gt;/config.yaml</code></td></tr>
+            <tr><td>User-level MCP</td><td><code>&lt;data dir&gt;/mcp.json</code></td></tr>
             <tr><td>Project-level MCP</td><td><code>&lt;workspace&gt;/.mcp.json</code></td></tr>
             <tr><td>Runtime permission state</td><td><code>&lt;data dir&gt;/permission.json</code></td></tr>
             <tr><td>Project rules</td><td><code>&lt;workspace&gt;/AGENTS.md</code></td></tr>
           </tbody>
         </table>
       </div>
-      <p>The data directory can be set with <code>MINIMAX_DATA_DIR</code>, which is useful for isolating test configuration. In the TUI, <code>/config</code> shows the <strong>effective read-only configuration</strong>; <code>mcode exec --config &lt;path&gt;</code> sets the configuration file for a single process.</p>
+      <p>In the TUI, <code>/config</code> shows the <strong>effective read-only configuration</strong>; <code>mcode exec --config &lt;path&gt;</code> sets the configuration file for a single process.</p>
 
       <h3 class="h3" id="h-config-keys">Verified Top-Level Keys</h3>
       <div class="table-wrap">
@@ -688,35 +713,6 @@ skills:
 
 skillEvolve:
   enabled: false</code></pre>
-      </div>
-
-      <h3 class="h3" id="h-config-beta">Full Set of beta.* Switches (19)</h3>
-      <p>The following are <strong>all</strong> the beta switches listed in the packaged <code>configs/data-minimal.yaml</code>, each defaulting to <code>false</code>:</p>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Switch</th><th>Effect</th></tr></thead>
-          <tbody>
-            <tr><td><code>autoMemory</code></td><td>Automatic memory</td></tr>
-            <tr><td><code>skillEvolve</code></td><td>Skill self-evolution</td></tr>
-            <tr><td><code>skillEvolveBuiltinMr</code></td><td>Built-in Skill self-evolution</td></tr>
-            <tr><td><code>skillProposal</code></td><td>Skill proposals</td></tr>
-            <tr><td><code>browserBridge</code></td><td>Browser bridge</td></tr>
-            <tr><td><code>filePanelBrowser</code></td><td>File-panel browser provider</td></tr>
-            <tr><td><code>filePanelBrowserMultiTab</code></td><td>File-panel multiple tabs</td></tr>
-            <tr><td><code>browserUseTooling</code></td><td><strong>Prerequisite for assembling Browser tools</strong></td></tr>
-            <tr><td><code>browserUseAutoOpenPanel</code></td><td>Open the Browser panel automatically</td></tr>
-            <tr><td><code>browserAgentCursor</code></td><td>Agent cursor</td></tr>
-            <tr><td><code>desktopPlanMode</code></td><td>Desktop Plan Mode</td></tr>
-            <tr><td><code>peek</code></td><td>Peek</td></tr>
-            <tr><td><code>keepAlive</code></td><td>Keep Alive</td></tr>
-            <tr><td><code>promptOverride</code></td><td>Prompt override</td></tr>
-            <tr><td><code>asr</code></td><td>Speech recognition</td></tr>
-            <tr><td><code>taskHistoryProjectGrouping</code></td><td>Group task history by project</td></tr>
-            <tr><td><code>threadGoal</code></td><td>Thread Goal</td></tr>
-            <tr><td><code>mcodeTools</code></td><td>mcode-tools</td></tr>
-            <tr><td><code>codexOAuth</code></td><td>Codex OAuth</td></tr>
-          </tbody>
-        </table>
       </div>
 
       <h3 class="h3" id="h-config-proxy">Network Proxy</h3>
@@ -838,7 +834,7 @@ skillEvolve:
           </tbody>
         </table>
       </div>
-      <p>Beyond these there are the <code>mcp__*</code> tools provided by MCP servers, plus Browser tools that are assembled only after the corresponding beta switches are enabled.</p>
+      <p>Beyond these there are the <code>mcp__*</code> tools provided by MCP servers.</p>
 
       <h3 class="h3" id="h-bash-behaviour">Actual Bash Tool Behaviour</h3>
       <ul>
@@ -860,25 +856,36 @@ skillEvolve:
     <!-- ══════════════════ 7. Plugins and Hooks ══════════════════ -->
     <section class="doc-section" id="plugins-hooks" aria-labelledby="h-plugins-hooks">
       <h2 class="h2" id="h-plugins-hooks">Plugins &amp; Hooks</h2>
+      <p>A <strong>plugin</strong> is how you add capabilities to mcode. A plugin is just a folder containing <code>.minimax-plugin/plugin.json</code> (which states what the plugin is and what it provides), plus the Skills, MCP servers, or scripts you want. Once installed, mcode has one more capability.</p>
+      <p>A <strong>Hook</strong> is a small command inside a plugin that mcode runs automatically at a chosen moment — for example "send a notification every time a reply finishes". Think of it as an automatic trigger; you never run it by hand.</p>
+      <p>If you only want to use an existing capability, installing the plugin is all you need. The <a href="#h-manifest">manifest</a> and <a href="#h-hooks">Hook</a> details below only matter when you write a plugin yourself.</p>
 
-      <h3 class="h3" id="h-plugin-mgmt">Plugin Management</h3>
+      <h3 class="h3" id="h-plugin-mgmt">Installing &amp; Managing Plugins</h3>
       <div class="code-block" data-lang="bash">
         <div class="code-head"><span class="code-lang">bash</span></div>
-        <pre><code>mcode plugin list --available
+        <pre><code># See what is installed and what can be installed
+mcode plugin list --available
+
+# Install one (&lt;plugin-id&gt; is the plugin identifier)
 mcode plugin add &lt;plugin-id&gt;
-mcode plugin enable &lt;plugin-id&gt;
+
+# Turn off / turn back on without uninstalling
 mcode plugin disable &lt;plugin-id&gt;
+mcode plugin enable &lt;plugin-id&gt;
+
+# Uninstall
 mcode plugin remove &lt;plugin-id&gt;
+
+# Browse installable plugins
 mcode plugin marketplace</code></pre>
       </div>
-      <p>Running <code>mcode plugin</code> directly opens the interactive Plugin manager; inside the TUI use <code>/plugins [filter]</code>.</p>
+      <p>Running <code>mcode plugin</code> directly opens an interactive plugin manager, which is easier to drive with the arrow keys; inside the TUI use <code>/plugins [filter]</code>.</p>
       <div class="callout callout-note">
-        <p>Plugin sources are the plugins in the official catalogue and the local plugins that have been discovered; <code>mcode plugin marketplace</code> is used to browse and manage these sources.</p>
+        <p>Plugins come from two places: the official catalogue, and local plugin folders already discovered on your machine. <code>--available</code> lists only what can be installed. <code>disable</code> only switches a plugin off temporarily and <strong>does not</strong> delete it — <code>remove</code> is what uninstalls.</p>
       </div>
 
-      <h3 class="h3" id="h-manifest">Manifest Contract</h3>
-      <p>The MiniMax-format plugin manifest lives at <code>.minimax-plugin/plugin.json</code>. <code>schemaVersion</code> <strong>must</strong> be <code>1</code>, and keys outside the field set are rejected.</p>
-      <p>The <strong>complete set of valid fields</strong> (<code>MANIFEST_FIELDS</code> in source):</p>
+      <h3 class="h3" id="h-manifest">What a Plugin Manifest Looks Like</h3>
+      <p>The manifest is always named <code>.minimax-plugin/plugin.json</code>, its <code>schemaVersion</code> <strong>must</strong> be <code>1</code>, and any key not in the field set below is rejected outright. Start from this minimal example:</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Field</th><th>Description</th></tr></thead>
@@ -940,10 +947,11 @@ mcode plugin marketplace</code></pre>
 }</code></pre>
       </div>
 
-      <h3 class="h3" id="h-hooks">The Hook System</h3>
-      <p>Hooks in mcode are <strong>plugin-level synchronous command Hooks</strong>, and the event model is <strong>compatible with Claude Code</strong>. Three source formats are supported: <code>MINIMAX</code>, <code>CLAUDE</code> and <code>CODEX</code>.</p>
+      <h3 class="h3" id="h-hooks">Hooks: Automatic Actions at Chosen Moments</h3>
+      <p>A Hook is simply "a command that runs by itself at the right time". You write the command in your plugin and say when it should run; mcode then executes it every time that moment comes around.</p>
+      <p>The most common example: to get notified whenever a reply finishes, listen for the <code>Stop</code> event and point it at a small notification script. Event names come from Claude Code, so an existing Claude Code Hook configuration can be moved over as-is. Three source formats are supported: <code>MINIMAX</code>, <code>CLAUDE</code> and <code>CODEX</code>.</p>
       <div class="callout callout-warn">
-        <p><strong>Only synchronous <code>type: "command"</code> handlers are supported.</strong> Although <code>async</code> and <code>asyncRewake</code> are accepted syntactically as booleans, either being <code>true</code> marks the handler as <code>HOOK_HANDLER_UNSUPPORTED</code>.</p>
+        <p>A Hook <strong>blocks</strong> mcode until it finishes, so only synchronous command handlers (<code>type: "command"</code>) are supported. Writing <code>async</code> in the registration document is treated as unsupported.</p>
       </div>
 
       <h4 class="h4" id="h-hook-events">Complete Event Set (11)</h4>
@@ -984,28 +992,7 @@ mcode plugin marketplace</code></pre>
           </tbody>
         </table>
       </div>
-      <p>A <code>timeout</code> that is non-integer, <code>&lt; 1</code> or <code>&gt; 10</code> records the whole handler as <code>HOOK_SCHEMA_INVALID</code>; a blank <code>matcher</code> is invalid in the <code>MINIMAX</code> format. The parsed handler structure is:</p>
-      <div class="code-block" data-lang="ts">
-        <div class="code-head"><span class="code-lang">ts</span></div>
-        <pre><code>{
-  kind: 'command',
-  sourceFormat: 'MINIMAX' | 'CLAUDE' | 'CODEX',
-  pluginName: string,
-  pluginRoot: string,
-  pluginDataDir?: string,
-  activationKey?: string,
-  sourcePath: string,
-  event: &lt;one of the 11 above&gt;,
-  matcher?: string,
-  command: string,
-  args?: string[],
-  shell?: 'bash' | 'powershell',
-  condition?: string,
-  timeoutMs: number,
-  additionalContextLimit?: number,
-  declarationOrder: number
-}</code></pre>
-      </div>
+      <p><code>timeout</code> must be a whole number of seconds between <strong>1 and 10</strong>; a decimal, 0, or anything above 10 invalidates the whole registration (<code>HOOK_SCHEMA_INVALID</code>). In the <code>MINIMAX</code> format, <code>matcher</code> cannot be left blank.</p>
       <p><strong><code>matcher</code> validation</strong> proceeds as follows: <code>*</code> is always valid; <code>UserPromptSubmit</code> and <code>Stop</code> do not have their content checked; <code>CODEX</code> accepts only <code>[A-Za-z0-9_|]+</code>; other formats split on <code>|</code> or <code>,</code> with each branch required to match <code>[A-Za-z0-9_.:/-]+</code> as a whole; otherwise a <strong>portable regular expression</strong> is required — only non-capturing groups <code>(?:...)</code> are allowed, and look-around, named groups, backreferences and dangling escapes are rejected, as is any atom with a repeated quantifier reaching four occurrences.</p>
       <p>A single plugin may hold at most <strong>64</strong> executable handlers; the surplus records <code>HOOK_HANDLER_LIMIT_EXCEEDED</code>.</p>
       <p><strong>Command resolution</strong>: when <code>args</code> is present the exec form is used and no shell is involved; in <code>MINIMAX</code>, without <code>args</code> the system default shell is used, with <code>shell: bash</code> becoming <code>bash -c</code> and <code>shell: powershell</code> becoming pwsh; in <code>CLAUDE</code> the default on POSIX is <code>sh -c</code>, and on win32 Git Bash is preferred over PowerShell. The <code>command</code> form requires Node.js to be present on the Hook process's <code>PATH</code>.</p>
@@ -1145,16 +1132,16 @@ mcode plugin marketplace</code></pre>
       </ul>
     </section>
 
-    <!-- ══════════════════ 8. MCP / Tools / Browser ══════════════════ -->
+    <!-- ══════════════════ 8. MCP / Tools ══════════════════ -->
     <section class="doc-section" id="mcp-browser" aria-labelledby="h-mcp-browser">
-      <h2 class="h2" id="h-mcp-browser">MCP / Tools / Browser</h2>
+      <h2 class="h2" id="h-mcp-browser">MCP &amp; Tools</h2>
 
       <h3 class="h3" id="h-mcp-config">MCP Configuration</h3>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Level</th><th>Path</th><th>Description</th></tr></thead>
           <tbody>
-            <tr><td>User level</td><td><code>&lt;data dir&gt;/mcp.json</code> (<code>~/.minimax/mcp.json</code> on this machine)</td><td>Applies across workspaces</td></tr>
+            <tr><td>User level</td><td><code>&lt;data dir&gt;/mcp.json</code></td><td>Applies across workspaces</td></tr>
             <tr><td>Project level</td><td><code>&lt;workspace&gt;/.mcp.json</code></td><td>Loaded automatically by the Runtime</td></tr>
           </tbody>
         </table>
@@ -1185,34 +1172,9 @@ mcode plugin marketplace</code></pre>
 }</code></pre>
       </div>
       <p>Fields: <code>type</code>, <code>command</code>, <code>args</code>, <code>env</code>, <code>description</code>, <code>enabled</code>, <code>configured</code>. The <code>${PLUGIN_ROOT}</code> and <code>${PLUGIN_DATA}</code> placeholders may be used inside <code>env</code>.</p>
-      <p>The <code>~/.minimax/mcp.json</code> on this machine contains <code>codegraph</code>, <code>playwright</code> and <code>codebuddy</code> (grade D).</p>
 
       <h3 class="h3" id="h-mcp-tools">Tools</h3>
       <p>The 12 base tools are listed under <a href="#h-tools">Host Tools</a>. Tools contributed by MCP servers appear as <code>mcp__&lt;server&gt;__&lt;tool&gt;</code>.</p>
-
-      <h3 class="h3" id="h-browser">Browser</h3>
-      <p>Browser Use is <strong>off by default</strong> and must be enabled explicitly through the beta switches:</p>
-      <div class="code-block" data-lang="yaml">
-        <div class="code-head"><span class="code-lang">yaml</span></div>
-        <pre><code># &lt;data dir&gt;/config.yaml
-beta:
-  browserUseTooling: true
-browser:
-  chromePath: /Applications/Google Chrome.app/Contents/MacOS/Google Chrome</code></pre>
-      </div>
-      <ul>
-        <li><code>browser.chromePath</code> may be omitted when the system can discover Chrome automatically, but <code>beta.browserUseTooling: true</code> must still be present.</li>
-        <li><code>MCODE_CHROME_PATH</code> overrides <code>browser.chromePath</code> for a single launch; otherwise macOS, Linux and Windows search for common Chrome/Chromium installations.</li>
-        <li>In a Linux <strong>root</strong> environment <code>--no-sandbox</code> is added to Chrome automatically; a non-root user keeps the Chrome process sandbox.</li>
-        <li><code>MCODE_BROWSER_BACKEND</code> is <strong>no longer needed</strong> and no longer controls whether Browser Use starts.</li>
-        <li><code>beta.filePanelBrowser</code> controls only the Electron FilePanel provider and is unrelated to Browser Use.</li>
-        <li>The model-side <code>navigate</code> and <code>open_tab</code> tools <strong>accept HTTP(S) URLs only</strong>; local or inline schemes such as <code>file:</code> and <code>data:</code> are rejected before Chrome is launched. To attach a local file, use the Browser upload input, which requires a workspace-authorized path.</li>
-      </ul>
-      <p>The TUI, <code>mcode exec</code> and ACP share one in-process Runtime lifecycle, so Browser behaves identically in all three:</p>
-      <div class="code-block" data-lang="bash">
-        <div class="code-head"><span class="code-lang">bash</span></div>
-        <pre><code>mcode exec "Use the Browser to open https://example.com, tell me the page title and take a screenshot."</code></pre>
-      </div>
 
       <h3 class="h3" id="h-attachments">Attachments and References</h3>
       <h4 class="h4" id="h-attach-cli">Command Line</h4>
@@ -1271,7 +1233,7 @@ browser:
         </table>
       </div>
       <p><strong>Recommendation</strong>: in an unfamiliar codebase, choose the <strong>smallest permission</strong> that still completes the task.</p>
-      <p>The <code>~/.minimax/config.yaml</code> on this machine sets <code>permissionMode: bypassPermissions</code> (grade D); the Runtime additionally keeps <code>~/.minimax/permission.json</code> (grade D).</p>
+      <p>The Runtime additionally writes <code>&lt;data dir&gt;/permission.json</code> to record the current permission state.</p>
 
       <h3 class="h3" id="h-decisions">Handling a Single Decision</h3>
       <div class="table-wrap">

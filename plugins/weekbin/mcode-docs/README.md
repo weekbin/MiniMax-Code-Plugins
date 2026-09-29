@@ -58,7 +58,7 @@ mcode-docs/
 │       ├── config.md            # Configuration structure and all known keys
 │       ├── agents-skills.md     # Agents, skills, tools
 │       ├── plugins-hooks.md     # Plugin manifest contract and hook system
-│       ├── mcp-tools.md         # MCP, browser, attachments
+│       ├── mcp-tools.md         # MCP, attachments
 │       ├── permissions.md       # Permission modes, Plan Mode, sessions
 │       └── coverage.md          # Capability-boundary crosswalk against opencode v2
 └── site/                        # Fully static HTML site (zh + en)
@@ -99,8 +99,8 @@ For direct reading: open `site/index.html` (Chinese) or `site/index.en.html` (En
 ## Documented scope
 
 **Verified as implemented**, and documented in full: 52 slash commands; the complete CLI
-and headless flag set; ACP; the configuration structure; four built-in agents; seventeen
-built-in skills; twelve base tools; user-level and project-level MCP; browser integration;
+and headless flag set; ACP; the configuration structure and per-OS data directories; four
+built-in agents; **sixteen** built-in skills; twelve base tools; user-level and project-level MCP;
 **eleven hook events** in the `MINIMAX`, `CLAUDE`, and `CODEX` formats; five `PermissionMode`
 values; Plan Mode; and session management.
 
@@ -115,6 +115,7 @@ supported alternative.
 | A standalone policy engine (opencode *Policies*) | Least-privilege selection through `/permission` |
 | Warming (opencode *Warming*) | Not required; the runtime manages model caching |
 | *Migrate from V1* | Not applicable; upgrade through `mcode update` |
+| Browser Use in the TUI/CLI | Not exposed there; Browser is a desktop-host capability |
 
 > `/history`, `/fork`, and `/rewind` operate on **sessions and conversation history**. They
 > are not a filesystem snapshot facility, and the two must not be conflated.

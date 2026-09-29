@@ -46,10 +46,10 @@ mcode-docs/
 │   └── reference/               # 八份参考文档
 │       ├── commands.md          # 52 条 slash 命令全表
 │       ├── cli.md               # CLI、无头执行与 ACP
-│       ├── config.md            # 配置结构与全部已知键
+│       ├── config.md            # 配置结构与数据目录
 │       ├── agents-skills.md     # Agent、Skill 与工具
 │       ├── plugins-hooks.md     # 插件 manifest 契约与 Hook 系统
-│       ├── mcp-tools.md         # MCP、浏览器与附件
+│       ├── mcp-tools.md         # MCP 与附件
 │       ├── permissions.md       # 权限模式、Plan Mode 与会话
 │       └── coverage.md          # opencode v2 章节能力边界对照
 └── site/                        # 纯静态 HTML 文档站（中英双语）
@@ -86,8 +86,8 @@ MCP、权限或会话时，Agent 加载 `mcode-docs`。
 
 ## 文档口径
 
-**经核实已实现**并给出完整说明：52 条 slash 命令；CLI 与无头执行全量参数；ACP；配置结构；
-四个内置 Agent；十七个内置 Skill；十二个基础工具；用户级与项目级 MCP；浏览器集成；
+**经核实已实现**并给出完整说明：52 条 slash 命令；CLI 与无头执行全量参数；ACP；配置结构
+与跨平台数据目录；四个内置 Agent；**十六个**内置 Skill；十二个基础工具；用户级与项目级 MCP；
 **11 个 Hook 事件**（`MINIMAX`、`CLAUDE`、`CODEX` 三种格式）；五种 `PermissionMode`；
 Plan Mode；会话管理。
 
@@ -101,6 +101,7 @@ Plan Mode；会话管理。
 | 独立策略引擎（opencode *Policies*） | 经 `/permission` 选择最小可用权限 |
 | 预热（opencode *Warming*） | 无需此步骤；模型缓存由 Runtime 处理 |
 | *Migrate from V1* | 不适用；经 `mcode update` 升级 |
+| TUI/CLI 中的 Browser Use | 未在该端暴露；Browser 属桌面端宿主能力 |
 
 > `/history`、`/fork`、`/rewind` 作用于**会话与对话历史**，并非文件系统快照机制，
 > 二者不应混同。

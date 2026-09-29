@@ -44,34 +44,6 @@ TUI 内用 `/mcp` 查看 MCP 能力与项目配置。
 
 12 个基础工具见 `agents-skills.md`。MCP 服务器提供的工具以 `mcp__<server>__<tool>` 形式出现。
 
-## Browser
-
-Browser Use **默认关闭**，必须通过 beta 开关显式启用：
-
-```yaml
-# <数据目录>/config.yaml
-beta:
-  browserUseTooling: true
-browser:
-  chromePath: /Applications/Google Chrome.app/Contents/MacOS/Google Chrome
-```
-
-- 系统能自动发现 Chrome 时可省略 `browser.chromePath`，但仍需保留 `beta.browserUseTooling: true`。
-- `MCODE_CHROME_PATH` 可在单次启动中覆盖 `browser.chromePath`；
-  否则 macOS、Linux、Windows 会自动查找常见的 Chrome/Chromium。
-- Linux **root** 环境自动为 Chrome 加 `--no-sandbox`；非 root 仍保留 Chrome 进程沙箱。
-- `MCODE_BROWSER_BACKEND` **不再需要**，也不再控制启停。
-- `beta.filePanelBrowser` 只控制 Electron FilePanel Provider，与 Browser Use 无关。
-- 模型侧的 `navigate` / `open_tab` **只接受 HTTP(S) URL**；
-  `file:`、`data:` 等本地或内联 scheme 会在启动 Chrome 前被拒绝。
-  上传本地文件应使用经过 workspace 授权的 Browser upload 输入。
-
-TUI、`mcode exec` 与 ACP 共用同一进程内 Runtime 生命周期，因此 Browser 在三者中行为一致：
-
-```bash
-mcode exec "请使用 Browser 打开 https://example.com，告诉我页面标题并截一张图。"
-```
-
 ## 附件与引用
 
 ### 命令行

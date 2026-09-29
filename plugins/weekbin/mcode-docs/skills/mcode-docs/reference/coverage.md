@@ -49,7 +49,7 @@ mcode 开源范围为「terminal TUI, headless CLI, and ACP」，不提供官方
 
 ### 2. Config ✅
 
-主配置在数据目录的 `config.yaml`（本机为 `~/.minimax/config.yaml`）。
+主配置在数据目录的 `config.yaml`（macOS 为 `/Users/<用户名>/.minimax/config.yaml`）。
 TUI 内 `/config` 查看生效的只读配置。结构见 `config.md`。
 
 ### 3. Migrate from V1 ➖

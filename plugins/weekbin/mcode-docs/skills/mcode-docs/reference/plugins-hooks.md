@@ -1,27 +1,42 @@
 # 插件与 Hook
 
-## 插件管理
+**插件**是给 mcode 装上额外能力的方式：一个插件就是一个文件夹，里面放好
+`.minimax-plugin/plugin.json`（说明我是谁、我提供什么），再加上你要的 Skill、
+MCP 服务器或脚本。装上之后 mcode 就多出一项能力。
+
+**Hook**是插件里的一小段命令，让 mcode 在特定时机自动执行它——比如
+「每次回答结束时发个通知」。可以理解成「自动化触发器」，不需要你每次手动运行。
+
+只想用现成能力的话，装完插件就结束了；只有写自己的插件时才需要看下面的
+Manifest 与 Hook 细节。
+
+## 安装与管理插件
 
 ```bash
+# 看当前装了哪些，以及还能装哪些
 mcode plugin list --available
+# 装一个
 mcode plugin add <plugin-id>
-mcode plugin enable <plugin-id>
+# 临时停用 / 恢复（不会删除）
 mcode plugin disable <plugin-id>
+mcode plugin enable <plugin-id>
+# 卸载
 mcode plugin remove <plugin-id>
+# 浏览可安装的插件
 mcode plugin marketplace
 ```
 
-直接运行 `mcode plugin` 打开交互式 Plugin manager；TUI 内用 `/plugins [filter]`。
+直接运行 `mcode plugin` 会打开交互式插件管理器，用方向键操作更省事；
+TUI 内用 `/plugins [filter]`。
 
 **范围限制**：官方目录支持安装官方插件与发现的本地插件；
 **任意 marketplace 注册与 GitHub URL 导入未在 CLI/TUI 中开放**。
 
-## Manifest 契约
+## 插件清单长什么样
 
-MiniMax 格式插件清单路径：`.minimax-plugin/plugin.json`，
-`schemaVersion` **必须**为 `1`，字段之外的键会被拒绝。
+清单文件固定叫 `.minimax-plugin/plugin.json`，其中 `schemaVersion` **必须**写成 `1`，
+写了清单之外的键会被直接拒绝。**合法字段全集**（源码 `MANIFEST_FIELDS`）：
 
-**合法字段全集**（源码 `MANIFEST_FIELDS`）：
 
 | 字段 | 说明 |
 | --- | --- |
@@ -79,13 +94,18 @@ MiniMax 格式插件清单路径：`.minimax-plugin/plugin.json`，
 
 ---
 
-# Hook 系统
+# Hook：让插件在特定时机自动做事
 
-mcode 的 Hook 是**插件级同步 command Hook**，事件模型**兼容 Claude Code**。
+Hook 就是「到点自动执行的一条命令」。你在插件里写好一条命令，再指明它在什么时候跑，
+mcode 每次遇到那个时机就会执行它。
+
+最常见的例子：想让每次回答结束后都收到通知，就监听 `Stop` 事件，指向一个发通知的脚本。
+事件名取自 Claude Code，因此已有的 Claude Code Hook 配置可以直接迁过来；
 来源格式支持 `MINIMAX`、`CLAUDE`、`CODEX` 三种。
 
-**仅同步 `type: "command"` 处理器受支持。** 注册文档中的 `async` 与 `asyncRewake`
-虽在语法上被接受为布尔值，但任一为 `true` 即判定为 `HOOK_HANDLER_UNSUPPORTED`。
+Hook 会在 mcode 等待它跑完之前**阻塞**后续流程，所以只支持同步的命令型处理器
+（`type: "command"`）。写注册文档时即使写了 `async`，也会被判为不支持
+（`HOOK_HANDLER_UNSUPPORTED`）。
 
 ## 事件全集（11 个）
 

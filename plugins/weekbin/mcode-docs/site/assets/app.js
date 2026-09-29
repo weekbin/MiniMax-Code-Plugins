@@ -475,7 +475,9 @@
     if (!hits.length) {
       var li = doc.createElement('li');
       li.className = 'search-empty';
-      li.textContent = '没有匹配「' + q + '」的内容。';
+      li.textContent = currentLang() === 'en'
+        ? 'No matches for “' + q + '”.'
+        : '没有匹配「' + q + '」的内容。';
       searchResults.appendChild(li);
       return;
     }
