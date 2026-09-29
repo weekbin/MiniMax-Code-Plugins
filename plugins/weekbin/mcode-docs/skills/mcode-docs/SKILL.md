@@ -43,7 +43,7 @@ mcode --version
 | 常见误解 | 核实结果 |
 | --- | --- |
 | `mcode mcp add`、`mcode skill list`、`mcode agent` 等 CLI 子命令 | **不存在**。实跑回落到根帮助。相应能力由配置文件与 TUI slash 命令提供 |
-| mcode 不具备 Hook 系统（因打包产物中检索不到 `PreToolUse`） | **存在**。共 11 个事件，兼容 Claude Code 事件模型，支持 `MINIMAX`/`CLAUDE`/`CODEX` 三种格式 |
+| mcode 不具备 Hook 系统（因打包产物中检索不到 `PreToolUse`） | **存在**。兼容 Claude Code 事件模型，支持 `MINIMAX`/`CLAUDE`/`CODEX` 三种格式 |
 | mcode 具备文件系统快照回滚、Gist 分享、格式化器、预热 | **均不存在**。`history`/`fork`/`rewind` 属会话与对话层面的操作，非文件快照 |
 
 ## mcode 的定位
@@ -65,7 +65,7 @@ npm install -g @minimax-ai/code \
 
 卸载：`npm uninstall -g @minimax-ai/code`；更新：`mcode update`。
 
-## CLI 速查（逐条实跑验证）
+## CLI 速查
 
 ```bash
 mcode                      # 启动 TUI
@@ -128,7 +128,7 @@ Transcript 2、Capability 1。
 
 ## 权限模式
 
-`PermissionMode` 共 5 个取值：`default`、`acceptEdits`、`bypassPermissions`、`auto`、`off`。
+`PermissionMode` 取值：`default`、`acceptEdits`、`bypassPermissions`、`auto`、`off`。
 
 TUI 中对应 Ask / Auto / Full access 三档界面文案：
 `default` → "Confirm sensitive actions"、`auto` → "Ask only when risk is high"、
@@ -188,8 +188,7 @@ MCP 单独放 `~/.minimax/mcp.json`（用户级）与 `<workspace>/.mcp.json`（
 
 > 内置 Agent 以包内 `assets/agents/builtin-agents.json` 为准。用户在 `~/.minimax/agents/`
 > 下自建的 Agent 不属于内置清单，不要混入。内置 Skill 以运行时 `~/.minimax/.builtin-skills/`
-> 目录为准；在 0.5.8 中包内布局已改为按 Agent 分散（`assets/agents/mavis/skills/`），
-> 不再是文档早期描述的单一 `assets/skills/` 目录。
+> 目录为准；在 0.5.8 中包内布局按 Agent 分散在 `assets/agents/mavis/skills/`。
 
 详见 `reference/agents-skills.md`。
 

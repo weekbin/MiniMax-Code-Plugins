@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MCode · MiniMax Code 概要说明</title>
-<meta name="description" content="MiniMax Code（mcode）概要说明与事实基线。逐节说明使用形态与安装、CLI 与无头执行全量参数、ACP 接入、TUI slash 命令全表、配置结构与开关、内置 Agent 与 Skill、插件与 MiniApp 编写契约、Hook 系统完整契约、MCP 与内置工具、权限模式与 Plan Mode、会话管理。本文不止罗列功能：每条主张均按 A（本机实跑）／B（厂商随包文件）／C（官方源码定义）／D（运行时真实配置）四级取证，可追溯至 VERIFICATION.md；经核实不存在的能力明确标注为不存在并给出替代路径，而非省略或推测。取证基线版本 0.5.8。随附中英双语纯静态 HTML 文档站，无构建步骤、无 MCP 服务，可离线阅读。">
+<meta name="description" content="MiniMax Code（mcode）概要说明与事实基线。逐节说明使用形态与安装、CLI 与无头执行全量参数、ACP 接入、TUI slash 命令全表、配置结构与开关、内置 Agent 与 Skill、插件与 MiniApp 编写契约、Hook 系统完整契约、MCP 与内置工具、权限模式与 Plan Mode、会话管理。经核实不存在的能力明确标注为不存在并给出替代路径。基线版本 0.5.8。随附中英双语纯静态 HTML 文档站，无构建步骤、无 MCP 服务，可离线阅读。">
 <meta name="color-scheme" content="light dark">
 <link rel="icon" type="image/png" href="assets/minimax.png">
 <link rel="stylesheet" href="assets/style.css">
@@ -201,7 +201,7 @@ npm uninstall -g @minimax-ai/code</code></pre>
       </div>
 
       <h3 class="h3" id="h-exec">mcode exec（Headless）</h3>
-      <p>不启动 TUI，直接执行一次任务。下列命令均已在本机 0.5.8 实跑通过：</p>
+      <p>不启动 TUI，直接执行一次任务：</p>
       <div class="code-block" data-lang="bash">
         <div class="code-head"><span class="code-lang">bash</span></div>
         <pre><code># 基本用法：直接给一句话
@@ -855,7 +855,7 @@ skillEvolve:
 
       <h3 class="h3" id="h-stopping-work">停止对话与后台工作</h3>
       <ul>
-        <li>显式停止（如 TUI 中按 <code>Esc</code>）会取消该对话在当前进程内拥有的后台 Bash 命令与子 Agent，包括 <code>task_append</code> 续跑及其子回合派生的工作。完成通知不再自动唤醒对话。</li>
+        <li>显式停止（如 TUI 中按 <code>Esc</code>）会取消该对话在当前进程内拥有的后台 Bash 命令与子 Agent，包括 <code>task_append</code> 续跑及其子回合派生的工作。完成通知不会自动唤醒对话。</li>
         <li>用 <code>/clear</code> 或切换 Session 离开对话时，会停止当前回合并暂停 Goal 与排队指令，但<strong>后台工作继续运行</strong>。</li>
         <li>只取消本地拥有的运行中任务；由其它 Runtime 进程持有的任务不受影响。</li>
       </ul>
@@ -1423,7 +1423,7 @@ export async function start(context) {
       <p>字段：<code>type</code>、<code>command</code>、<code>args</code>、<code>env</code>、<code>description</code>、<code>enabled</code>、<code>configured</code>。<code>env</code> 中可使用 <code>${PLUGIN_ROOT}</code> 与 <code>${PLUGIN_DATA}</code> 占位符。</p>
 
       <h3 class="h3" id="h-mcp-tools">工具</h3>
-      <p>12 个基础工具见 <a href="#h-tools">宿主工具</a>。MCP 服务器提供的工具以 <code>mcp__&lt;server&gt;__&lt;tool&gt;</code> 形式出现。</p>
+      <p>基础工具见 <a href="#h-tools">宿主工具</a>。MCP 服务器提供的工具以 <code>mcp__&lt;server&gt;__&lt;tool&gt;</code> 形式出现。</p>
 
       <h3 class="h3" id="h-attachments">附件与引用</h3>
       <h4 class="h4" id="h-attach-cli">命令行</h4>

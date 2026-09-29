@@ -73,7 +73,7 @@ mcode-docs/
 - 视觉系统取自 **MiniMax 开放平台文档中心**
   （<https://platform.minimax.cn/docs/api-reference/api-overview>），组件几何与中性灰配色另据
   **platform.minimaxi.com 文档站**截图逐像素取样。设计令牌以实测方式提取，非目测比对：取自该页
-  404 个 CSS 变量，并以关键元素的 `getComputedStyle` 与官方截图逐像素取样补充。主要实测值：
+  的 CSS 变量，并以关键元素的 `getComputedStyle` 与官方截图逐像素取样补充。主要实测值：
   `--primary 24 30 37`、`--primary-light 74 222 128`、默认边框 `--gray-100 #EEEEEF`、
   标题 `#171717`、二级标题与正文链接 `#1E293B`（字重 600，带下划线）、正文 `#3F3F3F`
   `16px/24px`、导航 `#707071`、行内代码底色 `#EEEEEF@50%`（`2px 8px` 内边距，`6px` 圆角）、
@@ -96,9 +96,8 @@ MCP、权限或会话时，Agent 加载 `mcode-docs`。
 ## 文档口径
 
 **经核实已实现**并给出完整说明：slash 命令全表；CLI 与无头执行全量参数；ACP；配置结构
-与跨平台数据目录；四个内置 Agent；**十六个**内置 Skill；十二个基础工具；用户级与项目级 MCP；
-**11 个 Hook 事件**（`MINIMAX`、`CLAUDE`、`CODEX` 三种格式）；五种 `PermissionMode`；
-Plan Mode；会话管理。
+与跨平台数据目录；内置 Agent；内置 Skill；基础工具；用户级与项目级 MCP；Hook 事件
+（`MINIMAX`、`CLAUDE`、`CODEX` 三种格式）；`PermissionMode`；Plan Mode；会话管理。
 
 **经核实不存在**。文档中均予以明确标注，并给出受支持的替代路径。
 

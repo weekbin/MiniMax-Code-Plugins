@@ -42,7 +42,7 @@ TUI 内用 `/mcp` 查看 MCP 能力与项目配置。
 
 ## 工具
 
-12 个基础工具见 `agents-skills.md`。MCP 服务器提供的工具以 `mcp__<server>__<tool>` 形式出现。
+基础工具见 `agents-skills.md`。MCP 服务器提供的工具以 `mcp__<server>__<tool>` 形式出现。
 
 ## 附件与引用
 

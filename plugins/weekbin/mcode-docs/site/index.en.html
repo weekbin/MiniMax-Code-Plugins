@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MCode · MiniMax Code Overview</title>
-<meta name="description" content="Overview and factual baseline for MiniMax Code (mcode). Walks through the usage forms and installation, the complete CLI and headless flag set, ACP integration, all 52 TUI slash commands, configuration structure and switches, the built-in agents and skills, the authoring contracts for plugins and MiniApps, the full Hook contract, MCP and the built-in tools, permission modes and Plan Mode, and session management. This is not a feature list: every claim is graded A (live run on this machine), B (first-party vendor files shipped in the package), C (authoritative definitions in the official source) or D (real runtime configuration on this machine), and is traceable to VERIFICATION.md. Capabilities that were checked and found absent are stated as absent together with a substitute path, rather than being omitted or guessed. The evidence baseline is version 0.5.8. Ships with a bilingual, purely static HTML documentation site: no build step, no MCP server, readable offline.">
+<meta name="description" content="Overview and factual baseline for MiniMax Code (mcode). Walks through the usage forms and installation, the complete CLI and headless flag set, ACP integration, the TUI slash command table, configuration structure and switches, the built-in agents and skills, the authoring contracts for plugins and MiniApps, the full Hook contract, MCP and the built-in tools, permission modes and Plan Mode, and session management. Capabilities that were checked and found absent are stated as absent together with a substitute path. Baseline version 0.5.8. Ships with a bilingual, purely static HTML documentation site: no build step, no MCP server, readable offline.">
 <meta name="color-scheme" content="light dark">
 <link rel="icon" type="image/png" href="assets/minimax.png">
 <link rel="stylesheet" href="assets/style.css">
@@ -202,7 +202,7 @@ npm uninstall -g @minimax-ai/code</code></pre>
       </div>
 
       <h3 class="h3" id="h-exec">mcode exec (Headless)</h3>
-      <p>Runs a single task without starting the TUI. Every command below was actually run against 0.5.8 on this machine:</p>
+      <p>Runs a single task without starting the TUI:</p>
       <div class="code-block" data-lang="bash">
         <div class="code-head"><span class="code-lang">bash</span></div>
         <pre><code># Basic: just give it a sentence
@@ -856,7 +856,7 @@ skillEvolve:
 
       <h3 class="h3" id="h-stopping-work">Stopping a Conversation and Background Work</h3>
       <ul>
-        <li>An explicit stop (such as pressing <code>Esc</code> in the TUI) cancels the background Bash commands and sub-agents owned by that conversation within the current process, including work derived from <code>task_append</code> continuations and their sub-turns. Completion notifications no longer wake the conversation automatically.</li>
+        <li>An explicit stop (such as pressing <code>Esc</code> in the TUI) cancels the background Bash commands and sub-agents owned by that conversation within the current process, including work derived from <code>task_append</code> continuations and their sub-turns. Completion notifications do not wake the conversation automatically.</li>
         <li>Leaving a conversation with <code>/clear</code> or by switching Sessions stops the current turn and suspends the Goal and queued instructions, but <strong>background work keeps running</strong>.</li>
         <li>Only locally owned running tasks are cancelled; tasks held by other Runtime processes are unaffected.</li>
       </ul>
@@ -1424,7 +1424,7 @@ export async function start(context) {
       <p>Fields: <code>type</code>, <code>command</code>, <code>args</code>, <code>env</code>, <code>description</code>, <code>enabled</code>, <code>configured</code>. The <code>${PLUGIN_ROOT}</code> and <code>${PLUGIN_DATA}</code> placeholders may be used inside <code>env</code>.</p>
 
       <h3 class="h3" id="h-mcp-tools">Tools</h3>
-      <p>The 12 base tools are listed under <a href="#h-tools">Host Tools</a>. Tools contributed by MCP servers appear as <code>mcp__&lt;server&gt;__&lt;tool&gt;</code>.</p>
+      <p>The base tools are listed under <a href="#h-tools">Host Tools</a>. Tools contributed by MCP servers appear as <code>mcp__&lt;server&gt;__&lt;tool&gt;</code>.</p>
 
       <h3 class="h3" id="h-attachments">Attachments and References</h3>
       <h4 class="h4" id="h-attach-cli">Command Line</h4>

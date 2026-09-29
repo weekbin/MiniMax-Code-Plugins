@@ -69,7 +69,6 @@ mcode exec -o ./answer.md "只回复 OK"
 echo "只回复 OK" | mcode exec --input -
 ```
 
-以上命令均已在 0.5.8 实跑通过（A 级）。
 
 ### 参数全集
 

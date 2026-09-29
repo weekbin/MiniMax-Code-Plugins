@@ -59,7 +59,7 @@ mcode-docs/
 ├── skills/mcode-docs/
 │   ├── SKILL.md                 # Reusable Skill
 │   └── reference/               # Nine reference documents
-│       ├── commands.md          # Complete table of the 52 slash commands
+│       ├── commands.md          # Complete table of the TUI slash commands
 │       ├── cli.md               # CLI, headless execution, ACP
 │       ├── config.md            # Configuration structure and all known keys
 │       ├── agents-skills.md     # Agents, skills, tools
@@ -112,11 +112,10 @@ For direct reading: open `site/index.html` (Chinese) or `site/index.en.html` (En
 
 ## Documented scope
 
-**Verified as implemented**, and documented in full: 52 slash commands; the complete CLI
-and headless flag set; ACP; the configuration structure and per-OS data directories; four
-built-in agents; **sixteen** built-in skills; twelve base tools; user-level and project-level MCP;
-**eleven hook events** in the `MINIMAX`, `CLAUDE`, and `CODEX` formats; five `PermissionMode`
-values; Plan Mode; and session management.
+**Verified as implemented**, and documented in full: the TUI slash command table; the complete
+CLI and headless flag set; ACP; the configuration structure and per-OS data directories; the
+built-in agents and skills; the base tools; user-level and project-level MCP; the hook events
+in the `MINIMAX`, `CLAUDE`, and `CODEX` formats; `PermissionMode`; Plan Mode; and session management.
 
 **Verified as absent.** Each is stated explicitly in the documentation, together with the
 supported alternative.

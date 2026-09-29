@@ -81,7 +81,7 @@ Skill 以 `SKILL.md` 为入口，通过插件 manifest 的 `skills` 数组挂载
 `SKILL.md` 带 YAML frontmatter（至少 `name` 与 `description`）。
 相关开关：`skills.external.enabled`（外部 Skill）、`skillEvolve.enabled`（自演进）。
 
-## 宿主工具（12 个基础工具）
+## 宿主工具
 
 | 工具 | 作用 |
 | --- | --- |

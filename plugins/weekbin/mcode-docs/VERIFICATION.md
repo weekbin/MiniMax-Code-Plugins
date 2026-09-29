@@ -1074,6 +1074,124 @@ switch to 中文`），仅 `title` 遗漏。
 
 ---
 
+## 21. 依 `technical-doc-discipline` 复审并修正（2026-09-29）
+
+以用户级 skill `technical-doc-discipline`（`~/.minimax/skills/technical-doc-discipline/`）
+对全插件做一轮机械复审。该 skill 的取舍来源是本台账前 20 轮已确立的口径，
+本节记录本轮**实跑审计的输出**与**刻意不适用的条目**。
+
+### 21.1 审计方法
+
+把 skill「手册里不出现的东西」清单逐条写成正则，对手册侧
+（`site/*.html`、`README*.md`、`SKILL.md`、`reference/*.md`）实跑，
+再按**英文模式**跑第二轮。首轮只写中文正则，漏掉英文站的计数，第二轮补上。
+取证过程与具体数字留在本台账，不进手册。
+
+### 21.2 本轮修正（26 处）
+
+**取证痕迹进入读者手册**
+- 两站 `<meta name="description">`：删除 A/B/C/D 四级取证自述与
+  「本文不止罗列功能 / This is not a feature list」对比句。
+  ZH 328→238 字符，EN 980→654 字符。
+- `site/index.html` `mcode exec` 段：「下列命令均已在本机 0.5.8 实跑通过：」
+  改为「不启动 TUI，直接执行一次任务：」；EN 段同步
+  （`Every command below was actually run against 0.5.8 on this machine` 删除）。
+- `reference/cli.md`：删除整行「以上命令均已在 0.5.8 实跑通过（A 级）。」
+- `reference/miniapp.md`：删除 3 处逐条等级标记
+  （`（C 级）`、`（C 级：随包代码构造 stdio 入口点）`、`（C 级：t4a 校验 transport URL）`）。
+  `chunks/chunk-4ESEMCSG.js` 这类**路径出处保留**——去掉的是等级标签，不是可追溯性。
+
+**交付史叙事**
+- `SKILL.md`：「在 0.5.8 中包内布局已改为按 Agent 分散……不再是文档早期描述的
+  单一 `assets/skills/` 目录」→ 改为「包内布局按 Agent 分散在
+  `assets/agents/mavis/skills/`」。只描述现状。
+- 双站会话段：「完成通知不再自动唤醒对话」/「Completion notifications no longer
+  wake…」→ 改为「不会自动唤醒」/「do not wake」，去掉变更叙事。
+
+**自述计数**
+- EN 站 meta、`README.md` 两处残留 `52 slash commands`（上轮只清理了中文侧）。
+- `SKILL.md`：`共 11 个事件`、`PermissionMode 共 5 个取值`（上轮漏网）、
+  标题 `## CLI 速查（逐条实跑验证）` 的取证后缀。
+- `reference/agents-skills.md`：`## 宿主工具（12 个基础工具）` 去掉括号计数。
+- `reference/coverage.md` 5 处、`reference/mcp-tools.md` 1 处、`site/index.html` 1 处
+  「12 个基础工具 / 16 个内置 Skill / 4 个内置 Agent」冗余计数。
+- `README.zh-CN.md`：「取自该页 404 个 CSS 变量」——记录本文档自身构建过程，删除计数。
+
+**保留（刻意判断，非遗漏）**
+- `reference/coverage.md`「opencode v2 文档站共 24 个章节」：描述**上游文档**规模，
+  是映射表的语境，非本手册自述。
+- `site/index.html` 正文「合法项 4 个」「仅 5 个事件」「17 个白名单环境变量」：
+  数字本身即闭合集事实（读者需要知道白名单只有 17 个），不是统计磁贴。
+- 标题里的「三类东西，别混为一谈」「三种使用形态」：数字是论证成分，
+  删掉后标题失去意义。与被删的「TUI 命令（52 条）」不同型。
+
+### 21.3 双语站配平:上轮结论有误
+
+复核发现 §20.9 记的「标签逐类配平（……td/th……全等）」**不成立**。
+以 `git show HEAD:` 取改动前文件复算：
+
+| 标签 | HEAD ZH | HEAD EN | 结论 |
+| --- | --- | --- | --- |
+| div/table/ul/li/tr/section/p/h1-h4/a/span | 相等 | 相等 | 配平 |
+| td | 680 | 674 | 差 6 |
+| th | 105 | 103 | 差 2 |
+
+逐表定位后确认唯一来源是**表 13**（`/fork` `/edit` `/rewind`）：
+ZH 为 4 列（命令 / 英文文案 / 中文文案 / 行为），EN 为 2 列（Command / Behaviour）。
+该两列是 TUI 的双语标签对照，**只在中文站有意义**，属合理差异而非结构断裂。
+因此本轮**不改表 13**，改为把「单元格数不参与配平」写死进测试并注明原因。
+
+另有两处 `<code>` 包裹粒度差（表 1 26/27、表 34 10/11），文本内容一致，
+属标记粒度而非内容或结构问题，本轮不动。
+
+### 21.4 机械规则落成测试
+
+新增 `plugins/weekbin/mcode-docs/test/manual-discipline.test.mjs`（6 项）。
+放在插件目录内而非仓库根 `test/`，因为本插件的改动边界不含仓库根；
+`node --test` 可递归发现该路径（探测：341 → 342 项）。
+
+覆盖：取证痕迹、交付史叙事、括号裸计数、废弃译名、双语站核心结构配平、
+逐表行数与表数配平。
+
+**反向验证**：逐类注入违规确认能抓到，而不是只跑绿——
+取证痕迹 / 交付史叙事 / 括号裸计数 / 废弃译名 / 结构不配平 / 逐表行数，
+**6 类全部报红**，回滚后 0 失败。
+
+**linter 在此停止**：以下需语义判断，不写进断言，交人工审——
+某个破折号是否承重（术语—定义列表、表格空值、中文国标均合法）；
+某句话是否在帮读者完成任务；一个数字是闭合集事实还是自述计数。
+`/changelog` 是 mcode 的 TUI 命令名，测试中已排除，不算交付史叙事。
+
+### 21.5 刻意不适用的通用规则
+
+复审同时评估了 6 份公开的技术写作 skill（`anthropics/knowledge-work-plugins`、
+`anthropics/skills`、`github/awesome-copilot`、`warpdotdev/common-skills`、
+`riekelt/technical-writer`、`itsvedantkumar/vstack` + `cursor/plugins` 同一份）。
+结论写入用户级 skill 的「刻意不采纳」表，此处只记取舍结论：
+
+- **禁一切 em/en dash**：不采纳。实测 EN 站 35 处命中中，绝大部分是
+  「术语 — 定义」列表骨架与表格空值占位，中文 `——` 是国标标点；
+  纯插入语仅 2 处。一刀切会改难看。**故不做全库 grep。**
+- **标题一律 sentence case**：不采纳。EN 站 11 个标题为 Title Case，
+  翻转须连界面一起翻，不在文档单侧做。
+- **文档内设「How to read this」标注证据等级**：不采纳。与 §20 确立的
+  「取证过程不进手册」正面冲突，证据等级一律留在本台账。
+- **起草前须交互确认 / 等批准**：不采纳。本项目按轮次自主推进。
+- **未经许可不得查外部来源**：不采纳，且是排除项——
+  `github/awesome-copilot@documentation-writer` 内含此条，会掐死 A/B/C/D 取证纪律。
+- `anthropics/skills@doc-coauthoring`（87.1K 安装，最高）与已装的
+  `superpowers:brainstorming`、`verifier` 重叠，不装。
+
+### 21.6 本轮验证
+
+- `npm test`：**347 项 / 346 pass / 1 skipped / 0 fail**（基线 341，新增 6）
+- `node --check site/assets/app.js` 通过
+- 反向验证 6/6 报红，回滚后 0 失败
+- 双语站配平按 21.3 的修正口径复核通过
+
+
+---
+
 ## 13. 本插件自身声明
 
 本插件**不提供 MCP 服务**，交付物为：一个可复用 Skill（`skills/mcode-docs/SKILL.md` +

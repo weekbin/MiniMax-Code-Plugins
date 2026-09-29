@@ -13,9 +13,9 @@ opencode v2 文档站（<https://opencode.ai/v2/docs/>）共 24 个章节。下�
 | 2 | Config | `~/.minimax/config.yaml` + `/config` | ✅ |
 | 3 | Migrate from V1 | 不适用（无分代迁移概念） | ➖ |
 | 4 | Troubleshooting | 常见问题与安装修复 | ✅ |
-| 5 | Agents | 4 个内置 Agent + `agents.*` 配置 | ✅ |
+| 5 | Agents | 内置 Agent + `agents.*` 配置 | ✅ |
 | 6 | Models | `/model`、上下文档位、effort | ✅ |
-| 7 | Skills | 16 个内置 Skill + SKILL.md 扩展 | ✅ |
+| 7 | Skills | 内置 Skill + SKILL.md 扩展 | ✅ |
 | 8 | Themes | `/theme` | ✅ |
 | 9 | Commands | slash 命令全表 | ✅ |
 | 10 | Plugins | `/plugins` + `mcode plugin` + manifest 契约 | ✅ |
@@ -27,7 +27,7 @@ opencode v2 文档站（<https://opencode.ai/v2/docs/>）共 24 个章节。下�
 | 16 | Formatters | 无代码格式化器 | ❌ |
 | 17 | References | `@` 引用、`--file` 附件 | ✅ |
 | 18 | Attachments | `--file`、图片 `[Image #n]` | ✅ |
-| 19 | Tools | 12 个基础工具 + MCP 工具（Browser 未暴露给 TUI/CLI） | ✅ |
+| 19 | Tools | 基础工具 + MCP 工具（Browser 未暴露给 TUI/CLI） | ✅ |
 | 20 | MCP servers | `~/.minimax/mcp.json` + `.mcp.json` + `/mcp` | ✅ |
 | 21 | Permissions | `PermissionMode` 5 值 + `/permission` | ✅ |
 | 22 | Policies | 无独立策略层，由 PermissionMode 承载 | ⚠️ |
@@ -82,7 +82,7 @@ mcode 没有 V1/V2 分代。需要升级版本时用 `mcode update`（会检查�
 
 ### 7. Skills ✅
 
-16 个内置 Skill，见 `agents-skills.md`。TUI 内 `/skills` 列出内置与用户 Skill。
+内置 Skill，见 `agents-skills.md`。TUI 内 `/skills` 列出内置与用户 Skill。
 Skill 以 `SKILL.md` 为入口，通过插件的 `skills` 数组挂载。
 
 ### 8. Themes ✅
@@ -159,7 +159,7 @@ mcode **没有**保存时自动格式化的 formatter 概念。
 
 ### 19. Tools ✅
 
-12 个基础工具：`read`、`write`、`edit`、`bash`、`grep`、`glob`、`task`、`todowrite`、
+基础工具：`read`、`write`、`edit`、`bash`、`grep`、`glob`、`task`、`todowrite`、
 `skill`、`ask_user`、`web_search`、`web_fetch`。
 外加 MCP 提供的 `mcp__*` 工具。**Browser 工具经实测未装配到 TUI/CLI**，属桌面端宿主能力，
 终端侧改用 `web_search` / `web_fetch`。详见 `mcp-tools.md`。

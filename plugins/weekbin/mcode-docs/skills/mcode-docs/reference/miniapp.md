@@ -8,12 +8,12 @@ MiniApp 是**给人操作的有界面应用**，不是给模型调的工具，�
 **给人操作的有界面应用**，不是给模型调的工具。官方口径：「MiniApps are
 interactive apps packaged as MiniMax Plugins」（官方社区仓库 README）。
 
-**仅桌面端提供**：0.5.8 随包 CLI 的 `mcode --help` 中无 miniapp 相关命令（A 级实跑），
+**仅桌面端提供**：0.5.8 随包 CLI 的 `mcode --help` 中无 miniapp 相关命令，
 `mcode exec` 与 ACP 同样用不到。安装方式与插件一致：整个插件目录（含隐藏的
 `.minimax-plugin/`）放入 `<数据目录>/plugins/`，重启桌面端后从 Mini App 入口打开。
 官方社区仓库：<https://github.com/MiniMax-AI/MiniMax-Code-MiniApps>。
 
-随包代码佐证（C 级）：`chunks/chunk-4ESEMCSG.js` 导出
+`chunks/chunk-4ESEMCSG.js` 导出
 `computeMiniAppPackageDigests` / `computePluginDirectoryDigest`，并含
 `MINIAPP_ARTIFACTS_EXCLUDED` 诊断码，说明 MiniApp 走独立的包摘要与产物排除逻辑。
 
@@ -60,8 +60,8 @@ MiniApp 负责人看**。
 生命周期**绑在 Runtime 上**：Runtime 读 `<数据目录>/mcp.json`、`<workspace>/.mcp.json`
 或插件 `mcpServers` 后建连，Runtime 结束一并释放。
 
-- `stdio`：宿主拉起**子进程**，随连接存在（C 级：随包代码构造 stdio 入口点）。
-- `http` / `sse`：连远程，宿主只保持连接（C 级：`t4a` 校验 transport URL）。
+- `stdio`：宿主拉起**子进程**，随连接存在。
+- `http` / `sse`：连远程，宿主只保持连接。
 - 子进程仅继承 **17 个白名单环境变量**，无凭据；其余须在 `env` 显式声明。
 
 ### MiniApp
