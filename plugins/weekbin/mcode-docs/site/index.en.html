@@ -74,7 +74,8 @@
         <li><a href="#commands">TUI Commands (52)</a></li>
         <li><a href="#config">Configuration</a></li>
         <li><a href="#agents-skills">Agents &amp; Skills</a></li>
-        <li><a href="#plugins-hooks">Capabilities &amp; Plugins</a></li>
+        <li><a href="#plugins-hooks">Plugins</a></li>
+        <li><a href="#miniapp">MiniApp</a></li>
         <li><a href="#mcp-browser">MCP &amp; Tools</a></li>
         <li><a href="#permissions">Permissions &amp; Sessions</a></li>
         <li><a href="#sharing">Sharing</a></li>
@@ -318,7 +319,7 @@ mcode plugin disable &lt;plugin-id&gt;
 mcode plugin remove &lt;plugin-id&gt;
 mcode plugin marketplace</code></pre>
       </div>
-      <p>Running <code>mcode plugin</code> directly opens the interactive Plugin manager. See <a href="#plugins-hooks">Capabilities &amp; Plugins</a>.</p>
+      <p>Running <code>mcode plugin</code> directly opens the interactive Plugin manager. See <a href="#plugins-hooks">Plugins</a>.</p>
 
       <h3 class="h3" id="h-troubleshooting">Installation Troubleshooting</h3>
       <h4 class="h4" id="h-trouble-sqlite">npm 12 blocks install scripts / missing native SQLite dependency</h4>
@@ -844,12 +845,27 @@ skillEvolve:
       </ul>
     </section>
 
-    <!-- ══════════════════ 7. Capabilities and Plugins ══════════════════ -->
+    <!-- ══════════════════ 7. Plugins ══════════════════ -->
     <section class="doc-section" id="plugins-hooks" aria-labelledby="h-plugins-hooks">
-      <h2 class="h2" id="h-plugins-hooks">Capabilities &amp; Plugins</h2>
-      <p>This section works in two layers. First the four <strong>basic capability units</strong>, each of which is useful on its own. Then <strong>plugins</strong>, the packaging layer that bundles them for distribution. A plugin is not a capability of its own — it is the box they ship in.</p>
-
-      <h3 class="h3" id="h-concepts">The Four Basic Concepts</h3>
+      <h2 class="h2" id="h-plugins-hooks">Plugins</h2>
+      <p>The things that extend mcode fall into <strong>three</strong> categories, and they are not peers of one another. This section covers only the second: <strong>a plugin is a distribution container</strong> — a folder on disk plus a manifest. It is not a capability in its own right.</p>
+      <h3 class="h3" id="h-c-three">Three Kinds of Thing — Do Not Conflate Them</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th></th><th>Capability unit</th><th>Plugin</th><th>MiniApp</th></tr></thead>
+          <tbody>
+            <tr><td>What it is</td><td>A part that extends the <strong>Agent</strong></td><td>A <strong>distribution container</strong>, not a capability</td><td>An <strong>interactive app a person operates</strong></td></tr>
+            <tr><td>Specifically</td><td>Skill / MCP server / Hook</td><td>The folder that packages the left-hand column</td><td>Dashboards, reports, approval panels</td></tr>
+            <tr><td>Who it is for</td><td>The Agent (reads / calls it) or the system (runs it automatically)</td><td>The installer and the Host</td><td>A person (opens it and clicks)</td></tr>
+            <tr><td>Has a runtime?</td><td>MCP in <code>stdio</code> form spawns a child process</td><td><strong>No</strong> — just a declaration read over and over</td><td><strong>A separate Node process</strong>, started on demand</td></tr>
+            <tr><td>Which section</td><td>Skill: <a href="#agents-skills">Agents &amp; Skills</a>; MCP: <a href="#mcp-browser">MCP &amp; Tools</a>; Hook: this section</td><td>This section</td><td><a href="#miniapp">MiniApp</a> (a chapter of its own)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout callout-note">
+        <p><strong>The easiest thing to get wrong</strong>: a MiniApp <strong>is distributed in plugin form</strong> — the official wording is "MiniApps are interactive apps packaged as MiniMax Plugins". But <strong>what they share is the distribution mechanism, not the category</strong>. The dividing line is three things: the <code>mcode</code> field in <code>package.json</code>, a <code>miniapp/</code> payload root, and a Node entry. All three present means MiniApp; anything less is a normal plugin. See <a href="#miniapp">MiniApp</a>.</p>
+      </div>
+      <h3 class="h3" id="h-c-units">Capability Units: Three Parts That Extend the Agent</h3>
 
       <h4 class="h4" id="h-c-skill">Skill: a written method of working</h4>
       <p>A Skill is a set of instructions telling the Agent what to do first for a given task, which tools to use, and how to check the result. It <strong>adds no new tools</strong> — it just makes the Agent more consistent at a particular kind of work.</p>
@@ -863,220 +879,22 @@ skillEvolve:
       <p>A Hook is a command mcode executes automatically at a chosen moment, so you never run it by hand. Typical uses: "notify me when a reply finishes", "check before anything deletes a file".</p>
       <p>Hooks are registered by a plugin. Event names come from Claude Code, so an existing Claude Code Hook configuration can be moved over as-is. See <a href="#h-hooks">Hook details</a> for the fields and registration format.</p>
 
-      <h4 class="h4" id="h-c-miniapp">MiniApp: an interactive app with a UI</h4>
-      <p>A MiniApp is an <strong>interface a person operates</strong>, not a tool the model calls. It ships as a plugin too; once installed you open it on the desktop app and get an interactive page — a usage dashboard, a report, an approval panel.</p>
-      <div class="callout callout-warn">
-        <p><strong>MiniApps are a desktop-app feature only.</strong> The terminal build <code>mcode</code> has no such capability — <code>mcode --help</code> lists no miniapp command, which was confirmed by running it. <code>mcode exec</code> and ACP cannot use one either.</p>
-      </div>
-      <p>Installation matches a normal plugin: copy the whole plugin directory (including the hidden <code>.minimax-plugin/</code>) into <code>&lt;data dir&gt;/plugins/</code>, restart the desktop app, then open it from the Mini App entry point. The official community repository is <a href="https://github.com/MiniMax-AI/MiniMax-Code-MiniApps" target="_blank" rel="noopener">MiniMax-AI/MiniMax-Code-MiniApps</a>.</p>
-
-      <h3 class="h3" id="h-c-compare">Which One Should You Use?</h3>
+      <h3 class="h3" id="h-plugin-what">Plugins: the box that holds them</h3>
+      <p>A plugin is a folder on disk: it contains a manifest at <code>.minimax-plugin/plugin.json</code> declaring which Skills, MCP servers, and Hooks it provides. For the person installing it, the point is that <strong>one install brings everything into place</strong> — no separate Skill install, no MCP wiring, no manual hook registration.</p>
+      <p>It <strong>has no runtime of its own</strong> — no resident process, no port of its own, just a declaration the Host reads over and over. Once installed and enabled it is assembled in every subsequent session, until you explicitly <code>disable</code> or <code>remove</code> it. For when each of the three kinds takes effect, see <a href="#h-lifecycle">the lifecycle comparison</a>.</p>
+      <h3 class="h3" id="h-plugin-declare">What a Plugin Can Declare</h3>
+      <p>A manifest can declare three capability units, each in its own field:</p>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Concept</th><th>What it is</th><th>Who uses it</th><th>Typical shape</th></tr></thead>
+          <thead><tr><th>Capability unit</th><th>Manifest field</th><th>After installing</th></tr></thead>
           <tbody>
-            <tr><td><strong>Skill</strong></td><td>Knowledge / workflow</td><td>The Agent (reads it)</td><td>A <code>SKILL.md</code> folder</td></tr>
-            <tr><td><strong>MCP server</strong></td><td>Tool access</td><td>The Agent (calls it)</td><td>An external process or service</td></tr>
-            <tr><td><strong>Hook</strong></td><td>Automatic trigger</td><td>The system (runs it)</td><td>A one-line command script</td></tr>
-            <tr><td><strong>MiniApp</strong></td><td>Interactive app</td><td>A person (clicks it)</td><td>A page with a UI</td></tr>
+            <tr><td><strong>Skill</strong></td><td><code>skills[]</code></td><td>Callable in the TUI with <code>/&lt;skill name&gt;</code></td></tr>
+            <tr><td><strong>MCP server</strong></td><td><code>mcpServers</code></td><td>Connected when the Runtime assembles; its tools enter the Agent list</td></tr>
+            <tr><td><strong>Hook</strong></td><td><code>hooks</code></td><td>Runs automatically at the right moment — see <a href="#h-hooks">Hook details</a></td></tr>
           </tbody>
         </table>
       </div>
-
-      <h3 class="h3" id="h-c-miniapp-vs-mcp">How MiniApp Differs from MCP</h3>
-      <p>These two are easiest to confuse, because both "extend mcode". The difference is <strong>who uses them and how</strong>:</p>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th></th><th>MCP server</th><th>MiniApp</th></tr></thead>
-          <tbody>
-            <tr><td>What it adds</td><td><strong>Tools</strong> for the model</td><td>An <strong>interface</strong> for the user</td></tr>
-            <tr><td>Who drives it</td><td>The model calls it by itself</td><td>The user opens it and clicks</td></tr>
-            <tr><td>Interaction</td><td>No UI; returns text or structured results</td><td>Has a UI: tables, charts, forms, dashboards</td></tr>
-            <tr><td>When it happens</td><td>The model decides</td><td>You open it</td></tr>
-            <tr><td>Model required?</td><td>Yes, otherwise the tool is pointless</td><td>Not always — pure front-end interactivity works alone</td></tr>
-            <tr><td>Where it runs</td><td>Desktop app, <code>mcode exec</code>, and ACP</td><td><strong>Desktop app only</strong></td></tr>
-          </tbody>
-        </table>
-      </div>
-      <p>They are not mutually exclusive — <strong>a MiniApp can use MCP to fetch its data</strong>. The "Token Usage Board" in the official community repository is the textbook case: the panel itself is the MiniApp (charts for you to look at), while reading the local database is done by MCP or by a script the plugin ships. Put plainly: <strong>MCP fetches the data, the MiniApp shows it to a person</strong>.</p>
-
-      <h3 class="h3" id="h-lifecycle">Lifecycles: All Three Are Different</h3>
-      <p>Plugins, MCP servers and MiniApps are easy to lump together, but their <strong>lifecycle mechanics barely overlap</strong>. Getting this wrong is what produces bugs like "why did my MiniApp lose its data on restart".</p>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th></th><th>Plugin</th><th>MCP server</th><th>MiniApp</th></tr></thead>
-          <tbody>
-            <tr><td>What it is</td><td>A capability package on disk</td><td>Tool access</td><td>An app with a UI</td></tr>
-            <tr><td><strong>When it takes effect</strong></td><td>Once installed and enabled, <strong>across sessions</strong></td><td>When the Runtime loads config and connects</td><td><strong>Started on demand when you open it</strong></td></tr>
-            <tr><td><strong>Own process?</strong></td><td>No process of its own</td><td>A child process for stdio; remote for http/sse</td><td><strong>A separate Node process</strong>, port assigned by the Host</td></tr>
-            <tr><td><strong>When it ends</strong></td><td>You run <code>disable</code> or <code>remove</code></td><td>When the Runtime ends</td><td><strong>Reclaimed when idle, stoppable at any time</strong></td></tr>
-            <tr><td><strong>Where state lives</strong></td><td>The package on disk</td><td>Connection state</td><td><code>dataDir</code> (a private directory)</td></tr>
-            <tr><td>Hot swap</td><td>Needs <code>/reload</code> or a restart</td><td>Reconnect</td><td>Generation change with two-phase commit, rollback possible</td></tr>
-            <tr><td>On startup failure</td><td>Plugin is disabled</td><td>—</td><td><strong>Quarantined</strong> rather than restarted in a loop</td></tr>
-          </tbody>
-        </table>
-      </div>
-
-      <h4 class="h4" id="h-life-plugin">Plugin: effective as soon as it is installed</h4>
-      <p>A plugin has <strong>no running process</strong> — it is a folder on disk. Once installed and enabled it is loaded in every subsequent session, until you explicitly <code>disable</code> or <code>remove</code> it. The enabled check happens every time capabilities are assembled, so a disabled plugin is never assembled.</p>
-      <p>When a plugin is activated it can raise <code>SessionStart</code> with the source <code>plugin_activation</code>. After editing a plugin, <code>/reload</code> re-reads it without restarting mcode.</p>
-
-      <h4 class="h4" id="h-life-mcp">MCP server: born with the Runtime, dies with it</h4>
-      <p>An MCP server's lifecycle is <strong>tied to the Runtime</strong>: the Runtime reads configuration (<code>&lt;data dir&gt;/mcp.json</code>, <code>&lt;workspace&gt;/.mcp.json</code>, or a plugin's <code>mcpServers</code>), establishes the connection, and releases it when the Runtime ends.</p>
-      <ul>
-        <li><code>stdio</code>: the Host launches the server as a <strong>child process</strong>, which lives as long as the connection.</li>
-        <li><code>http</code> / <code>sse</code>: connects to a remote service; the Host holds only the connection and starts no local process.</li>
-        <li>The child process inherits only <strong>17 allowlisted environment variables</strong> (<code>PATH</code>, <code>HOME</code>, <code>APPDATA</code>, …) and no credentials; anything else must be declared explicitly in <code>env</code>.</li>
-      </ul>
-
-      <h4 class="h4" id="h-life-miniapp">MiniApp: started on demand, reclaimed when idle</h4>
-      <p>MiniApp is the only one of the three that <strong>carries its own runtime</strong>. Its manifest declares <code>runtime.lifecycle: on-demand</code>: a Node process starts <strong>only when you open the page</strong>, and the Host assigns the port — you never pick one yourself.</p>
-      <ul>
-        <li><strong>Reference counting</strong>: each page view takes a <em>lease</em>; closing the page releases it. The Host waits for the lease count to reach zero before stopping.</li>
-        <li><strong>Idle reclamation</strong>: with no leases left, an idle timer starts and eventually stops the process. So <strong>between two page views the process may well have been restarted</strong>.</li>
-        <li><strong>Reuse is possible</strong>: the Host first tries to reuse a still-running instance; only an explicit forced start guarantees a new process.</li>
-        <li><strong>Two-phase stop</strong>: stopping is a prepare-then-commit sequence, and a failed prepare rolls back instead of leaving you half-stopped.</li>
-        <li><strong>Quarantine</strong>: on startup failure, or when cleanup ownership cannot be proven, the MiniApp is quarantined instead of being retried forever.</li>
-      </ul>
-      <div class="callout callout-warn">
-        <p><strong>This is the trap people fall into</strong>: because the process can be reclaimed at any time, <strong>a MiniApp must not keep state in memory</strong>. The official guidance is explicit: "assume yours can be stopped and restarted between two page views: keep durable state in <code>dataDir</code>, not in memory". Anything that must survive is written to <code>dataDir</code>, a private directory the Host creates for each plugin.</p>
-      </div>
-      <p><code>dispose()</code> may only close what the entry itself started — the HTTP server, timers, child processes, file and database handles. The Host stops the entry process only; it does not discover or terminate processes the entry spawned.</p>
-
-      <h3 class="h3" id="h-c-miniapp-write">Writing a MiniApp</h3>
-      <p>A MiniApp is, concretely, "a Node service plus a page, with a manifest". Here is the full structure and a minimal working implementation.</p>
-
-      <h4 class="h4" id="h-ma-layout">Layout</h4>
-      <div class="code-block" data-lang="bash">
-        <div class="code-head"><span class="code-lang">bash</span></div>
-        <pre><code>&lt;plugin-id&gt;/
-  .minimax-plugin/plugin.json   # Plugin manifest: identity, icon, category, capabilities
-  package.json                  # Mini App declaration (below)
-  icon.png                      # Plugin icon (PNG / JPEG / WebP)
-  miniapp/
-    miniapp.json                # Payload roots, Node entry, page route
-    client/                     # Runtime payload: files served to the page
-    node/                       # Runtime payload: the Node entry and its imports
-  README.md
-  LICENSE
-  skills/&lt;name&gt;/SKILL.md        # Optional: also provides a Skill
-  *.mcp.json                    # Optional: also provides an MCP server
-  bindings/&lt;name&gt;.binding.json  # Optional: host capability bindings</code></pre>
-      </div>
-      <ul>
-        <li>The directory name must equal <code>name</code> in <code>plugin.json</code>, and must be unique repo-wide (the author directory is dropped at install time).</li>
-        <li><code>name</code> must match <code>^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$</code>, at most 80 characters.</li>
-        <li>Only the <code>client/</code> and <code>node/</code> paths listed under <code>artifacts</code> become the runtime payload; keep tests and docs outside <code>miniapp/</code>.</li>
-        <li>Limits: at most <strong>1024</strong> files, <strong>16 MiB</strong> per file, <strong>64 MiB</strong> total; no symbolic or hard links.</li>
-        <li>Paths must be portable: ASCII only, no <code>\</code>, no <code>.</code>/<code>..</code> segments, no segment ending in <code>.</code>.</li>
-      </ul>
-
-      <h4 class="h4" id="h-ma-pkg">package.json: declaring it a MiniApp</h4>
-      <p>This <code>mcode</code> field is what upgrades a plain plugin into a MiniApp:</p>
-      <div class="code-block" data-lang="json">
-        <div class="code-head"><span class="code-lang">json</span></div>
-        <pre><code>{
-  "mcode": {
-    "schemaVersion": 2,
-    "miniApp": "./miniapp/miniapp.json"
-  }
-}</code></pre>
-      </div>
-      <p>No other keys are allowed inside <code>mcode</code>. Other top-level fields such as <code>name</code>, <code>type</code> and <code>scripts</code> are fine.</p>
-
-      <h4 class="h4" id="h-ma-manifest">miniapp/miniapp.json: entry and route</h4>
-      <div class="code-block" data-lang="json">
-        <div class="code-head"><span class="code-lang">json</span></div>
-        <pre><code>{
-  "schemaVersion": 1,
-  "artifacts": {
-    "client": ["./miniapp/client"],
-    "node": ["./miniapp/node"]
-  },
-  "runtime": {
-    "kind": "process",
-    "entry": "./miniapp/node/server.mjs",
-    "lifecycle": "on-demand"
-  },
-  "surface": { "path": "/dashboard" },
-  "mcpEndpoints": []
-}</code></pre>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Field</th><th>Rule</th></tr></thead>
-          <tbody>
-            <tr><td><code>artifacts.client</code> / <code>artifacts.node</code></td><td>Non-empty, unique path arrays under <code>miniapp/</code>; each must exist. These two are exactly what gets hashed and installed; <code>node_modules</code> is excluded</td></tr>
-            <tr><td><code>runtime.kind</code></td><td>Always <code>process</code></td></tr>
-            <tr><td><code>runtime.entry</code></td><td>Ends in <code>.mjs</code>, <code>.js</code> or <code>.cjs</code>, exists, and lies inside <code>artifacts.node</code>. <strong>Use <code>.mjs</code></strong> so you can use ESM <code>export</code></td></tr>
-            <tr><td><code>runtime.lifecycle</code></td><td><code>on-demand</code> or omitted</td></tr>
-            <tr><td><code>surface.path</code></td><td>The route the entry serves, e.g. <code>/dashboard</code>; no origin, query, fragment or backslash; a missing leading <code>/</code> is added</td></tr>
-            <tr><td><code>mcpEndpoints</code></td><td>Array of <code>{server, path}</code>. <code>server</code> must name a server already declared in <code>plugin.json.mcpServers</code> — checked at install time. Use <code>[]</code> when there are none</td></tr>
-          </tbody>
-        </table>
-      </div>
-
-      <h4 class="h4" id="h-ma-entry">The Node entry: export start(context)</h4>
-      <p>The Host imports <code>runtime.entry</code> as an ES module and requires a named export <code>start</code>. Return <code>{dispose}</code> — <strong>an object without <code>dispose</code> is rejected as an invalid lifecycle</strong>.</p>
-      <div class="code-block" data-lang="js">
-        <div class="code-head"><span class="code-lang">js</span></div>
-        <pre><code>import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
-
-export async function start(context) {
-  const { pluginRoot, dataDir, listen, signal, logger } = context;
-
-  const server = createServer(async (req, res) =&gt; {
-    // The page itself can be a single static HTML file
-    const html = await readFile(join(pluginRoot, 'miniapp/client/index.html'));
-    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-    res.end(html);
-  });
-
-  // Bind exactly the address the Host gives you; never pick your own port
-  await new Promise((resolve) =&gt; server.listen(listen.port, listen.host, resolve));
-  logger.info('miniapp ready');
-
-  // Do not fetch business data inside start(): register handlers and resolve
-  signal.addEventListener('abort', () =&gt; server.close());
-
-  return {
-    async dispose() {
-      // Close only what you started: server, timers, child processes, handles
-      await new Promise((resolve) =&gt; server.close(resolve));
-    }
-  };
-}</code></pre>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>context field</th><th>Meaning</th></tr></thead>
-          <tbody>
-            <tr><td><code>pluginId</code></td><td>The plugin ID, i.e. <code>plugin.json.name</code></td></tr>
-            <tr><td><code>pluginRoot</code></td><td>Real path of the installed package; read your client files from here</td></tr>
-            <tr><td><code>dataDir</code></td><td><strong>A private directory the Host creates and owns for this plugin</strong>; its location is opaque and may change. Put durable state here</td></tr>
-            <tr><td><code>listen</code></td><td><code>{ host: "127.0.0.1", port }</code> — <strong>bind exactly this address</strong></td></tr>
-            <tr><td><code>signal</code></td><td>An <code>AbortSignal</code> that fires when the Host stops the MiniApp</td></tr>
-            <tr><td><code>logger</code></td><td><code>debug/info/warn/error(message, fields?)</code>, messages truncated at 4 KiB. <strong>Only the keys of <code>fields</code> leave the process</strong>, so put diagnostic detail in the message</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <ul>
-        <li><strong>Never use <code>console.log</code> or <code>process.stdout.write</code></strong> — stdout/stdin belong to the Host; log through <code>context.logger</code>.</li>
-        <li>Resolving <code>start()</code> <em>is</em> the readiness signal; there is <strong>no health route</strong>.</li>
-        <li>Vendor third-party runtime code <strong>inside the <code>artifacts</code> roots</strong> rather than relying on <code>node_modules</code>.</li>
-        <li>The official repository ships <code>examples/hello-miniapp/</code> as a starting template, along with <code>miniapp-api.ts</code> type declarations (editor hints only; never imported at runtime).</li>
-      </ul>
-      <div class="callout callout-note">
-        <p><strong>Scope</strong>: this contract comes from the official repository <a href="https://github.com/MiniMax-AI/MiniMax-Code-MiniApps" target="_blank" rel="noopener">MiniMax-AI/MiniMax-Code-MiniApps</a>, which states it is <strong>verified against MiniMax Code desktop 3.0.73</strong>. The desktop app currently supports <strong>macOS and Windows</strong>; the terminal <code>mcode</code> covered by the rest of this manual does not provide MiniApps at all.</p>
-      </div>
-
-      <h3 class="h3" id="h-plugin-what">Plugins: bundling all of the above</h3>
-      <p>Each of the four concepts above can exist on its own. A <strong>plugin is the folder that packages them for distribution</strong>: it contains a manifest at <code>.minimax-plugin/plugin.json</code> declaring which Skills, MCP servers, and Hooks it provides.</p>
-      <p>For the person installing it, the point is that <strong>one install brings everything into place</strong> — no separate Skill install, no MCP wiring, no manual hook registration.</p>
-      <p>Compared with the other three, a plugin is <strong>the only one that simply stays there</strong>: it has no runtime, just a declaration that gets read over and over. See <a href="#h-lifecycle">the lifecycle comparison</a>.</p>
-
+      <p>All three are <strong>capabilities for the Agent</strong>. A plugin may also carry a <a href="#miniapp">MiniApp</a>, but that is <strong>a different kind of thing</strong>: it brings its own runtime contract and is not "one of the things a plugin installs".</p>
       <h3 class="h3" id="h-plugin-mgmt">Installing &amp; Managing Plugins</h3>
       <div class="code-block" data-lang="bash">
         <div class="code-head"><span class="code-lang">bash</span></div>
@@ -1349,7 +1167,205 @@ mcode plugin marketplace</code></pre>
       </ul>
     </section>
 
-    <!-- ══════════════════ 8. MCP / Tools ══════════════════ -->
+    <!-- ══════════════════ 8. MiniApp ══════════════════ -->
+    <section class="doc-section" id="miniapp" aria-labelledby="h-miniapp">
+      <h2 class="h2" id="h-miniapp">MiniApp</h2>
+      <p>A MiniApp is <strong>an interactive app with a UI that a person operates</strong> — not a tool the model calls. Once installed you open it on the desktop app and get an interactive page: a usage dashboard, a report, an approval panel.</p>
+      <div class="callout callout-warn">
+        <p><strong>MiniApps are a desktop-app feature only.</strong> The terminal build <code>mcode</code> has no such capability — <code>mcode --help</code> lists no miniapp command, which was confirmed by running it. <code>mcode exec</code> and ACP cannot use one either.</p>
+      </div>
+      <p>It <strong>is distributed in plugin form</strong>: copy the whole plugin directory (including the hidden <code>.minimax-plugin/</code>) into <code>&lt;data dir&gt;/plugins/</code>, restart the desktop app, then open it from the Mini App entry point. But "distributed as a plugin" is only its <strong>transport mechanism</strong> — it does not place it in the plugin category. For the dividing line, see <a href="#h-c-three">the three kinds</a>. The official community repository is <a href="https://github.com/MiniMax-AI/MiniMax-Code-MiniApps" target="_blank" rel="noopener">MiniMax-AI/MiniMax-Code-MiniApps</a>.</p>
+      <h3 class="h3" id="h-c-miniapp-vs-mcp">How MiniApp Differs from MCP</h3>
+      <p>These two are easiest to confuse, because both "extend mcode". The difference is <strong>who uses them and how</strong>:</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th></th><th>MCP server</th><th>MiniApp</th></tr></thead>
+          <tbody>
+            <tr><td>What it adds</td><td><strong>Tools</strong> for the model</td><td>An <strong>interface</strong> for the user</td></tr>
+            <tr><td>Who drives it</td><td>The model calls it by itself</td><td>The user opens it and clicks</td></tr>
+            <tr><td>Interaction</td><td>No UI; returns text or structured results</td><td>Has a UI: tables, charts, forms, dashboards</td></tr>
+            <tr><td>When it happens</td><td>The model decides</td><td>You open it</td></tr>
+            <tr><td>Model required?</td><td>Yes, otherwise the tool is pointless</td><td>Not always — pure front-end interactivity works alone</td></tr>
+            <tr><td>Where it runs</td><td>Desktop app, <code>mcode exec</code>, and ACP</td><td><strong>Desktop app only</strong></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>They are not mutually exclusive — <strong>a MiniApp can use MCP to fetch its data</strong>. The "Token Usage Board" in the official community repository is the textbook case: the panel itself is the MiniApp (charts for you to look at), while reading the local database is done by MCP or by a script the plugin ships. Put plainly: <strong>MCP fetches the data, the MiniApp shows it to a person</strong>.</p>
+
+      <h3 class="h3" id="h-lifecycle">Lifecycles: They Really Are Not One Kind of Thing</h3>
+      <p>Plugins, MCP servers and MiniApps are easy to lump together, but their <strong>lifecycle mechanics barely overlap</strong>. Getting this wrong is what produces bugs like "why did my MiniApp lose its data on restart".</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th></th><th>Plugin</th><th>MCP server</th><th>MiniApp</th></tr></thead>
+          <tbody>
+            <tr><td>What it is</td><td>A capability package on disk</td><td>Tool access</td><td>An app with a UI</td></tr>
+            <tr><td><strong>When it takes effect</strong></td><td>Once installed and enabled, <strong>across sessions</strong></td><td>When the Runtime loads config and connects</td><td><strong>Started on demand when you open it</strong></td></tr>
+            <tr><td><strong>Own process?</strong></td><td>No process of its own</td><td>A child process for stdio; remote for http/sse</td><td><strong>A separate Node process</strong>, port assigned by the Host</td></tr>
+            <tr><td><strong>When it ends</strong></td><td>You run <code>disable</code> or <code>remove</code></td><td>When the Runtime ends</td><td><strong>Reclaimed when idle, stoppable at any time</strong></td></tr>
+            <tr><td><strong>Where state lives</strong></td><td>The package on disk</td><td>Connection state</td><td><code>dataDir</code> (a private directory)</td></tr>
+            <tr><td>Hot swap</td><td>Needs <code>/reload</code> or a restart</td><td>Reconnect</td><td>Generation change with two-phase commit, rollback possible</td></tr>
+            <tr><td>On startup failure</td><td>Plugin is disabled</td><td>—</td><td><strong>Quarantined</strong> rather than restarted in a loop</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4 class="h4" id="h-life-plugin">Plugin: effective as soon as it is installed</h4>
+      <p>A plugin has <strong>no running process</strong> — it is a folder on disk. Once installed and enabled it is loaded in every subsequent session, until you explicitly <code>disable</code> or <code>remove</code> it. The enabled check happens every time capabilities are assembled, so a disabled plugin is never assembled.</p>
+      <p>When a plugin is activated it can raise <code>SessionStart</code> with the source <code>plugin_activation</code>. After editing a plugin, <code>/reload</code> re-reads it without restarting mcode.</p>
+
+      <h4 class="h4" id="h-life-mcp">MCP server: born with the Runtime, dies with it</h4>
+      <p>An MCP server's lifecycle is <strong>tied to the Runtime</strong>: the Runtime reads configuration (<code>&lt;data dir&gt;/mcp.json</code>, <code>&lt;workspace&gt;/.mcp.json</code>, or a plugin's <code>mcpServers</code>), establishes the connection, and releases it when the Runtime ends.</p>
+      <ul>
+        <li><code>stdio</code>: the Host launches the server as a <strong>child process</strong>, which lives as long as the connection.</li>
+        <li><code>http</code> / <code>sse</code>: connects to a remote service; the Host holds only the connection and starts no local process.</li>
+        <li>The child process inherits only <strong>17 allowlisted environment variables</strong> (<code>PATH</code>, <code>HOME</code>, <code>APPDATA</code>, …) and no credentials; anything else must be declared explicitly in <code>env</code>.</li>
+      </ul>
+
+      <h4 class="h4" id="h-life-miniapp">MiniApp: started on demand, reclaimed when idle</h4>
+      <p>MiniApp is the only one of the three that <strong>carries its own runtime</strong>. Its manifest declares <code>runtime.lifecycle: on-demand</code>: a Node process starts <strong>only when you open the page</strong>, and the Host assigns the port — you never pick one yourself.</p>
+      <ul>
+        <li><strong>Reference counting</strong>: each page view takes a <em>lease</em>; closing the page releases it. The Host waits for the lease count to reach zero before stopping.</li>
+        <li><strong>Idle reclamation</strong>: with no leases left, an idle timer starts and eventually stops the process. So <strong>between two page views the process may well have been restarted</strong>.</li>
+        <li><strong>Reuse is possible</strong>: the Host first tries to reuse a still-running instance; only an explicit forced start guarantees a new process.</li>
+        <li><strong>Two-phase stop</strong>: stopping is a prepare-then-commit sequence, and a failed prepare rolls back instead of leaving you half-stopped.</li>
+        <li><strong>Quarantine</strong>: on startup failure, or when cleanup ownership cannot be proven, the MiniApp is quarantined instead of being retried forever.</li>
+      </ul>
+      <div class="callout callout-warn">
+        <p><strong>This is the trap people fall into</strong>: because the process can be reclaimed at any time, <strong>a MiniApp must not keep state in memory</strong>. The official guidance is explicit: "assume yours can be stopped and restarted between two page views: keep durable state in <code>dataDir</code>, not in memory". Anything that must survive is written to <code>dataDir</code>, a private directory the Host creates for each plugin.</p>
+      </div>
+      <p><code>dispose()</code> may only close what the entry itself started — the HTTP server, timers, child processes, file and database handles. The Host stops the entry process only; it does not discover or terminate processes the entry spawned.</p>
+
+      <h3 class="h3" id="h-c-miniapp-write">Writing a MiniApp</h3>
+      <p>A MiniApp is, concretely, "a Node service plus a page, with a manifest". Here is the full structure and a minimal working implementation.</p>
+
+      <h4 class="h4" id="h-ma-layout">Layout</h4>
+      <div class="code-block" data-lang="bash">
+        <div class="code-head"><span class="code-lang">bash</span></div>
+        <pre><code>&lt;plugin-id&gt;/
+  .minimax-plugin/plugin.json   # Plugin manifest: identity, icon, category, capabilities
+  package.json                  # Mini App declaration (below)
+  icon.png                      # Plugin icon (PNG / JPEG / WebP)
+  miniapp/
+    miniapp.json                # Payload roots, Node entry, page route
+    client/                     # Runtime payload: files served to the page
+    node/                       # Runtime payload: the Node entry and its imports
+  README.md
+  LICENSE
+  skills/&lt;name&gt;/SKILL.md        # Optional: also provides a Skill
+  *.mcp.json                    # Optional: also provides an MCP server
+  bindings/&lt;name&gt;.binding.json  # Optional: host capability bindings</code></pre>
+      </div>
+      <ul>
+        <li>The directory name must equal <code>name</code> in <code>plugin.json</code>, and must be unique repo-wide (the author directory is dropped at install time).</li>
+        <li><code>name</code> must match <code>^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$</code>, at most 80 characters.</li>
+        <li>Only the <code>client/</code> and <code>node/</code> paths listed under <code>artifacts</code> become the runtime payload; keep tests and docs outside <code>miniapp/</code>.</li>
+        <li>Limits: at most <strong>1024</strong> files, <strong>16 MiB</strong> per file, <strong>64 MiB</strong> total; no symbolic or hard links.</li>
+        <li>Paths must be portable: ASCII only, no <code>\</code>, no <code>.</code>/<code>..</code> segments, no segment ending in <code>.</code>.</li>
+      </ul>
+
+      <h4 class="h4" id="h-ma-pkg">package.json: declaring it a MiniApp</h4>
+      <p>This <code>mcode</code> field is what upgrades a plain plugin into a MiniApp:</p>
+      <div class="code-block" data-lang="json">
+        <div class="code-head"><span class="code-lang">json</span></div>
+        <pre><code>{
+  "mcode": {
+    "schemaVersion": 2,
+    "miniApp": "./miniapp/miniapp.json"
+  }
+}</code></pre>
+      </div>
+      <p>No other keys are allowed inside <code>mcode</code>. Other top-level fields such as <code>name</code>, <code>type</code> and <code>scripts</code> are fine.</p>
+
+      <h4 class="h4" id="h-ma-manifest">miniapp/miniapp.json: entry and route</h4>
+      <div class="code-block" data-lang="json">
+        <div class="code-head"><span class="code-lang">json</span></div>
+        <pre><code>{
+  "schemaVersion": 1,
+  "artifacts": {
+    "client": ["./miniapp/client"],
+    "node": ["./miniapp/node"]
+  },
+  "runtime": {
+    "kind": "process",
+    "entry": "./miniapp/node/server.mjs",
+    "lifecycle": "on-demand"
+  },
+  "surface": { "path": "/dashboard" },
+  "mcpEndpoints": []
+}</code></pre>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Field</th><th>Rule</th></tr></thead>
+          <tbody>
+            <tr><td><code>artifacts.client</code> / <code>artifacts.node</code></td><td>Non-empty, unique path arrays under <code>miniapp/</code>; each must exist. These two are exactly what gets hashed and installed; <code>node_modules</code> is excluded</td></tr>
+            <tr><td><code>runtime.kind</code></td><td>Always <code>process</code></td></tr>
+            <tr><td><code>runtime.entry</code></td><td>Ends in <code>.mjs</code>, <code>.js</code> or <code>.cjs</code>, exists, and lies inside <code>artifacts.node</code>. <strong>Use <code>.mjs</code></strong> so you can use ESM <code>export</code></td></tr>
+            <tr><td><code>runtime.lifecycle</code></td><td><code>on-demand</code> or omitted</td></tr>
+            <tr><td><code>surface.path</code></td><td>The route the entry serves, e.g. <code>/dashboard</code>; no origin, query, fragment or backslash; a missing leading <code>/</code> is added</td></tr>
+            <tr><td><code>mcpEndpoints</code></td><td>Array of <code>{server, path}</code>. <code>server</code> must name a server already declared in <code>plugin.json.mcpServers</code> — checked at install time. Use <code>[]</code> when there are none</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4 class="h4" id="h-ma-entry">The Node entry: export start(context)</h4>
+      <p>The Host imports <code>runtime.entry</code> as an ES module and requires a named export <code>start</code>. Return <code>{dispose}</code> — <strong>an object without <code>dispose</code> is rejected as an invalid lifecycle</strong>.</p>
+      <div class="code-block" data-lang="js">
+        <div class="code-head"><span class="code-lang">js</span></div>
+        <pre><code>import { createServer } from 'node:http';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+
+export async function start(context) {
+  const { pluginRoot, dataDir, listen, signal, logger } = context;
+
+  const server = createServer(async (req, res) =&gt; {
+    // The page itself can be a single static HTML file
+    const html = await readFile(join(pluginRoot, 'miniapp/client/index.html'));
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+    res.end(html);
+  });
+
+  // Bind exactly the address the Host gives you; never pick your own port
+  await new Promise((resolve) =&gt; server.listen(listen.port, listen.host, resolve));
+  logger.info('miniapp ready');
+
+  // Do not fetch business data inside start(): register handlers and resolve
+  signal.addEventListener('abort', () =&gt; server.close());
+
+  return {
+    async dispose() {
+      // Close only what you started: server, timers, child processes, handles
+      await new Promise((resolve) =&gt; server.close(resolve));
+    }
+  };
+}</code></pre>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>context field</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>pluginId</code></td><td>The plugin ID, i.e. <code>plugin.json.name</code></td></tr>
+            <tr><td><code>pluginRoot</code></td><td>Real path of the installed package; read your client files from here</td></tr>
+            <tr><td><code>dataDir</code></td><td><strong>A private directory the Host creates and owns for this plugin</strong>; its location is opaque and may change. Put durable state here</td></tr>
+            <tr><td><code>listen</code></td><td><code>{ host: "127.0.0.1", port }</code> — <strong>bind exactly this address</strong></td></tr>
+            <tr><td><code>signal</code></td><td>An <code>AbortSignal</code> that fires when the Host stops the MiniApp</td></tr>
+            <tr><td><code>logger</code></td><td><code>debug/info/warn/error(message, fields?)</code>, messages truncated at 4 KiB. <strong>Only the keys of <code>fields</code> leave the process</strong>, so put diagnostic detail in the message</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <ul>
+        <li><strong>Never use <code>console.log</code> or <code>process.stdout.write</code></strong> — stdout/stdin belong to the Host; log through <code>context.logger</code>.</li>
+        <li>Resolving <code>start()</code> <em>is</em> the readiness signal; there is <strong>no health route</strong>.</li>
+        <li>Vendor third-party runtime code <strong>inside the <code>artifacts</code> roots</strong> rather than relying on <code>node_modules</code>.</li>
+        <li>The official repository ships <code>examples/hello-miniapp/</code> as a starting template, along with <code>miniapp-api.ts</code> type declarations (editor hints only; never imported at runtime).</li>
+      </ul>
+      <div class="callout callout-note">
+        <p><strong>Scope</strong>: this contract comes from the official repository <a href="https://github.com/MiniMax-AI/MiniMax-Code-MiniApps" target="_blank" rel="noopener">MiniMax-AI/MiniMax-Code-MiniApps</a>, which states it is <strong>verified against MiniMax Code desktop 3.0.73</strong>. The desktop app currently supports <strong>macOS and Windows</strong>; the terminal <code>mcode</code> covered by the rest of this manual does not provide MiniApps at all.</p>
+      </div>
+
+    </section>
+    <!-- ══════════════════ 9. MCP and Tools ══════════════════ -->
     <section class="doc-section" id="mcp-browser" aria-labelledby="h-mcp-browser">
       <h2 class="h2" id="h-mcp-browser">MCP &amp; Tools</h2>
 
@@ -1415,7 +1431,7 @@ mcode plugin marketplace</code></pre>
       <p><code>HTTP_PROXY</code>, <code>HTTPS_PROXY</code>, <code>ALL_PROXY</code>, <code>NO_PROXY</code> and their lowercase forms are all read; <code>localhost</code>, <code>127.0.0.1</code> and <code>::1</code> always connect directly. See <a href="#h-config-proxy">Network Proxy</a>.</p>
     </section>
 
-    <!-- ══════════════════ 9. Permissions and Sessions ══════════════════ -->
+    <!-- ══════════════════ 10. Permissions and Sessions ══════════════════ -->
     <section class="doc-section" id="permissions" aria-labelledby="h-permissions">
       <h2 class="h2" id="h-permissions">Permissions &amp; Sessions</h2>
 
@@ -1538,7 +1554,7 @@ mcode plugin marketplace</code></pre>
       <p>The run status line, the per-turn elapsed time after a turn ends and Goal timing all use <code>s</code> / <code>min</code> / <code>h</code> (for example <code>30s</code>, <code>9min30s</code>, <code>2h9min30s</code>), and seconds continue to be shown past one hour. <strong>Run timing measures the current turn, while Goal timing accumulates active time, so the two values can differ.</strong></p>
     </section>
 
-    <!-- ══════════════════ 10. Sharing ══════════════════ -->
+    <!-- ══════════════════ 11. Sharing ══════════════════ -->
     <section class="doc-section" id="sharing" aria-labelledby="h-sharing">
       <h2 class="h2" id="h-sharing">Sharing</h2>
       <p>This document and the plugin that ships it are released under the <code>Apache-2.0</code> license and may be freely shared, cited and redistributed. Both repositories below are <strong>maintained by MiniMax officially</strong>:</p>

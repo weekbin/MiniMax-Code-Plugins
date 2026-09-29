@@ -52,7 +52,7 @@ mcode-docs/
 │       ├── cli.md               # CLI、无头执行与 ACP
 │       ├── config.md            # 配置结构与数据目录
 │       ├── agents-skills.md     # Agent、Skill 与工具
-│       ├── plugins-hooks.md     # 四个基础概念、插件 manifest 与 Hook
+│       ├── plugins-hooks.md     # 插件分发、Hook 契约与 MiniApp 编写
 │       ├── mcp-tools.md         # MCP 与附件
 │       ├── permissions.md       # 权限模式、Plan Mode 与会话
 │       └── coverage.md          # opencode v2 章节能力边界对照

@@ -222,7 +222,7 @@ MCP 单独放 `~/.minimax/mcp.json`（用户级）与 `<workspace>/.mcp.json`（
 | `reference/cli.md` | CLI、`exec`、`acp` 完整参数 |
 | `reference/config.md` | 配置文件结构与全部已知键 |
 | `reference/agents-skills.md` | 内置 Agent、Skill 与扩展机制 |
-| `reference/plugins-hooks.md` | Skill/MCP/Hook/MiniApp 四个基础概念、插件 manifest 与 Hook |
+| `reference/plugins-hooks.md` | 三类概念的区分、插件 manifest 与 Hook 契约、MiniApp 契约与编写 |
 | `reference/mcp-tools.md` | 内置工具、MCP、附件 |
 | `reference/permissions.md` | 权限模式、Plan Mode、会话管理 |
 | `reference/coverage.md` | opencode v2 章节 → mcode 能力逐条对照 |
