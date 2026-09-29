@@ -496,7 +496,11 @@ html[data-theme="dark"] .sidenav-list a:hover { background: rgb(var(--gray-900))
 
 .content {
   min-width: 0;
-  font-size: 18px;                    /* 官方 prose 容器实测 */
+  /* 正文容器与 body 同为 --text-base。原为 18px（官方 prose 容器实测），
+     但正文内各元素另有实测值：列表 16px、表格 14px、callout 16px、
+     card 14.2px，导致裸 <p> 18px 与紧邻的列表 16px 在同一段里差一档。
+     统一到 --text-base 后，段落与列表同为 16px，层级只由 h2/h3/h4 表达。 */
+  font-size: var(--text-base);
   line-height: 28px;
   padding: 30px 0 96px;
 }
@@ -573,7 +577,8 @@ html[data-theme="dark"] .sidenav-list a:hover { background: rgb(var(--gray-900))
 .h4 {
   margin: 22px 0 8px;
   color: var(--fg-strong);
-  font-size: 15px;
+  font-size: var(--text-base);        /* 与正文齐平：靠 660 字重与 --fg-strong 区分，
+                                          不小于它所辖的正文，也不与 .h3 的 18px 抢层级 */
   font-weight: 660;
   line-height: 1.6;
 }
@@ -607,13 +612,11 @@ html[data-theme="dark"] .sidenav-list a:hover { background: rgb(var(--gray-900))
   margin: 0 0 20px;
   padding-left: 0;
   list-style-type: none;
-  font-size: var(--text-base);   /* 官方实测 ul/li 16px，容器为 18px */
 }
 .content ol {
   margin: 1.25em 0;
   padding-inline-start: 1.625em;
   list-style-type: decimal;
-  font-size: var(--text-base);
 }
 .content li {
   position: relative;
@@ -738,14 +741,10 @@ html[data-theme="dark"] .copy-btn:hover { background: rgb(var(--gray-800)); }
 
 /* 官方 .prose 体系中本文档用到的其余元素（此前遗漏） */
 
-/* h4 */
-.h4, .doc-section h4 {
-  margin: 1.6em 0 0.6em;
-  color: var(--tw-prose-headings);
-  font-weight: var(--font-weight-semibold);
-  font-size: 1.125em;
-  line-height: 1.5;
-}
+/* h4：见上方 .h4（15px）。此处原有 `.h4, .doc-section h4 { font-size: 1.125em }`，
+   特异度更高且位置更靠后，把 .h4 覆盖成 20.25px —— 大于 .h3 的 18px，
+   41 个三级标题全部比其上方的二级标题还大。整条规则的每一项声明都与
+   上方 .h4 规则冲突，不提供任何独有样式，故整条移除。 */
 
 /* em */
 em { font-style: italic; }
