@@ -1009,7 +1009,10 @@ mcode plugin marketplace</code></pre>
       <div class="cmd-strip cmd-strip-wrap">
         <code>SessionStart</code><code>SessionEnd</code><code>UserPromptSubmit</code><code>PreToolUse</code><code>PermissionRequest</code><code>PostToolUse</code><code>SubagentStart</code><code>SubagentStop</code><code>Stop</code><code>PreCompact</code><code>PostCompact</code>
       </div>
-      <p><code>SessionStart</code> 携带来源标识，取值为 <code>startup</code> / <code>resume</code> / <code>clear</code> / <code>compact</code> / <code>fork</code> / <code>plugin_activation</code>。</p>
+      <p><code>SessionStart</code> 携带来源标识：</p>
+      <div class="cmd-strip cmd-strip-wrap">
+        <code>startup</code><code>resume</code><code>clear</code><code>compact</code><code>fork</code><code>plugin_activation</code>
+      </div>
 
       <h4 class="h4" id="h-hook-registration">注册文档</h4>
       <p>manifest 的 <code>hooks</code> 字段接受五种形式：字符串路径、<code>{ "path": "…" }</code> 对象、上述两者的数组、<strong>内联注册文档对象</strong>（此时 <code>sourcePath</code> 记为 <code>&lt;manifest&gt;</code>），以及省略时按默认路径自动纳入。注册文档的信封有两种等价写法：外层带 <code>"hooks"</code> 键，或直接以事件名为顶层键。</p>
@@ -1057,7 +1060,10 @@ mcode plugin marketplace</code></pre>
       <div class="cmd-strip cmd-strip-wrap">
         <code>PLUGIN_ROOT</code><code>MINIMAX_PLUGIN_ROOT</code><code>CLAUDE_PLUGIN_ROOT</code><code>CODEX_PLUGIN_ROOT</code><code>PLUGIN_DATA</code><code>CLAUDE_PLUGIN_DATA</code><code>MINIMAX_PROJECT_DIR</code><code>CLAUDE_PROJECT_DIR</code><code>CODEX_PROJECT_DIR</code>
       </div>
-      <p><code>CLAUDE</code> 格式且事件位于工具使用上下文内时，追加 <code>CLAUDE_EFFORT</code>（取 <code>low</code> / <code>medium</code> / <code>high</code> / <code>xhigh</code> / <code>max</code>）。</p>
+      <p><code>CLAUDE</code> 格式且事件位于工具使用上下文内时，追加 <code>CLAUDE_EFFORT</code>：</p>
+      <div class="cmd-strip cmd-strip-wrap">
+        <code>low</code><code>medium</code><code>high</code><code>xhigh</code><code>max</code>
+      </div>
       <div class="callout callout-note">
         <p>因此 Hook 脚本<strong>不得</strong>依赖白名单以外的环境变量，其中包含任何凭据；所需变量须由插件自身声明。插件包根目录为<strong>只读</strong>，可写状态应写入 <code>PLUGIN_DATA</code>，该目录由宿主以 <code>0700</code> 权限创建。</p>
       </div>
@@ -1137,17 +1143,31 @@ mcode plugin marketplace</code></pre>
           </tbody>
         </table>
       </div>
-      <p><code>destination</code> 取值 <code>session</code> / <code>localSettings</code> / <code>projectSettings</code> / <code>userSettings</code>；<code>mode</code> 取值 <code>default</code> / <code>auto</code> / <code>acceptEdits</code> / <code>dontAsk</code> / <code>bypassPermissions</code> / <code>plan</code>。</p>
-      <ul>
-        <li><code>permissionDecision</code>：<code>allow</code>（授权且不呈现产品界面）/ <code>deny</code> / <code>abstain</code>（缺省）；</li>
-        <li><code>permissionAutoApproval</code>：<code>ordinary_only</code> / <code>any_prompt</code>；<code>CLAUDE</code> 仍复核 deny 与 ask 规则，<code>CODEX</code> 将 Hook 裁决视为最终批准；</li>
-        <li><code>interrupt</code>：<code>CLAUDE</code> 的 <code>PermissionRequest</code> 专用，仅在 deny 时请求中止活动运行；</li>
-        <li><code>toolPermissionDecision</code>：<code>PreToolUse</code> 专用，取值 <code>allow</code> / <code>deny</code> / <code>ask</code> / <code>defer</code> / <code>abstain</code>，与「无裁决」相区分。</li>
-      </ul>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>字段</th><th>合法取值</th><th>适用与约束</th></tr></thead>
+          <tbody>
+            <tr><td><code>behavior</code></td><td><code>allow</code> / <code>deny</code> / <code>ask</code></td><td>规则类形态，随 <code>rules</code> 数组逐条给出</td></tr>
+            <tr><td><code>destination</code></td><td><code>session</code> / <code>localSettings</code> / <code>projectSettings</code> / <code>userSettings</code></td><td>三类形态共用</td></tr>
+            <tr><td><code>mode</code></td><td><code>default</code> / <code>auto</code> / <code>acceptEdits</code> / <code>dontAsk</code> / <code>bypassPermissions</code> / <code>plan</code></td><td>仅 <code>setMode</code></td></tr>
+            <tr><td><code>permissionDecision</code></td><td><code>allow</code> / <code>deny</code> / <code>abstain</code>（缺省）</td><td>通用裁决；<code>allow</code> 授权且不呈现产品界面</td></tr>
+            <tr><td><code>permissionAutoApproval</code></td><td><code>ordinary_only</code> / <code>any_prompt</code></td><td><code>CLAUDE</code> 仍复核 deny 与 ask 规则，<code>CODEX</code> 将 Hook 裁决视为最终批准</td></tr>
+            <tr><td><code>interrupt</code></td><td>—</td><td><code>CLAUDE</code> 的 <code>PermissionRequest</code> 专用，仅在 deny 时请求中止活动运行</td></tr>
+            <tr><td><code>toolPermissionDecision</code></td><td><code>allow</code> / <code>deny</code> / <code>ask</code> / <code>defer</code> / <code>abstain</code></td><td><code>PreToolUse</code> 专用，与「无裁决」相区分</td></tr>
+          </tbody>
+        </table>
+      </div>
 
       <h4 class="h4" id="h-hook-budget">时间预算与诊断码</h4>
       <p>单个处理器的实际超时取声明值与事件剩余预算之较小者。普通事件总预算 <strong>15 000 ms</strong>，<code>SessionEnd</code> 为 <strong>3 000 ms</strong>，进程回收窗口为 <strong>500 ms</strong>。</p>
-      <p>解析期诊断码为 <code>HOOK_SCHEMA_INVALID</code>、<code>HOOK_EVENT_UNSUPPORTED</code>、<code>HOOK_HANDLER_UNSUPPORTED</code>、<code>HOOK_HANDLER_LIMIT_EXCEEDED</code>；运行期诊断码为 <code>HOOK_ABORTED</code>、<code>HOOK_INVALID_INPUT</code>、<code>HOOK_INVALID_OUTPUT</code>、<code>HOOK_PROCESS_ERROR</code>、<code>HOOK_PROCESS_EXITED</code>、<code>HOOK_TIMEOUT</code>。</p>
+      <p>解析期诊断码：</p>
+      <div class="cmd-strip cmd-strip-wrap">
+        <code>HOOK_SCHEMA_INVALID</code><code>HOOK_EVENT_UNSUPPORTED</code><code>HOOK_HANDLER_UNSUPPORTED</code><code>HOOK_HANDLER_LIMIT_EXCEEDED</code>
+      </div>
+      <p>运行期诊断码：</p>
+      <div class="cmd-strip cmd-strip-wrap">
+        <code>HOOK_ABORTED</code><code>HOOK_INVALID_INPUT</code><code>HOOK_INVALID_OUTPUT</code><code>HOOK_PROCESS_ERROR</code><code>HOOK_PROCESS_EXITED</code><code>HOOK_TIMEOUT</code>
+      </div>
 
       <h4 class="h4" id="h-system-message">systemMessage：只给用户看，不进模型上下文</h4>
       <p>向 stdout 写<strong>一个</strong> JSON 对象并以 <strong>exit 0</strong> 退出：</p>

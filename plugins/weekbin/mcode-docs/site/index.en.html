@@ -1010,7 +1010,10 @@ mcode plugin marketplace</code></pre>
       <div class="cmd-strip cmd-strip-wrap">
         <code>SessionStart</code><code>SessionEnd</code><code>UserPromptSubmit</code><code>PreToolUse</code><code>PermissionRequest</code><code>PostToolUse</code><code>SubagentStart</code><code>SubagentStop</code><code>Stop</code><code>PreCompact</code><code>PostCompact</code>
       </div>
-      <p><code>SessionStart</code> carries a source identifier with the values <code>startup</code> / <code>resume</code> / <code>clear</code> / <code>compact</code> / <code>fork</code> / <code>plugin_activation</code>.</p>
+      <p><code>SessionStart</code> carries a source identifier:</p>
+      <div class="cmd-strip cmd-strip-wrap">
+        <code>startup</code><code>resume</code><code>clear</code><code>compact</code><code>fork</code><code>plugin_activation</code>
+      </div>
 
       <h4 class="h4" id="h-hook-registration">The Registration Document</h4>
       <p>The manifest's <code>hooks</code> field accepts five forms: a string path, a <code>{ "path": "…" }</code> object, an array of either, an <strong>inline registration document object</strong> (in which case <code>sourcePath</code> is recorded as <code>&lt;manifest&gt;</code>), and omission, in which case the default path is used when that file exists. The registration document envelope has two equivalent forms: an outer <code>"hooks"</code> key, or event names directly at the top level.</p>
@@ -1058,7 +1061,10 @@ mcode plugin marketplace</code></pre>
       <div class="cmd-strip cmd-strip-wrap">
         <code>PLUGIN_ROOT</code><code>MINIMAX_PLUGIN_ROOT</code><code>CLAUDE_PLUGIN_ROOT</code><code>CODEX_PLUGIN_ROOT</code><code>PLUGIN_DATA</code><code>CLAUDE_PLUGIN_DATA</code><code>MINIMAX_PROJECT_DIR</code><code>CLAUDE_PROJECT_DIR</code><code>CODEX_PROJECT_DIR</code>
       </div>
-      <p><code>CLAUDE_EFFORT</code> is added in the <code>CLAUDE</code> format when the event sits inside a tool-use context (taking <code>low</code> / <code>medium</code> / <code>high</code> / <code>xhigh</code> / <code>max</code>).</p>
+      <p><code>CLAUDE_EFFORT</code> is added in the <code>CLAUDE</code> format when the event sits inside a tool-use context:</p>
+      <div class="cmd-strip cmd-strip-wrap">
+        <code>low</code><code>medium</code><code>high</code><code>xhigh</code><code>max</code>
+      </div>
       <div class="callout callout-note">
         <p>Hook scripts therefore <strong>must not</strong> depend on environment variables outside this allow-list, which includes every credential; whatever is needed has to be declared by the plugin itself. The plugin package root is <strong>read-only</strong>, and writable state belongs in <code>PLUGIN_DATA</code>, which the host creates with mode <code>0700</code>.</p>
       </div>
@@ -1138,17 +1144,31 @@ mcode plugin marketplace</code></pre>
           </tbody>
         </table>
       </div>
-      <p><code>destination</code> takes the values <code>session</code> / <code>localSettings</code> / <code>projectSettings</code> / <code>userSettings</code>; <code>mode</code> takes <code>default</code> / <code>auto</code> / <code>acceptEdits</code> / <code>dontAsk</code> / <code>bypassPermissions</code> / <code>plan</code>.</p>
-      <ul>
-        <li><code>permissionDecision</code>: <code>allow</code> (authorizes without presenting the product interface) / <code>deny</code> / <code>abstain</code> (the default);</li>
-        <li><code>permissionAutoApproval</code>: <code>ordinary_only</code> / <code>any_prompt</code>; <code>CLAUDE</code> still re-evaluates deny and ask rules, whereas <code>CODEX</code> treats the Hook verdict as final approval;</li>
-        <li><code>interrupt</code>: specific to <code>PermissionRequest</code> in <code>CLAUDE</code>, requesting termination of the active run only on deny;</li>
-        <li><code>toolPermissionDecision</code>: specific to <code>PreToolUse</code>, taking <code>allow</code> / <code>deny</code> / <code>ask</code> / <code>defer</code> / <code>abstain</code>, which is distinct from the absence of a verdict.</li>
-      </ul>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Field</th><th>Accepted values</th><th>Scope and constraints</th></tr></thead>
+          <tbody>
+            <tr><td><code>behavior</code></td><td><code>allow</code> / <code>deny</code> / <code>ask</code></td><td>Rule forms; one per entry in the <code>rules</code> array</td></tr>
+            <tr><td><code>destination</code></td><td><code>session</code> / <code>localSettings</code> / <code>projectSettings</code> / <code>userSettings</code></td><td>Shared by all three forms</td></tr>
+            <tr><td><code>mode</code></td><td><code>default</code> / <code>auto</code> / <code>acceptEdits</code> / <code>dontAsk</code> / <code>bypassPermissions</code> / <code>plan</code></td><td><code>setMode</code> only</td></tr>
+            <tr><td><code>permissionDecision</code></td><td><code>allow</code> / <code>deny</code> / <code>abstain</code> (the default)</td><td>General verdict; <code>allow</code> authorizes without presenting the product interface</td></tr>
+            <tr><td><code>permissionAutoApproval</code></td><td><code>ordinary_only</code> / <code>any_prompt</code></td><td><code>CLAUDE</code> still re-evaluates deny and ask rules, whereas <code>CODEX</code> treats the Hook verdict as final approval</td></tr>
+            <tr><td><code>interrupt</code></td><td>—</td><td>Specific to <code>PermissionRequest</code> in <code>CLAUDE</code>, requesting termination of the active run only on deny</td></tr>
+            <tr><td><code>toolPermissionDecision</code></td><td><code>allow</code> / <code>deny</code> / <code>ask</code> / <code>defer</code> / <code>abstain</code></td><td>Specific to <code>PreToolUse</code>, distinct from the absence of a verdict</td></tr>
+          </tbody>
+        </table>
+      </div>
 
       <h4 class="h4" id="h-hook-budget">Time Budgets and Diagnostic Codes</h4>
       <p>The effective timeout of a single handler is the smaller of its declared value and the event's remaining budget. The total budget for ordinary events is <strong>15 000 ms</strong>, for <code>SessionEnd</code> it is <strong>3 000 ms</strong>, and the process drain window is <strong>500 ms</strong>.</p>
-      <p>Parse-time diagnostic codes are <code>HOOK_SCHEMA_INVALID</code>, <code>HOOK_EVENT_UNSUPPORTED</code>, <code>HOOK_HANDLER_UNSUPPORTED</code> and <code>HOOK_HANDLER_LIMIT_EXCEEDED</code>; run-time codes are <code>HOOK_ABORTED</code>, <code>HOOK_INVALID_INPUT</code>, <code>HOOK_INVALID_OUTPUT</code>, <code>HOOK_PROCESS_ERROR</code>, <code>HOOK_PROCESS_EXITED</code> and <code>HOOK_TIMEOUT</code>.</p>
+      <p>Parse-time diagnostic codes:</p>
+      <div class="cmd-strip cmd-strip-wrap">
+        <code>HOOK_SCHEMA_INVALID</code><code>HOOK_EVENT_UNSUPPORTED</code><code>HOOK_HANDLER_UNSUPPORTED</code><code>HOOK_HANDLER_LIMIT_EXCEEDED</code>
+      </div>
+      <p>Run-time diagnostic codes:</p>
+      <div class="cmd-strip cmd-strip-wrap">
+        <code>HOOK_ABORTED</code><code>HOOK_INVALID_INPUT</code><code>HOOK_INVALID_OUTPUT</code><code>HOOK_PROCESS_ERROR</code><code>HOOK_PROCESS_EXITED</code><code>HOOK_TIMEOUT</code>
+      </div>
 
       <h4 class="h4" id="h-system-message">systemMessage: Shown to the User, Kept Out of Model Context</h4>
       <p>Write <strong>one</strong> JSON object to stdout and exit with code <strong>0</strong>:</p>

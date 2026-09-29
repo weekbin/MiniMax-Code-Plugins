@@ -320,17 +320,15 @@ Hook 进程从 stdin 读取**单个** UTF-8 JSON 对象。事件特有字段先�
 | `setMode` | `mode`、`destination` |
 | `addDirectories` / `removeDirectories` | `directories`、`destination` |
 
-`destination` 取值：`session` / `localSettings` / `projectSettings` / `userSettings`。
-`mode` 取值：`default` / `auto` / `acceptEdits` / `dontAsk` / `bypassPermissions` / `plan`。
-
-其余权限字段：
-
-- `permissionDecision`：`allow`（授权且不呈现产品界面）/ `deny` / `abstain`（缺省）；
-- `permissionAutoApproval`：`ordinary_only` / `any_prompt`；`CLAUDE` 仍复核
-  deny 与 ask 规则，`CODEX` 将 Hook 裁决视为最终批准；
-- `interrupt`：`CLAUDE` 的 `PermissionRequest` 专用，仅在 deny 时请求中止活动运行；
-- `toolPermissionDecision`：`PreToolUse` 专用，取值 `allow` / `deny` / `ask` /
-  `defer` / `abstain`，与「无裁决」相区分。
+| 字段 | 合法取值 | 适用与约束 |
+| --- | --- | --- |
+| `behavior` | `allow` / `deny` / `ask` | 规则类形态，随 `rules` 数组逐条给出 |
+| `destination` | `session` / `localSettings` / `projectSettings` / `userSettings` | 三类形态共用 |
+| `mode` | `default` / `auto` / `acceptEdits` / `dontAsk` / `bypassPermissions` / `plan` | 仅 `setMode` |
+| `permissionDecision` | `allow` / `deny` / `abstain`（缺省） | 通用裁决；`allow` 授权且不呈现产品界面 |
+| `permissionAutoApproval` | `ordinary_only` / `any_prompt` | `CLAUDE` 仍复核 deny 与 ask 规则，`CODEX` 将 Hook 裁决视为最终批准 |
+| `interrupt` | — | `CLAUDE` 的 `PermissionRequest` 专用，仅在 deny 时请求中止活动运行 |
+| `toolPermissionDecision` | `allow` / `deny` / `ask` / `defer` / `abstain` | `PreToolUse` 专用，与「无裁决」相区分 |
 
 ## 时间预算
 

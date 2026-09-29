@@ -1266,6 +1266,61 @@ ZH 为 4 列（命令 / 英文文案 / 中文文案 / 行为），EN 为 2 列�
 
 ---
 
+## 23. 取值枚举改为表格 / 芯片条（2026-09-29）
+
+用户指出「`destination` 取值 session / localSettings / projectSettings / userSettings；
+`mode` 取值 default / auto / … 这种更适合加表格，现在视觉上很混乱」。
+
+依据 `technical-doc-discipline` 的「参考型内容要穷举、混在散文里的枚举属于模式混淆」。
+
+### 23.1 判定标准：两类内容，两种处理
+
+扫描全库行内枚举 **98 处**，但只有**单键的合法取值集合**属于本轮范围。
+区分依据是「这句是否在描述一个字段可以取哪些值」，而非「句子里出现了几个代码名」：
+
+| 类型 | 例子 | 处理 |
+| --- | --- | --- |
+| 有逐项约束的取值集合 | `destination` / `mode` / 各裁决字段 | **表格**（字段 / 合法取值 / 适用与约束）|
+| 只有取值、无逐项说明 | `SessionStart` 来源、诊断码 | **芯片条** `cmd-strip`（站点既有组件）|
+| 名字列举，非取值集合 | 「仅支持 `--cwd`、`--model`…」「字段：`type`、`command`…」 | **保持原样** |
+
+第三类共 17 处，句子读得通；塞进表属「不为完整性而完整」，且会把参考表混进散文。
+**不编造逐项含义**：`destination` / `mode` 各取值的具体含义文档中没有记载，
+表中不给它们编「作用」列，只保留已有的约束陈述。
+
+### 23.2 实际改动（两站同步 + reference）
+
+1. **新增字段表**（`权限更新` 节）：原为 1 个 `<p>` 塞 `destination`(4) + `mode`(6)
+   共 10 个取值，后接 4 项 `<ul>` 各塞 3–5 个取值。合并为一张 7 行表
+   （`behavior` / `destination` / `mode` / `permissionDecision` /
+   `permissionAutoApproval` / `interrupt` / `toolPermissionDecision`），
+   每一格文字均取自原段落，未新增任何事实。
+2. **`SessionStart` 来源标识**（6 值）→ 芯片条
+3. **`CLAUDE_EFFORT`**（5 值）→ 芯片条
+4. **Hook 诊断码**（解析期 4 + 运行期 6）→ 两条芯片条。原为一句 10 个
+   `HOOK_*` 码的串，是页面上最拥挤的块。
+5. `reference/plugins.md` 的「权限更新」同步改为同样的表格。
+
+### 23.3 过程中发现并修正的自身失误
+
+- 中文表首版把 `interrupt` 行的字段名误写成 `—`（漏了 `<code>interrupt</code>`），已修正。
+- 分隔符归一化时产生 `</code> /  <code>` 双空格，24 处已修。
+- 芯片条收行脚本误把**既有 3 处**（事件全集、白名单环境变量、`PLUGIN_ROOT`）
+  从三行式改成单行。属无关改动，已全部复原为原格式。
+  最终 diff 中 `cmd-strip` 只有 **2 处新增**。
+
+### 23.4 本轮验证
+
+- 双站结构：表 **44 / 44**、`tr` **337 / 337**、`cmd-strip` **7 / 7**、`section` **11 / 11**
+- `test/manual-discipline.test.mjs` 6 项全过（含双语核心结构配平、逐表行数配平）
+- `npm test`：**347 项 / 346 pass / 1 skipped / 0 fail**
+- `node --check site/assets/app.js` 通过
+- 浏览器实测：两站渲染正常，表格与芯片条样式正确，console **0 warn / 0 error**
+- 改动边界：`git status | grep -v mcode-docs` = **0**
+
+
+---
+
 ## 13. 本插件自身声明
 
 本插件**不提供 MCP 服务**，交付物为：一个可复用 Skill（`skills/mcode-docs/SKILL.md` +
