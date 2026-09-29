@@ -187,9 +187,9 @@ MCP 单独放 `~/.minimax/mcp.json`（用户级）与 `<workspace>/.mcp.json`（
 
 站点为**中英双语**，两份独立 HTML 共享同一套 `assets/style.css` 与 `assets/app.js`：
 `site/index.html`（中文，默认入口）与 `site/index.en.html`（英文）。两版的锚点集合与顺序完全一致，
-互相以 `#` 锚点交叉链接。顶栏提供语言切换；首访按 `navigator.language` 判定，
-手动切换后写入 `localStorage` 并长期生效。不使用 `fetch` 加载语言包——该接口在 `file://`
-下被浏览器拦截，双击打开必须可用。
+互相以 `#` 锚点交叉链接。顶栏提供语言切换；**仅首次访问**按 `navigator.language` 自动判定一次并记入
+`localStorage`，此后不再自动跳转——打开哪份文件就是哪种语言，手动切换同理，不存在“打开中文页却被弹到英文页”。
+不使用 `fetch` 加载语言包——该接口在 `file://` 下被浏览器拦截，双击打开必须可用。
 
 ## 存在性问题的应答规程
 

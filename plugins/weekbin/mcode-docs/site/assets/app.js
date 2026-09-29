@@ -611,7 +611,10 @@
   // 是因为 fetch 在 file:// 下被浏览器拦截，双击打开必须可用。
   var LANG_KEY = 'mcode-docs-lang';
   var LANG_PAGES = { zh: 'index.html', en: 'index.en.html' };
-  // 只有默认入口页才做自动判定；显式打开 index.en.html 视为明确选择。
+  // index.html 既是中文正文页，又是首次访问的自动判定入口。两种身份会打架：
+  // 一旦 localStorage 存了英文偏好，用户显式双击 index.html 就会被弹到英文页，
+  // URL 说中文、内容是英文。故自动判定只在「尚无记录」时执行一次；此后
+  // index.html 恒为中文页——打开哪份文件就是哪种语言，手动切换照常生效。
   var ENTRY_PAGE = /(?:^|\/)(?:index\.html?|default\.html?)$/i;
   var isEntry = ENTRY_PAGE.test(location.pathname);
 
@@ -638,18 +641,13 @@
 
   (function resolveLang() {
     if (!isEntry) { return; }
-    var stored = readLang();
-    if (stored) {
-      if (stored !== currentLang()) { location.replace(LANG_PAGES[stored]); }
-      return;
-    }
+    // 已有记录 = 首次判定已完成（或用户手动选过），index.html 就是中文页，不再重定向
+    if (readLang()) { return; }
     // 首访按浏览器语言判定：非中文界面一律走英文版
     var nav = (navigator.language || 'zh').toLowerCase();
     var prefer = nav.indexOf('zh') === 0 ? 'zh' : 'en';
-    if (prefer !== currentLang()) {
-      writeLang(prefer);
-      location.replace(LANG_PAGES[prefer]);
-    }
+    writeLang(prefer);
+    if (prefer !== currentLang()) { location.replace(LANG_PAGES[prefer]); }
   })();
 
   /* ---------------------------------------------------------
