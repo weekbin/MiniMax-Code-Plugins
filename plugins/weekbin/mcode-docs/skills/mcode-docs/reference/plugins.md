@@ -146,7 +146,7 @@ Hook 会在 mcode 等待它跑完之前**阻塞**后续流程，所以只支持�
 （`type: "command"`）。写注册文档时即使写了 `async`，也会被判为不支持
 （`HOOK_HANDLER_UNSUPPORTED`）。
 
-## 事件全集（11 个）
+## 事件全集
 
 ```
 SessionStart        SessionEnd          UserPromptSubmit

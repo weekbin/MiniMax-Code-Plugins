@@ -105,9 +105,3 @@ Composer 中按 `Enter` 将输入 steer 给当前回合；按 `Alt+Enter` 放入
 
 侧会话视图中只有只读命令可用：`help`、`changelog`、`context`、`status`、`usage`、
 `export`、`transcript`、`copy`、`parent`。
-
-## 计时口径
-
-运行状态行、单轮结束后的耗时与 Goal 计时统一使用 `s` / `min` / `h`
-（如 `30s`、`9min30s`、`2h9min30s`），超过一小时仍显示秒。
-**运行耗时统计当前轮，Goal 统计累计 active 时间，两者数值可以不同。**

@@ -969,6 +969,111 @@ switch to 中文`），仅 `title` 遗漏。
 
 ---
 
+## 20. 用户批注轮：口径收紧与两处事实修正（2026 复核）
+
+用户对站点逐条批注 8 处。共同指向一个此前没被贯彻的原则：
+**取证过程与计数属于 evidence，不是用户手册的落地产物。**
+
+### 20.1 「实测」列从用户手册移除
+
+`mcode exec` 参数表原带一列「实测」，逐行标 ✅ / — / 具体报错文案。
+这是本机 0.5.8 跑通的**过程记录**，读者无法据此判断自己版本的实况，
+且每次版本升级都要重刷一遍。双站该列整列删除（`index.html` / `index.en.html`
+各 18 行），引导句中「『实测』列标注本机 0.5.8 真实跑通的结果」一并删除。
+取证记录继续留在本台账，不进用户手册。
+
+### 20.2 去掉全部具体数量统计
+
+删掉：侧栏与 h2 的「TUI 命令（52 条）」、分组小标题里的「· 13 条」、
+`h-agents` / `h-skills` / `h-tools` / `h-hook-events` 标题里的数量、
+分类表里的「条数」整列、`PermissionMode 共 5 个取值`、meta description 中的
+「52 条 TUI slash 命令全表」，以及**首页整条统计条**（7 个数字磁贴）。
+`SKILL.md`、`reference/commands.md`、`reference/coverage.md`、
+`reference/agents-skills.md`、`reference/plugins.md`、`README.zh-CN.md` 同步。
+
+保留：`npm 12`（版本号）与 curl 示例里的 `(200, …)`，它们不是计数。
+
+### 20.3 事实修正一：`mcode exec review` 的真实机制（用户质疑）
+
+用户原话：「这个实际落地测试过吗？具体是调用了 /review 的内置 skill
+还是当成普通输入给到 llm 了，这个你要区分好。」
+
+**答案：两者都不是。** 三重取证：
+
+- **A 级实跑**：建临时 git 仓库（`calc.py`，先写 `return a - b` 的 `add`，
+  改成 `a + b` 并新增 `sub`），执行
+  `mcode exec review --output-format stream-json --max-steps 6`，exit 0，
+  55 行事件流。解析全部 `tool_call`：**只有 `bash`（4 次）**，
+  **无任何 `skill` 调用、无 `code-review` / `code_review` 引用**。
+  最终结论以 `agent_message` 直接输出。
+- **C 级源码**：`chunks/*.js` 中 `mcode exec review` 的 action 为
+  `runExec(void 0, { …opts, review: !0 })` —— 是给 Run 打的**标记**，
+  不是文本 prompt。
+- **C 级源码**：`assets/prompts/code-review/reviewer-system.md` 原文
+  「do not load the `code-review` Skill or call `code_review` again
+  after structured Review is active」——Review 生效后**主动禁止**走 Skill。
+
+结论：`mcode exec review` 是 Runtime 内置的**结构化 Review 模式**，
+自带 review 系统提示词、只读调查工具白名单（`read`/`grep`/`glob`/`skill`/`bash`
++ `task_*`）与固定 XML 输出契约。TUI 的 `/review` 是同一引擎的交互入口；
+`code-review` Skill 是模型自行判断需要时才加载的通用技能。
+文档已按此重写（`site/*.html` 与 `reference/cli.md`）。
+
+### 20.4 事实修正二：Memory 的默认值原本是错的
+
+用户原话：「我记得 tui 并没有开放 memory 能力吧？」
+
+原文档把配置写成 `memory.enabled: false` / `askUser.enabled: false` /
+`skillEvolve.enabled: false`，读起来像默认值。**三条全错**：
+
+`chunks/chunk-OCFW7RRF.js` 默认配置对象逐字为
+`memory:{enabled:!0, proactive:!1, dailyDigest:{enabled:!1}}`，
+`askUser` 取 `var oa={enabled:!0}`，`skillEvolve:{enabled:!0, …}`。
+消费侧 `memoryEnabled: () => config.memory?.enabled !== false`
+进一步确认 **默认开启**。只有 `memory.proactive` 默认关闭。
+
+用户关于 TUI 的判断也成立：命令表里**不存在 `/memory`**，Memory 是后台能力、
+只由配置开关控制。文档已改为标注真实默认值，并显式写明无 TUI 命令入口。
+
+### 20.5 术语：Session 浏览器 → Session 选择面板
+
+`mcode --help` 原文是 `open a Session by id, or browse Sessions when id is omitted`，
+并无「浏览器」之意——那是个选择列表而非网页。双站与 `reference/cli.md` 共 4 处改写。
+
+### 20.6 补齐 `/goal` 的 action 全集
+
+原文档只有一行「启动或管理当前 Session Goal」。从
+`chunks/launcher-*.js` 的 `getArgumentCompletions` 取到完整 7 项：
+`pause` / `resume` / `edit` / `clear` / `help` / `budget=<n>` / `budget=clear`，
+双站与 `reference/commands.md` 补表。
+
+### 20.7 补 `custom-command` 最小可用示例
+
+原文档只把 `custom-command` 列为状态栏可选项，没说怎么配。
+`chunks/chunk-OCFW7RRF.js` 的 `Tv()` 给出完整 schema：只有 `command` 必填，
+其余 `display`(`inline`/`block`)、`position`(`above`/`below`)、
+`colorMode`(`plain`/`ansi`)、`maxLines`、`timeoutMs`、`intervalSeconds`，
+且**未知键被静默丢弃、不报错**——这一点对用户最关键，已写入文档。
+示例用 `~/bin/my-status`，不写主机绝对路径（测试会拦）。
+
+### 20.8 删除耗时记录说明
+
+原「计时口径」整段（`s`/`min`/`h` 格式、Goal 与单轮耗时差异）删除，
+双站空标题 `<h3 id="h-timing">` 与 `reference/permissions.md` 的
+`## 计时口径` 一并清除，避免留下空节。
+
+### 20.9 本轮验证
+
+- `npm test`：**341 项 / 340 pass / 1 skipped / 0 fail**
+- `node --check site/assets/app.js` 通过
+- 双站 HTML 标签配平逐类校验（div/table/ul/ol/li/tr/td/th/section/p/h1-h4 全等）
+- 全站 `grep` 复扫：无残留枚举计数（仅余 `npm 12` 与 curl 示例的 `200`）
+- 浏览器实测双站：console 0 warn / 0 error；`/goal` 七行 action 表、
+  review 机制段落、custom-command 示例块均正确渲染
+
+
+---
+
 ## 13. 本插件自身声明
 
 本插件**不提供 MCP 服务**，交付物为：一个可复用 Skill（`skills/mcode-docs/SKILL.md` +

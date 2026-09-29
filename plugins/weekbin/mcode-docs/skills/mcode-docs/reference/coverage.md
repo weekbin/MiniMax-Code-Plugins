@@ -17,7 +17,7 @@ opencode v2 文档站（<https://opencode.ai/v2/docs/>）共 24 个章节。下�
 | 6 | Models | `/model`、上下文档位、effort | ✅ |
 | 7 | Skills | 16 个内置 Skill + SKILL.md 扩展 | ✅ |
 | 8 | Themes | `/theme` | ✅ |
-| 9 | Commands | 52 条 slash 命令 | ✅ |
+| 9 | Commands | slash 命令全表 | ✅ |
 | 10 | Plugins | `/plugins` + `mcode plugin` + manifest 契约 | ✅ |
 | 11 | Providers | `/provider` + `mcode provider` + `custom_provider` | ✅ |
 | 12 | Websearch | `web_search` 工具 + `features.webSearch` 开关 | ✅ |
@@ -91,7 +91,7 @@ Skill 以 `SKILL.md` 为入口，通过插件的 `skills` 数组挂载。
 
 ### 9. Commands ✅
 
-**52 条**，见 `commands.md`。
+全表见 `commands.md`。
 
 ### 10. Plugins ✅
 

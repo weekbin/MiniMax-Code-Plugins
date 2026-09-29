@@ -37,10 +37,29 @@ TUI 内用 `/config` 查看**生效的只读配置**；`mcode exec --config <pat
 | `permissionMode` | 权限模式，取值见 `permissions.md` |
 | `custom_provider` | 自定义 Provider 映射 |
 | `tui` | 终端界面行为 |
-| `statusLine` / `customStatusLine` | 状态栏项 |
+| `statusLine` / `customStatusLine` | 状态栏项，见下 |
 | `defaultModelContextWindow` | 默认上下文窗口 |
 | `defaultModelVariant` | 默认模型变体，如 `thinking` |
 | `defaultModelThinking` | 含 `.effort`，保存默认思考强度 |
+
+### `custom-command` 状态栏项
+
+`custom-command` 把 `tui.customStatusLine.command` 指定的外部命令输出渲染到状态栏。
+**最小可用配置**——只有 `command` 是必填：
+
+```yaml
+tui:
+  statusLine:
+    - custom-command    # 想显示哪几项就按顺序列
+    - current-dir
+  customStatusLine:
+    command: ~/bin/my-status    # 唯一必填项
+```
+
+可选项：`display`（`inline` / `block`）、`position`（`above` / `below`）、
+`colorMode`（`plain` / `ansi`）、`maxLines`、`timeoutMs`、`intervalSeconds`。
+**写错的键会被静默丢弃，不会报错。** 命令的 stdout 即状态栏内容，
+应保持轻量、避免长时间阻塞。
 
 ## `tui` 段
 
@@ -105,21 +124,25 @@ agents:
 
 ## Memory 与其它开关
 
+这几个开关的**默认值与直觉相反**：`memory`、`askUser`、`skillEvolve` 默认都是
+**开启**，要关掉才需要显式写 `enabled: false`；只有 `memory.proactive` 默认关闭。
+
 ```yaml
 memory:
-  enabled: false
-  proactive: false
+  enabled: true      # 默认 true；写成 false 才关闭 Memory
+  proactive: false   # 默认 false；开启后 Agent 主动写入记忆
+  dailyDigest:
+    enabled: false   # 默认 false
 
 askUser:
-  enabled: false
-
-skills:
-  external:
-    enabled: false
+  enabled: true      # 默认 true；置 false 时调用报 ASK_USER_DISABLED
 
 skillEvolve:
-  enabled: false
+  enabled: true      # 默认 true
 ```
+
+**Memory 没有 TUI 命令入口**：命令表里不存在 `/memory`。它是后台能力，由配置开关
+控制，不在 Composer 里手动调用。
 
 ## 网络代理
 

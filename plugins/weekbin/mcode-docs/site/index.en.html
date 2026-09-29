@@ -71,7 +71,7 @@
         <li><a href="#intro">Overview</a></li>
         <li><a href="#quickstart">Quick Start</a></li>
         <li><a href="#cli">CLI &amp; Headless</a></li>
-        <li><a href="#commands">TUI Commands (52)</a></li>
+        <li><a href="#commands">TUI Commands</a></li>
         <li><a href="#config">Configuration</a></li>
         <li><a href="#agents-skills">Agents &amp; Skills</a></li>
         <li><a href="#plugins-hooks">Plugins</a></li>
@@ -94,17 +94,6 @@
         The sections below cover its command-line surface, command set, configuration, extension mechanisms
         and permission model.
       </p>
-
-
-      <div class="stat-row">
-        <div class="stat"><span class="stat-num">3</span><span class="stat-label">Usage forms</span></div>
-        <div class="stat"><span class="stat-num">52</span><span class="stat-label">TUI commands</span></div>
-        <div class="stat"><span class="stat-num">12</span><span class="stat-label">Base tools</span></div>
-        <div class="stat"><span class="stat-num">4</span><span class="stat-label">Built-in agents</span></div>
-        <div class="stat"><span class="stat-num">16</span><span class="stat-label">Built-in skills</span></div>
-        <div class="stat"><span class="stat-num">11</span><span class="stat-label">Hook events</span></div>
-        <div class="stat"><span class="stat-num">0</span><span class="stat-label">MCP services</span></div>
-      </div>
 
       <h2 class="h2" id="h-three-forms">Three Usage Forms</h2>
       <p>All three forms <strong>share one in-process Runtime lifecycle</strong>:</p>
@@ -202,14 +191,14 @@ npm uninstall -g @minimax-ai/code</code></pre>
           <tbody>
             <tr><td><code>-V, --version</code></td><td>Print the version number</td></tr>
             <tr><td><code>-m, --model &lt;provider/model&gt;</code></td><td>Select a model for this Session only</td></tr>
-            <tr><td><code>--session [id]</code></td><td>Opens the Session browser when the id is omitted</td></tr>
+            <tr><td><code>--session [id]</code></td><td>Opens the Session picker when the id is omitted</td></tr>
             <tr><td><code>-c, --continue</code></td><td>Resume the most recent Session in the current workspace</td></tr>
             <tr><td><code>--tui-mode &lt;mode&gt;</code></td><td><code>regular</code> (default) or <code>fullscreen</code></td></tr>
           </tbody>
         </table>
       </div>
       <div class="callout callout-note">
-        <p><code>-m</code> affects only the Session being opened or created and does not change the global default model; it can be combined with <code>--continue</code> or <code>--session &lt;id&gt;</code>. <strong>The Session browser without an id cannot also specify a model.</strong></p>
+        <p><code>-m</code> affects only the Session being opened or created and does not change the global default model; it can be combined with <code>--continue</code> or <code>--session &lt;id&gt;</code>. <strong>The Session picker without an id cannot also specify a model.</strong></p>
       </div>
 
       <h3 class="h3" id="h-exec">mcode exec (Headless)</h3>
@@ -236,28 +225,28 @@ echo "Reply with OK only." | mcode exec --input -</code></pre>
       </div>
 
       <h4 class="h4" id="h-exec-flags">Full Flag Set</h4>
-      <p>This table matches <code>mcode exec --help</code> line by line, with <strong>nothing missing and nothing invented</strong>. The "Verified" column records what actually ran on 0.5.8:</p>
+      <p>This table matches <code>mcode exec --help</code> line by line, with <strong>nothing missing and nothing invented</strong>.</p>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Flag</th><th>Description</th><th>Verified</th></tr></thead>
+          <thead><tr><th>Flag</th><th>Description</th></tr></thead>
           <tbody>
-            <tr><td><code>--input &lt;source&gt;</code></td><td>Read explicit input, <strong><code>-</code> (stdin) only</strong>; <strong>cannot be combined with a prompt argument</strong></td><td>✅ combining fails with <code>The prompt argument and --input cannot be combined.</code></td></tr>
-            <tr><td><code>--input-format &lt;format&gt;</code></td><td><code>text</code> (default) or <code>json</code></td><td>✅</td></tr>
-            <tr><td><code>--cwd &lt;path&gt;</code></td><td>Workspace directory</td><td>✅</td></tr>
-            <tr><td><code>--file &lt;path&gt;</code></td><td>Additional file, <strong>repeatable</strong>; must be inside the workspace, otherwise it needs interactive authorization</td><td>✅</td></tr>
-            <tr><td><code>--model &lt;provider/model&gt;</code></td><td>Override for this Run only</td><td>—</td></tr>
-            <tr><td><code>--effort &lt;level&gt;</code></td><td>Override reasoning effort for this Run only</td><td>—</td></tr>
-            <tr><td><code>--prompt-mode &lt;mode&gt;</code></td><td><code>tui</code> (default) / <code>coding</code> / <code>work</code></td><td>✅ <code>work</code></td></tr>
-            <tr><td><code>--session &lt;id&gt;</code></td><td>Run inside an existing active Session</td><td>—</td></tr>
-            <tr><td><code>--continue</code></td><td>Continue the most recent active Session in <code>--cwd</code></td><td>—</td></tr>
-            <tr><td><code>--config &lt;path&gt;</code></td><td>Use an explicit Runtime configuration file for this process</td><td>—</td></tr>
-            <tr><td><code>--permission &lt;policy&gt;</code></td><td><code>smart</code> (default) / <code>full</code> / <code>off</code> (<code>ask</code> requires TUI/ACP)</td><td>✅ <code>off</code></td></tr>
-            <tr><td><code>--timeout &lt;duration&gt;</code></td><td>Run timeout, e.g. <code>30s</code>, <code>2m</code></td><td>✅</td></tr>
-            <tr><td><code>--max-steps &lt;count&gt;</code></td><td>Maximum assistant steps; give it headroom when the task has to read files</td><td>✅ too small returns <code>limit_exceeded</code></td></tr>
-            <tr><td><code>--output-format &lt;format&gt;</code></td><td><code>text</code> / <code>json</code> / <code>stream-json</code></td><td>✅ <code>text</code>, <code>json</code></td></tr>
-            <tr><td><code>--diagnostics-dir &lt;path&gt;</code></td><td>Write bounded execution diagnostics to a <strong>brand-new empty directory</strong></td><td>—</td></tr>
-            <tr><td><code>--output-schema &lt;schema&gt;</code></td><td>JSON Schema file or inline object constraining the final answer</td><td>—</td></tr>
-            <tr><td><code>-o, --output-last-message &lt;path&gt;</code></td><td>Write the final message to a file</td><td>✅</td></tr>
+            <tr><td><code>--input &lt;source&gt;</code></td><td>Read explicit input, <strong><code>-</code> (stdin) only</strong>; <strong>cannot be combined with a prompt argument</strong></td></tr>
+            <tr><td><code>--input-format &lt;format&gt;</code></td><td><code>text</code> (default) or <code>json</code></td></tr>
+            <tr><td><code>--cwd &lt;path&gt;</code></td><td>Workspace directory</td></tr>
+            <tr><td><code>--file &lt;path&gt;</code></td><td>Additional file, <strong>repeatable</strong>; must be inside the workspace, otherwise it needs interactive authorization</td></tr>
+            <tr><td><code>--model &lt;provider/model&gt;</code></td><td>Override for this Run only</td></tr>
+            <tr><td><code>--effort &lt;level&gt;</code></td><td>Override reasoning effort for this Run only</td></tr>
+            <tr><td><code>--prompt-mode &lt;mode&gt;</code></td><td><code>tui</code> (default) / <code>coding</code> / <code>work</code></td></tr>
+            <tr><td><code>--session &lt;id&gt;</code></td><td>Run inside an existing active Session</td></tr>
+            <tr><td><code>--continue</code></td><td>Continue the most recent active Session in <code>--cwd</code></td></tr>
+            <tr><td><code>--config &lt;path&gt;</code></td><td>Use an explicit Runtime configuration file for this process</td></tr>
+            <tr><td><code>--permission &lt;policy&gt;</code></td><td><code>smart</code> (default) / <code>full</code> / <code>off</code> (<code>ask</code> requires TUI/ACP)</td></tr>
+            <tr><td><code>--timeout &lt;duration&gt;</code></td><td>Run timeout, e.g. <code>30s</code>, <code>2m</code></td></tr>
+            <tr><td><code>--max-steps &lt;count&gt;</code></td><td>Maximum assistant steps; give it headroom when the task has to read files</td></tr>
+            <tr><td><code>--output-format &lt;format&gt;</code></td><td><code>text</code> / <code>json</code> / <code>stream-json</code></td></tr>
+            <tr><td><code>--diagnostics-dir &lt;path&gt;</code></td><td>Write bounded execution diagnostics to a <strong>brand-new empty directory</strong></td></tr>
+            <tr><td><code>--output-schema &lt;schema&gt;</code></td><td>JSON Schema file or inline object constraining the final answer</td></tr>
+            <tr><td><code>-o, --output-last-message &lt;path&gt;</code></td><td>Write the final message to a file</td></tr>
           </tbody>
         </table>
       </div>
@@ -276,6 +265,14 @@ echo "Reply with OK only." | mcode exec --input -</code></pre>
 
       <h4 class="h4" id="h-exec-review">mcode exec review</h4>
       <p>Reviews staged, unstaged and untracked local changes. It <strong>accepts</strong> <code>--cwd</code>, <code>--model</code>, <code>--effort</code>, <code>--config</code>, <code>--permission</code>, <code>--timeout</code>, <code>--max-steps</code>, <code>--output-format</code> and <code>--output-last-message</code>.</p>
+      <p><strong>It is neither a plain prompt handed to the model nor an invocation of the built-in <code>code-review</code> Skill.</strong> It is a <strong>structured Review mode</strong> built into the Runtime:</p>
+      <ul>
+        <li>Once the Run carries the review marker, the Runtime swaps in a dedicated review system prompt that requires read-only investigation, reporting only issues introduced by the change at hand, and re-verifying every finding against the current workspace.</li>
+        <li>Tools are restricted to <strong>read-only investigation</strong>; the prompt explicitly forbids modifying files or Git state, installing dependencies, committing, pushing or deploying.</li>
+        <li>While Review is active it <strong>forbids loading the <code>code-review</code> Skill or calling the <code>code_review</code> tool</strong>, so the outer review is not duplicated.</li>
+        <li>The result is returned as a fixed XML contract, so it can be parsed programmatically rather than read as free text.</li>
+      </ul>
+      <p><code>/review</code> in the TUI is the interactive entry to the same review engine. The <code>code-review</code> Skill is a general-purpose skill the model loads on its own judgement when it decides a review is needed — the two are not the same thing.</p>
       <ul>
         <li>Flags may be placed before or after <code>review</code>; when both positions specify a value, the explicit value after <code>review</code> wins.</li>
         <li>Session and input/output flags (<code>--session</code>, <code>--continue</code>, <code>--input</code>, <code>--input-format</code>, <code>--file</code>, <code>--output-schema</code>, <code>--diagnostics-dir</code>) apply to <code>exec &lt;prompt&gt;</code>; the <code>review</code> form uses the flags listed above.</li>
@@ -342,20 +339,20 @@ mcode plugin marketplace</code></pre>
 
     <!-- ══════════════════ 4. TUI Commands ══════════════════ -->
     <section class="doc-section" id="commands" aria-labelledby="h-commands">
-      <h2 class="h2" id="h-commands">TUI Commands (52)</h2>
-      <p>Type <code>/</code> in the TUI composer to call any of the <strong>52 commands</strong>, sorted into 7 groups plus a set of basic commands:</p>
+      <h2 class="h2" id="h-commands">TUI Commands</h2>
+      <p>Type <code>/</code> in the TUI composer to call any command; they are grouped by purpose:</p>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Group</th><th>Count</th><th>What it covers</th></tr></thead>
+          <thead><tr><th>Group</th><th>What it covers</th></tr></thead>
           <tbody>
-            <tr><td><strong>Basic commands</strong></td><td>11</td><td>Switch model, check status, inspect config and usage, compact, export</td></tr>
-            <tr><td><strong>Session</strong></td><td>13</td><td>Create, switch, and archive sessions; rewind, resend, edit a prompt, ask a side question</td></tr>
-            <tr><td><strong>Application</strong></td><td>11</td><td>App-level settings: sidebar, status line, theme, keybindings</td></tr>
-            <tr><td><strong>Runtime</strong></td><td>7</td><td>Permission mode, background tasks, effective config, sign-in, providers</td></tr>
-            <tr><td><strong>Decision</strong></td><td>5</td><td>Answer the Agent one at a time: allow, deny, or add information</td></tr>
-            <tr><td><strong>Input</strong></td><td>2</td><td>Add and remove working directories, manage queued messages</td></tr>
-            <tr><td><strong>Transcript</strong></td><td>2</td><td>Browse and search this Session's input history</td></tr>
-            <tr><td><strong>Capability</strong></td><td>1</td><td>Browse, install, enable, and remove Plugins</td></tr>
+            <tr><td><strong>Basic commands</strong></td><td>Switch model, check status, inspect config and usage, compact, export</td></tr>
+            <tr><td><strong>Session</strong></td><td>Create, switch, and archive sessions; rewind, resend, edit a prompt, ask a side question</td></tr>
+            <tr><td><strong>Application</strong></td><td>App-level settings: sidebar, status line, theme, keybindings</td></tr>
+            <tr><td><strong>Runtime</strong></td><td>Permission mode, background tasks, effective config, sign-in, providers</td></tr>
+            <tr><td><strong>Decision</strong></td><td>Answer the Agent one at a time: allow, deny, or add information</td></tr>
+            <tr><td><strong>Input</strong></td><td>Add and remove working directories, manage queued messages</td></tr>
+            <tr><td><strong>Transcript</strong></td><td>Browse and search this Session's input history</td></tr>
+            <tr><td><strong>Capability</strong></td><td>Browse, install, enable, and remove Plugins</td></tr>
           </tbody>
         </table>
       </div>
@@ -371,7 +368,7 @@ mcode plugin marketplace</code></pre>
         <li>A Skill invocation such as <code>/docs explain the API</code> is displayed as a Skill call with instructions.</li>
       </ul>
 
-      <h3 class="h3" id="h-core-commands">Basic Commands (11)</h3>
+      <h3 class="h3" id="h-core-commands">Basic Commands </h3>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Command</th><th>Alias</th><th>Description</th></tr></thead>
@@ -391,9 +388,9 @@ mcode plugin marketplace</code></pre>
         </table>
       </div>
 
-      <h3 class="h3" id="h-catalog-commands">Categorized Commands (41)</h3>
+      <h3 class="h3" id="h-catalog-commands">Categorized Commands </h3>
 
-      <h4 class="h4" id="h-catalog-session">Session · 13 commands</h4>
+      <h4 class="h4" id="h-catalog-session">Session</h4>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Command</th><th>Argument</th><th>Description</th></tr></thead>
@@ -415,7 +412,7 @@ mcode plugin marketplace</code></pre>
         </table>
       </div>
 
-      <h4 class="h4" id="h-catalog-runtime">Runtime · 7 commands</h4>
+      <h4 class="h4" id="h-catalog-runtime">Runtime</h4>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Command</th><th>Argument</th><th>Description</th></tr></thead>
@@ -431,7 +428,7 @@ mcode plugin marketplace</code></pre>
         </table>
       </div>
 
-      <h4 class="h4" id="h-catalog-capability">Capability · 1 command</h4>
+      <h4 class="h4" id="h-catalog-capability">Capability</h4>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Command</th><th>Argument</th><th>Description</th></tr></thead>
@@ -441,7 +438,7 @@ mcode plugin marketplace</code></pre>
         </table>
       </div>
 
-      <h4 class="h4" id="h-catalog-input">Input · 2 commands</h4>
+      <h4 class="h4" id="h-catalog-input">Input</h4>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Command</th><th>Argument</th><th>Description</th></tr></thead>
@@ -452,7 +449,7 @@ mcode plugin marketplace</code></pre>
         </table>
       </div>
 
-      <h4 class="h4" id="h-catalog-transcript">Transcript · 2 commands</h4>
+      <h4 class="h4" id="h-catalog-transcript">Transcript</h4>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Command</th><th>Description</th></tr></thead>
@@ -463,7 +460,7 @@ mcode plugin marketplace</code></pre>
         </table>
       </div>
 
-      <h4 class="h4" id="h-catalog-decision">Decision · 5 commands</h4>
+      <h4 class="h4" id="h-catalog-decision">Decision</h4>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Command</th><th>Description</th></tr></thead>
@@ -477,7 +474,7 @@ mcode plugin marketplace</code></pre>
         </table>
       </div>
 
-      <h4 class="h4" id="h-catalog-application">Application · 11 commands</h4>
+      <h4 class="h4" id="h-catalog-application">Application</h4>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Command</th><th>Description</th></tr></thead>
@@ -556,6 +553,26 @@ mcode plugin marketplace</code></pre>
             <tr><td><code>custom</code></td><td><code>custom-command</code></td></tr>
           </tbody>
         </table>
+      <p><code>custom-command</code> renders the output of the external command named by <code>tui.customStatusLine.command</code> into the status line. <strong>Smallest useful configuration</strong> — <code>command</code> is the only required key:</p>
+      <div class="code-block" data-lang="yaml">
+        <div class="code-head"><span class="code-lang">yaml</span></div>
+        <pre><code>tui:
+  statusLine:
+    - custom-command    # list the items you want, in order; custom-command is the external command
+    - current-dir
+  customStatusLine:
+    command: ~/bin/my-status    # the only required key</code></pre>
+      </div>
+      <p>Optional keys and their accepted values (<strong>keys you get wrong are silently dropped</strong>, no error is raised):</p>
+      <ul>
+        <li><code>display</code>: <code>inline</code> (same row as the status line, the default) or <code>block</code> (its own block).</li>
+        <li><code>position</code>: <code>above</code> or <code>below</code>; only meaningful with <code>block</code>.</li>
+        <li><code>colorMode</code>: <code>plain</code> or <code>ansi</code>.</li>
+        <li><code>maxLines</code>: maximum lines to display.</li>
+        <li><code>timeoutMs</code>: per-execution timeout.</li>
+        <li><code>intervalSeconds</code>: polling interval.</li>
+      </ul>
+      <p>The command's stdout becomes the status line content, so it should stay lightweight and avoid long blocking work.</p>
       </div>
 
       <h3 class="h3" id="h-shell-mode">Running Commands Directly in the Terminal</h3>
@@ -690,22 +707,22 @@ mcode plugin marketplace</code></pre>
       </ul>
 
       <h3 class="h3" id="h-config-memory">Memory and Other Switches</h3>
+      <p>These switches have <strong>defaults that cut against intuition</strong>: <code>memory</code>, <code>askUser</code> and <code>skillEvolve</code> are all <strong>on</strong> by default, so turning them off takes an explicit <code>enabled: false</code>. Only <code>memory.proactive</code> is off by default.</p>
       <div class="code-block" data-lang="yaml">
-        <div class="code-head"><span class="code-lang">yaml</span></div>
+        <div class="code-head"><span class="code-lang">defaults</span></div>
         <pre><code>memory:
-  enabled: false
-  proactive: false
+  enabled: true      # true by default; set false to disable Memory
+  proactive: false   # false by default; when on, the Agent writes memory proactively
+  dailyDigest:
+    enabled: false   # false by default
 
 askUser:
-  enabled: false
-
-skills:
-  external:
-    enabled: false
+  enabled: true      # true by default; setting false makes calls fail with ASK_USER_DISABLED
 
 skillEvolve:
-  enabled: false</code></pre>
+  enabled: true      # true by default</code></pre>
       </div>
+      <p><strong>Memory has no TUI command entry point</strong>: there is no <code>/memory</code> in the command list. It is a background capability driven by configuration rather than something you invoke in the Composer; this plugin's <code>memory</code> section lives in the local <code>~/.minimax/config.yaml</code> and applies to mcode itself, not to this plugin.</p>
 
       <h3 class="h3" id="h-config-proxy">Network Proxy</h3>
       <p><code>HTTP_PROXY</code>, <code>HTTPS_PROXY</code>, <code>ALL_PROXY</code>, <code>NO_PROXY</code> and their lowercase forms are read. <code>NODE_USE_ENV_PROXY</code> is <strong>not required</strong>. <code>localhost</code>, <code>127.0.0.1</code> and <code>::1</code> always connect directly.</p>
@@ -730,7 +747,7 @@ skillEvolve:
     <section class="doc-section" id="agents-skills" aria-labelledby="h-agents-skills">
       <h2 class="h2" id="h-agents-skills">Agents &amp; Skills</h2>
 
-      <h3 class="h3" id="h-agents">Built-in Agents (4)</h3>
+      <h3 class="h3" id="h-agents">Built-in Agents </h3>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Agent</th><th>Purpose</th></tr></thead>
@@ -769,7 +786,7 @@ skillEvolve:
       </div>
       <p><code>features.delegation</code> controls whether subtasks can be delegated, <code>features.mavis</code> controls primary agent capabilities, and <code>features.webSearch</code> controls web search.</p>
 
-      <h3 class="h3" id="h-skills">Built-in Skills (16)</h3>
+      <h3 class="h3" id="h-skills">Built-in Skills </h3>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Skill</th><th>Purpose</th></tr></thead>
@@ -806,7 +823,7 @@ skillEvolve:
       </div>
       <p><code>SKILL.md</code> carries YAML frontmatter (at least <code>name</code> and <code>description</code>). Related switches: <code>skills.external.enabled</code> (external Skills) and <code>skillEvolve.enabled</code> (self-evolution).</p>
 
-      <h3 class="h3" id="h-tools">Host Tools (12 base tools)</h3>
+      <h3 class="h3" id="h-tools">Host Tools </h3>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Tool</th><th>Effect</th></tr></thead>
@@ -989,7 +1006,7 @@ mcode plugin marketplace</code></pre>
         <p>A Hook <strong>blocks</strong> mcode until it finishes, so only synchronous command handlers (<code>type: "command"</code>) are supported. Writing <code>async</code> in the registration document is treated as unsupported.</p>
       </div>
 
-      <h4 class="h4" id="h-hook-events">Complete Event Set (11)</h4>
+      <h4 class="h4" id="h-hook-events">Complete Event Set </h4>
       <div class="cmd-strip cmd-strip-wrap">
         <code>SessionStart</code><code>SessionEnd</code><code>UserPromptSubmit</code><code>PreToolUse</code><code>PermissionRequest</code><code>PostToolUse</code><code>SubagentStart</code><code>SubagentStop</code><code>Stop</code><code>PreCompact</code><code>PostCompact</code>
       </div>
@@ -1436,7 +1453,7 @@ export async function start(context) {
       <h2 class="h2" id="h-permissions">Permissions &amp; Sessions</h2>
 
       <h3 class="h3" id="h-permission-modes">Permission Modes</h3>
-      <p><code>PermissionMode</code> has <strong>5</strong> values (source <code>packages/config/src</code>):</p>
+      <p>The <code>PermissionMode</code> values (source <code>packages/config/src</code>):</p>
       <div class="code-block" data-lang="text">
         <div class="code-head"><span class="code-lang">text</span></div>
         <pre><code>"default" | "acceptEdits" | "bypassPermissions" | "auto" | "off"</code></pre>
@@ -1538,6 +1555,22 @@ export async function start(context) {
           </tbody>
         </table>
       </div>
+      <p>Without an action, <code>/goal</code> takes the following text as the <strong>objective</strong> and creates or replaces the current Session's Goal. With an action it performs one of the following:</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>action</th><th>Effect</th></tr></thead>
+          <tbody>
+            <tr><td><code>pause</code></td><td>Pause Goal auto-continuation</td></tr>
+            <tr><td><code>resume</code></td><td>Resume a paused or blocked Goal</td></tr>
+            <tr><td><code>edit</code></td><td>Edit the current Goal objective</td></tr>
+            <tr><td><code>clear</code></td><td>Remove the current Goal</td></tr>
+            <tr><td><code>help</code></td><td>Show Goal syntax and budget examples</td></tr>
+            <tr><td><code>budget=&lt;n&gt;</code></td><td>Set a token budget; a value follows the <code>=</code>, for example <code>budget=50K</code></td></tr>
+            <tr><td><code>budget=clear</code></td><td>Remove the Goal token budget (back to unlimited)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Typing <code>/goal</code> in the Composer completes these actions. A Goal is <code>active</code> or <code>paused</code>; an absent <code>budget</code> means no token cap, and reaching a set cap ends the Goal through the normal termination flow.</p>
       <p>Pressing <code>Enter</code> in the Composer steers the input into the current turn; <code>Alt+Enter</code> places it in the Queue for the next turn. The most recent queued message can be recalled with <code>Alt+↑</code> (<code>Option+↑</code> on macOS) or <code>Shift+←</code>.</p>
 
       <h3 class="h3" id="h-side-session">Side Session (/btw)</h3>
@@ -1550,8 +1583,6 @@ export async function start(context) {
       </ul>
       <p>Only read-only commands are available in the side session view: <code>help</code>, <code>changelog</code>, <code>context</code>, <code>status</code>, <code>usage</code>, <code>export</code>, <code>transcript</code>, <code>copy</code> and <code>parent</code>.</p>
 
-      <h3 class="h3" id="h-timing">Timing Conventions</h3>
-      <p>The run status line, the per-turn elapsed time after a turn ends and Goal timing all use <code>s</code> / <code>min</code> / <code>h</code> (for example <code>30s</code>, <code>9min30s</code>, <code>2h9min30s</code>), and seconds continue to be shown past one hour. <strong>Run timing measures the current turn, while Goal timing accumulates active time, so the two values can differ.</strong></p>
     </section>
 
     <!-- ══════════════════ 11. Sharing ══════════════════ -->

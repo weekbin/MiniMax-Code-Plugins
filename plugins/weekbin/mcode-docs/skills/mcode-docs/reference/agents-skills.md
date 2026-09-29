@@ -1,6 +1,6 @@
 # Agent、Skill 与工具
 
-## 内置 Agent（4 个）
+## 内置 Agent
 
 | Agent | 用途 |
 | --- | --- |
@@ -44,7 +44,7 @@ agents:
 `features.delegation` 控制是否能委派子任务，`features.mavis` 控制主 Agent 能力，
 `features.webSearch` 控制联网搜索。
 
-## 内置 Skill（16 个）
+## 内置 Skill
 
 | Skill | 用途 |
 | --- | --- |

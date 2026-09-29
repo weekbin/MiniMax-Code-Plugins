@@ -40,12 +40,12 @@ npm uninstall -g @minimax-ai/code
 | --- | --- |
 | `-V, --version` | 输出版本号 |
 | `-m, --model <provider/model>` | 仅为本次 Session 选择模型 |
-| `--session [id]` | 省略 id 时打开 Session 浏览器 |
+| `--session [id]` | 省略 id 时打开 Session 选择面板 |
 | `-c, --continue` | 继续当前 workspace 最近的 Session |
 | `--tui-mode <mode>` | `regular`（默认）或 `fullscreen` |
 
 > `-m` 只影响本次打开或创建的 Session，不改变全局默认模型，可与 `--continue` 或
-> `--session <id>` 配合；**无 id 的 Session 浏览器不能同时指定模型**。
+> `--session <id>` 配合；**无 id 的 Session 选择面板不能同时指定模型**。
 
 ## 经核实不存在的子命令
 
@@ -112,6 +112,18 @@ echo "只回复 OK" | mcode exec --input -
 只审查 staged、unstaged、untracked 的本地改动。**仅支持**：
 `--cwd`、`--model`、`--effort`、`--config`、`--permission`、`--timeout`、`--max-steps`、
 `--output-format`、`--output-last-message`。
+
+**它既不是把一句话当提示词丢给模型，也不是调用 `code-review` 这个内置 Skill。**
+它是 Runtime 内置的一套**结构化 Review 模式**：
+
+- 给 Run 打上 review 标记后，Runtime 换上一份专用 review 系统提示词，规定只读调查、
+  只报本次改动引入的问题、每条结论必须重新对照当前工作区核验；
+- 工具被限制在只读调查范围，提示词明确禁止改文件、改 Git 状态、装依赖、提交或推送；
+- Review 生效后禁止再加载 `code-review` Skill 或调用 `code_review` 工具；
+- 结果按固定 XML 契约返回，可被程序解析。
+
+TUI 的 `/review` 是同一套引擎的交互入口；`code-review` Skill 则是模型自行判断
+需要审查时才加载的通用技能，两者不是一回事。
 
 - 参数可放在 `review` 前后；两处都指定时以 `review` 后的显式值为准。
 - `--session`、`--continue`、`--input`、`--input-format`、`--file`、`--output-schema`、

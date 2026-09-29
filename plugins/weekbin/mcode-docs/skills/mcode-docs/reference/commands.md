@@ -1,17 +1,17 @@
-# mcode TUI slash 命令全表（52 条）
+# mcode TUI slash 命令全表
 
-在 TUI 输入框以 `/` 开头即可调用，**共 52 条**（基础 11 + 分类 41）。分类与条数：
+在 TUI 输入框以 `/` 开头即可调用，分基础命令与分类命令两组。分类：
 
-| 分类 | 条数 | 管什么 |
-| --- | --- | --- |
-| 基础命令 | 11 | 换模型、看状态、查配置与用量、压缩与导出 |
-| Session 会话与对话 | 13 | 新建/切换/归档会话，回退、重发、改写提问、问侧问题 |
-| Application 应用 | 11 | 侧栏、状态栏、主题、快捷键等应用设置 |
-| Runtime 运行时 | 7 | 权限模式、后台任务、生效配置、登录与 Provider |
-| Decision 决策 | 5 | 逐个回答 Agent 提问：允许、拒绝、补充说明 |
-| Input 输入 | 2 | 增删工作目录、管理排队消息 |
-| Transcript 对话记录 | 2 | 浏览与检索本会话输入历史 |
-| Capability 能力 | 1 | 浏览、安装、启用、移除插件 |
+| 分类 | 管什么 |
+| --- | --- |
+| 基础命令 | 换模型、看状态、查配置与用量、压缩与导出 |
+| Session 会话与对话 | 新建/切换/归档会话，回退、重发、改写提问、问侧问题 |
+| Application 应用 | 侧栏、状态栏、主题、快捷键等应用设置 |
+| Runtime 运行时 | 权限模式、后台任务、生效配置、登录与 Provider |
+| Decision 决策 | 逐个回答 Agent 提问：允许、拒绝、补充说明 |
+| Input 输入 | 增删工作目录、管理排队消息 |
+| Transcript 对话记录 | 浏览与检索本会话输入历史 |
+| Capability 能力 | 浏览、安装、启用、移除插件 |
 
 **别名**：`/clear` → `/new`、`/exit` → `/quit`、`/resume` → `/sessions`、`/side` → `/btw`
 
@@ -32,7 +32,7 @@ Composer 会把当前输入标记为 `Prompt`、`Command`、`Shell` 或 `Skill`�
 
 ---
 
-## 基础命令（11 条）
+## 基础命令
 
 | 命令 | 别名 | 描述 |
 | --- | --- | --- |
@@ -50,7 +50,7 @@ Composer 会把当前输入标记为 `Prompt`、`Command`、`Shell` 或 `Skill`�
 
 ---
 
-## 分类命令（41 条）
+## 分类命令
 
 ### Session（会话与对话）
 
@@ -58,6 +58,19 @@ Composer 会把当前输入标记为 `Prompt`、`Command`、`Shell` 或 `Skill`�
 | --- | --- | --- |
 | `/sessions` | `[query]` | Search, resume, and manage sessions |
 | `/goal` | `<objective \| action>` | Start or manage the current Session Goal |
+
+`/goal` 不带 action 时把后续文字作为目标描述；带 action 时执行下列操作
+（Composer 输入 `/goal` 会自动补全）：
+
+| action | 作用 |
+| --- | --- |
+| `pause` | 暂停 Goal 的自动续跑 |
+| `resume` | 恢复已暂停或被阻塞的 Goal |
+| `edit` | 修改当前 Goal 的目标描述 |
+| `clear` | 移除当前 Goal |
+| `help` | 显示 Goal 语法与 budget 示例 |
+| `budget=<n>` | 设置 token 预算，如 `budget=50K` |
+| `budget=clear` | 移除 token 预算，回到不限制 |
 | `/plan` | `[on \| off \| status \| view]` | Switch Plan Mode or view the latest Plan |
 | `/review` | — | Review staged, unstaged, and untracked local changes |
 | `/parent` | — | Return from a sub-agent session to its parent |

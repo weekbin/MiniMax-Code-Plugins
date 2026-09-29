@@ -1,7 +1,7 @@
 ---
 name: mcode-docs
 description: >-
-  MiniMax Code（mcode）概要说明与事实基线。用于回答 mcode 的命令与全量参数、52 条
+  MiniMax Code（mcode）概要说明与事实基线。用于回答 mcode 的命令与全量参数、
   TUI slash 命令、配置文件与键位、内置 Agent 与 Skill、插件与 MiniApp 编写契约、
   Hook 事件与输入输出契约、MCP 接入、权限模式、Plan Mode、会话管理、无头执行与
   ACP 接入，以及"mcode 是否具备某项能力"这类存在性判定。本 Skill 不止罗列功能：
@@ -87,7 +87,7 @@ mcode plugin list|add|remove|enable|disable|marketplace
 
 完整参数见 `reference/cli.md`。经核实**不存在**的子命令见 VERIFICATION §1.1。
 
-## TUI slash 命令：52 条
+## TUI slash 命令
 
 在 TUI 输入框以 `/` 开头即可调用，共 **52** 条 = 基础 11 + 分类 41。
 分类及条数：Session 13、Application 11、Runtime 7、Decision 5、Input 2、
@@ -181,8 +181,8 @@ MCP 单独放 `~/.minimax/mcp.json`（用户级）与 `<workspace>/.mcp.json`（
 
 ## 内置 Agent 与 Skill
 
-- **Agent（4 个内置）**：`mavis`、`explore`、`worker`、`verifier`
-- **内置 Skill（16 个）**：`code-review`、`deep-research`、`deploy-website`、`docx`、
+- **内置 Agent**：`mavis`、`explore`、`worker`、`verifier`
+- **内置 Skill**：`code-review`、`deep-research`、`deploy-website`、`docx`、
   `edit-deployed-website`、`init`、`lark-tools`、`llm-call`、`mcode-tools-master`、`pdf`、
   `pptx`、`resume-codex`、`skill-creator`、`skill-refiner`、`visual-page`、`xlsx`
 
@@ -218,7 +218,7 @@ MCP 单独放 `~/.minimax/mcp.json`（用户级）与 `<workspace>/.mcp.json`（
 | 文件 | 内容 |
 | --- | --- |
 | `VERIFICATION.md` | 全部内容的取证台账，含反例与修正记录 |
-| `reference/commands.md` | 52 条 slash 命令全表 |
+| `reference/commands.md` | slash 命令全表 |
 | `reference/cli.md` | CLI、`exec`、`acp` 完整参数 |
 | `reference/config.md` | 配置文件结构与全部已知键 |
 | `reference/agents-skills.md` | 内置 Agent、Skill 与扩展机制 |

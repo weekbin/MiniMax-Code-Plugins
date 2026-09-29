@@ -48,7 +48,7 @@ mcode-docs/
 ├── skills/mcode-docs/
 │   ├── SKILL.md                 # 可复用 Skill
 │   └── reference/               # 九份参考文档
-│       ├── commands.md          # 52 条 slash 命令(7 类 + 基础)
+│       ├── commands.md          # slash 命令全表（基础 + 分类）
 │       ├── cli.md               # CLI、无头执行与 ACP
 │       ├── config.md            # 配置结构与数据目录
 │       ├── agents-skills.md     # Agent、Skill 与工具
@@ -95,7 +95,7 @@ MCP、权限或会话时，Agent 加载 `mcode-docs`。
 
 ## 文档口径
 
-**经核实已实现**并给出完整说明：52 条 slash 命令；CLI 与无头执行全量参数；ACP；配置结构
+**经核实已实现**并给出完整说明：slash 命令全表；CLI 与无头执行全量参数；ACP；配置结构
 与跨平台数据目录；四个内置 Agent；**十六个**内置 Skill；十二个基础工具；用户级与项目级 MCP；
 **11 个 Hook 事件**（`MINIMAX`、`CLAUDE`、`CODEX` 三种格式）；五种 `PermissionMode`；
 Plan Mode；会话管理。
