@@ -637,6 +637,100 @@ Transcript 2、Capability 1，合计 52（已用脚本按表格行数复核，�
 
 ---
 
+## 16. 生命周期差异与 MiniApp 编写契约（2026 复核）
+
+批注指出：MiniApp 与 Plugin、MCP 的生命周期不同，需详细描述；且站点已有「插件怎么写」
+却缺「MiniApp 怎么写」。本轮补齐两块。
+
+### 16.1 三套生命周期机制（C 级 + A 级）
+
+三者不是同一类东西，机制几乎没有共同点：
+
+| | 插件 | MCP 服务器 | MiniApp |
+| --- | --- | --- | --- |
+| 有无运行进程 | 无 | stdio 有子进程 / http 远程 | **独立 Node 进程** |
+| 生效时机 | 装上即跨会话持续 | 随 Runtime 建连 | **打开页面才按需启动** |
+| 结束条件 | 手动 disable/remove | 随 Runtime 结束 | **空闲回收，随时可停** |
+
+**MiniApp 侧**（随包 `chunk-PF5H4F6R.js`，C 级）证据链：
+
+- 引用计数：`admitRunningLease` / `release` 与 `leases` 集合，停止前等租约归零。
+- 空闲回收：`scheduleIdleDrain(e,i)` 守卫条件为
+  `this.active.get(e)!==i || i.leases.size!==0 || !i.runtime || i.idleTimer || i.idleStopPromise`
+  ——仅在无租约且有 runtime 时启动 `idleTimer`。
+- 可能复用：`findReusableRuntime` 先尝试复用；`forceStart` / `startIfCold` 才强制新起进程。
+- 两阶段停止：`prepareStop` → `prepareStopOwned` → `commit` / `rollback`；
+  准备阶段被抢占抛 `Xe("SUPERSEDED","Mini App transition was superseded")` 并 `rollback()`；
+  `cutover.prepare({… onPonr })` 标出不可回退点。
+- 换代：`miniAppGeneration` 支持热替换。
+- 隔离：`quarantined` / `cleanupOrQuarantine`；错误文案含
+  `"Mini App cleanup ownership is unproven"` 与 `"Mini App startup failed"`。
+- 持久化：`stateStore`（C）+ 官方 `dataDir`（B，见 §16.2）。
+
+**结论并已写入文档**：进程随时可能被回收，**状态不得放内存**。
+
+**插件侧**（C 级）：`QSn(e,t){return e==="plugin_activation"?"startup":…}` 与
+`eIn(e,t,n){return n||(e?"plugin_activation":t?"resume":"startup")}` 证实插件激活会产生
+`SessionStart`（来源 `plugin_activation`）。A 级：`mcode plugin --help` 实跑确认
+`list/add/remove/enable/disable/marketplace` 六个子命令。
+
+**MCP 侧**（C 级）：`t4a(a){try{return new URL(a)}catch{throw new Error("Invalid MCP
+transport url: "+a)}}` 证实按 URL 区分远程 transport；`n4a` 为子进程环境白名单
+（与文档中「17 个白名单变量」一致）。A 级：`mcode --help` 无 mcp 子命令，
+配置只能落在 `mcp.json` / `.mcp.json` / 插件 `mcpServers`。
+
+### 16.2 MiniApp 包契约与运行时（B 级，官方社区仓库）
+
+来源：`MiniMax-AI/MiniMax-Code-MiniApps` 的
+`CONTRIBUTING.md` / `docs/package-contract.md` / `docs/runtime.md`，
+三份文件均自述 **verified against MiniMax Code 3.0.73**。
+
+**布局**（B 级原文归纳）：`<plugin-id>/` 下 `.minimax-plugin/plugin.json`、`package.json`、
+`icon.png`、`miniapp/{miniapp.json,client/,node/}`、`README.md`、`LICENSE`，
+可选 `skills/`、`*.mcp.json`、`bindings/*.binding.json`。
+
+**MiniApp 声明**（`package.json`，B 级原文）：
+
+```json
+{ "mcode": { "schemaVersion": 2, "miniApp": "./miniapp/miniapp.json" } }
+```
+
+`mcode` 内不允许其它键 —— 这正是**普通插件与 MiniApp 的分界**：多出
+`package.json` 的 `mcode` 字段 + `miniapp/` 载荷根 + Node 入口。
+
+**`miniapp/miniapp.json`**：`schemaVersion: 1`、`artifacts.{client,node}`、
+`runtime.{kind:"process",entry,lifecycle:"on-demand"}`、`surface.path`、
+`mcpEndpoints`（`server` 必须是 `plugin.json.mcpServers` 中已声明者，安装时校验）。
+
+**Node 入口**（`docs/runtime.md`，B 级）：宿主以 ES module 导入 `runtime.entry`，
+要求具名导出 `start(context)`，返回 `{dispose}`；**缺 `dispose` 判为非法生命周期**。
+`context` 字段：`pluginId` / `pluginRoot` / `dataDir` / `listen{host,port}` /
+`signal` / `logger` / `hostConnector`。
+
+关键约束（B 级原文）：
+
+- **必须绑定宿主给的 `listen` 地址**，不得自选端口。
+- **禁用 `console.log` / `process.stdout.write`**：stdout/stdin 归宿主所有，
+  一律走 `context.logger`；消息截断 4 KiB，**只有 `fields` 的键离开进程**。
+- `start()` resolve 即就绪，**无健康检查路由**；不得在 `start` 内拉业务数据。
+- `dispose()` 只关入口自己启动的东西；**宿主只停入口进程，不清理其派生进程**。
+- 「assume yours can be stopped and restarted between two page views:
+  keep durable state in `dataDir`, not in memory」。
+- 包体上限 1024 文件 / 16 MiB 单文件 / 64 MiB 总量；禁符号链接与硬链接；
+  路径须 ASCII 可移植。
+
+### 16.3 版本口径差异（必须显式说明）
+
+MiniApp 契约验证于**桌面端 3.0.73**，而本手册其余章节的基线是**终端版 0.5.8**。
+二者不是同一版本线，文档已加警示框说明「桌面端支持 macOS 与 Windows，
+终端版 mcode 不提供 MiniApp」。这与 §14.5、§15.3 的「桌面端专属能力不暗示终端可用」
+是同一条纪律。
+
+顺带记录：桌面端当前仅支持 **macOS 与 Windows**，**不含 Linux**；而数据目录
+（§14.3）覆盖三系统。两者作用域不同，勿混。
+
+---
+
 ## 13. 本插件自身声明
 
 本插件**不提供 MCP 服务**，交付物为：一个可复用 Skill（`skills/mcode-docs/SKILL.md` +
@@ -645,9 +739,9 @@ Transcript 2、Capability 1，合计 52（已用脚本按表格行数复核，�
 
 站点为**中英双语**：`site/index.html`（中文，默认入口）与 `site/index.en.html`（英文），
 共享同一套 `assets/style.css` 与 `assets/app.js`。两版的 `id` 集合与顺序经脚本比对**完全一致**
-（各 **121** 个，顺序完全一致，无重复、无断裂内部链接），标签配平已校验。
-（计数轨迹：115 → 113（移除 `h-config-beta`、`h-browser`）→ 121（新增四个基础概念与
-对照小节，见 §15）。）
+（各 **130** 个，顺序完全一致，无重复、无断裂内部链接），标签配平已校验。
+（计数轨迹：115 → 113（移除 `h-config-beta`、`h-browser`）→ 121（§15 四个基础概念）
+→ 130（§16 生命周期对比 + MiniApp 编写）。）
 
 语言规则（`app.js` §9）：**不做任何自动判定**。`index.html` 打开即中文，
 `index.en.html` 打开即英文，两者互不跳转；主题默认浅色，深色为手动 opt-in 并记住选择。

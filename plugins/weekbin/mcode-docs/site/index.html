@@ -924,9 +924,182 @@ skillEvolve:
       </div>
       <p>两者不是互斥的，<strong>MiniApp 内部照样可以用 MCP 拿数据</strong>。官方社区里的「Token 用量看板」就是典型：面板本身是 MiniApp（给你看图表），读本地数据库那一步靠 MCP 或插件自带脚本完成。所以更准确的说法是——<strong>MCP 负责「取数」，MiniApp 负责「给人看」</strong>。</p>
 
+      <h3 class="h3" id="h-lifecycle">生命周期：三者完全不同</h3>
+      <p>插件、MCP 服务器、MiniApp 三者最容易被当成一类东西，但它们的<strong>生命周期机制几乎没有共同点</strong>。混淆这一点会直接导致「为什么我的 MiniApp 重启后数据没了」这类问题。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th></th><th>插件 Plugin</th><th>MCP 服务器</th><th>MiniApp</th></tr></thead>
+          <tbody>
+            <tr><td>本质</td><td>磁盘上的能力包</td><td>工具接入</td><td>带界面的应用</td></tr>
+            <tr><td><strong>何时生效</strong></td><td>安装并启用后，<strong>跨会话持续</strong></td><td>Runtime 加载配置时建立连接</td><td><strong>打开页面时才按需启动</strong></td></tr>
+            <tr><td><strong>有没有进程</strong></td><td>没有独立进程</td><td>stdio 有子进程；http/sse 连远程</td><td><strong>独立 Node 进程</strong>，端口由宿主分配</td></tr>
+            <tr><td><strong>什么时候结束</strong></td><td>你手动 <code>disable</code> 或 <code>remove</code></td><td>随 Runtime 结束</td><td><strong>空闲后自动回收，随时可停</strong></td></tr>
+            <tr><td><strong>状态放哪</strong></td><td>包本身在磁盘</td><td>连接状态</td><td><code>dataDir</code>（私有目录）</td></tr>
+            <tr><td>热替换</td><td>需 <code>/reload</code> 或重启</td><td>重连</td><td>换代 + 两阶段提交，可回滚</td></tr>
+            <tr><td>启动失败</td><td>插件被禁用</td><td>—</td><td><strong>进入隔离（quarantine）</strong></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4 class="h4" id="h-life-plugin">插件：装上就一直生效</h4>
+      <p>插件本身<strong>没有运行中的进程</strong>，它就是磁盘上的一个文件夹。装好并启用后，它在后续每个会话里都被加载，直到你显式 <code>disable</code> 或 <code>remove</code>。启用状态的判定发生在每次装配能力时，禁用的插件不参与装配。</p>
+      <p>插件被启用或激活时，可以触发 <code>SessionStart</code> 事件，来源标识为 <code>plugin_activation</code>。改完插件内容后用 <code>/reload</code> 重载，不必重启整个 mcode。</p>
+
+      <h4 class="h4" id="h-life-mcp">MCP 服务器：随 Runtime 建立，随 Runtime 结束</h4>
+      <p>MCP 服务器的生命周期<strong>绑在 Runtime 上</strong>：Runtime 读配置（<code>&lt;数据目录&gt;/mcp.json</code>、<code>&lt;workspace&gt;/.mcp.json</code> 或插件的 <code>mcpServers</code>）后建立连接，Runtime 结束时一并释放。</p>
+      <ul>
+        <li><code>stdio</code>：宿主把服务器作为<strong>子进程</strong>拉起，进程随连接建立而存在。</li>
+        <li><code>http</code> / <code>sse</code>：连远程服务，宿主只保持连接，不在本地起进程。</li>
+        <li>子进程只继承 <strong>17 个白名单环境变量</strong>（<code>PATH</code>、<code>HOME</code>、<code>APPDATA</code> 等），不继承任何凭据；所需变量须在 <code>env</code> 中显式声明。</li>
+      </ul>
+
+      <h4 class="h4" id="h-life-miniapp">MiniApp：按需启动，空闲即回收</h4>
+      <p>MiniApp 是三者中<strong>唯一自带独立运行时</strong>的：它在清单里声明 <code>runtime.lifecycle: on-demand</code>，<strong>打开页面时才启动</strong>一个 Node 进程，端口由宿主分配而不是自己挑。</p>
+      <ul>
+        <li><strong>引用计数</strong>：每次打开页面会领一个「租约（lease）」，关闭页面即释放；宿主要停进程时先等租约归零。</li>
+        <li><strong>空闲回收</strong>：没有租约时启动空闲计时器，到点把进程停掉。所以<strong>两次打开之间进程完全可能已经重启过</strong>。</li>
+        <li><strong>可能被复用</strong>：宿主会先尝试复用仍在运行的实例，只有被显式强制启动时才一定新起进程。</li>
+        <li><strong>两阶段停止</strong>：停止不是一个动作，而是「准备 → 提交」，准备阶段失败可以回滚，不会把你停在半路。</li>
+        <li><strong>隔离</strong>：启动失败或清理责任无法确认时，该 MiniApp 会被隔离（quarantine）而不是反复重启。</li>
+      </ul>
+      <div class="callout callout-warn">
+        <p><strong>这条最容易踩坑</strong>：因为进程随时可能被回收，<strong>MiniApp 不能把状态存在内存里</strong>。官方明确要求「assume yours can be stopped and restarted between two page views: keep durable state in <code>dataDir</code>, not in memory」。需要跨次打开保留的内容一律写 <code>dataDir</code>（宿主为每个插件创建的私有目录）。</p>
+      </div>
+      <p>另外 <code>dispose()</code> 只能关掉<strong>入口自己启动的东西</strong>（HTTP 服务器、定时器、子进程、文件句柄）；宿主要停的只是入口进程，不会替你清理它派生的那些进程。</p>
+
+      <h3 class="h3" id="h-c-miniapp-write">MiniApp 怎么写</h3>
+      <p>写一个 MiniApp 本质上是「写一个带清单的 Node 服务 + 一张页面」。下面是完整结构与最小可用实现。</p>
+
+      <h4 class="h4" id="h-ma-layout">目录结构</h4>
+      <div class="code-block" data-lang="bash">
+        <div class="code-head"><span class="code-lang">bash</span></div>
+        <pre><code>&lt;plugin-id&gt;/
+  .minimax-plugin/plugin.json   # 插件清单:身份、图标、分类、声明的能力
+  package.json                  # MiniApp 声明(下面给出)
+  icon.png                      # 插件图标(PNG / JPEG / WebP)
+  miniapp/
+    miniapp.json                # 载荷根目录、Node 入口、页面路由
+    client/                     # 运行时载荷:发给页面的文件
+    node/                       # 运行时载荷:Node 入口及其依赖
+  README.md
+  LICENSE
+  skills/&lt;name&gt;/SKILL.md        # 可选:同时提供 Skill
+  *.mcp.json                    # 可选:同时提供 MCP 服务器
+  bindings/&lt;name&gt;.binding.json  # 可选:宿主能力绑定</code></pre>
+      </div>
+      <ul>
+        <li>目录名必须等于 <code>plugin.json</code> 里的 <code>name</code>，且全仓库唯一（安装时作者目录会被丢掉）。</li>
+        <li><code>name</code> 需匹配 <code>^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$</code>，最长 80 字符。</li>
+        <li>只有 <code>artifacts</code> 里列出的 <code>client/</code> 与 <code>node/</code> 会成为运行时载荷，测试与文档要放在 <code>miniapp/</code> 之外。</li>
+        <li>包体上限：最多 <strong>1024</strong> 个文件、单文件 <strong>16 MiB</strong>、总计 <strong>64 MiB</strong>；不允许符号链接与硬链接。</li>
+        <li>路径必须可移植：仅 ASCII、无 <code>\</code>、无 <code>.</code>/<code>..</code> 段、不以 <code>.</code> 结尾。</li>
+      </ul>
+
+      <h4 class="h4" id="h-ma-pkg">package.json：声明这是一个 MiniApp</h4>
+      <p>关键就是这个 <code>mcode</code> 字段，它把普通插件升级为 MiniApp：</p>
+      <div class="code-block" data-lang="json">
+        <div class="code-head"><span class="code-lang">json</span></div>
+        <pre><code>{
+  "mcode": {
+    "schemaVersion": 2,
+    "miniApp": "./miniapp/miniapp.json"
+  }
+}</code></pre>
+      </div>
+      <p><code>mcode</code> 内不允许出现其它键；<code>name</code>、<code>type</code>、<code>scripts</code> 等顶层字段随意。</p>
+
+      <h4 class="h4" id="h-ma-manifest">miniapp/miniapp.json：入口与路由</h4>
+      <div class="code-block" data-lang="json">
+        <div class="code-head"><span class="code-lang">json</span></div>
+        <pre><code>{
+  "schemaVersion": 1,
+  "artifacts": {
+    "client": ["./miniapp/client"],
+    "node": ["./miniapp/node"]
+  },
+  "runtime": {
+    "kind": "process",
+    "entry": "./miniapp/node/server.mjs",
+    "lifecycle": "on-demand"
+  },
+  "surface": { "path": "/dashboard" },
+  "mcpEndpoints": []
+}</code></pre>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>字段</th><th>规则</th></tr></thead>
+          <tbody>
+            <tr><td><code>artifacts.client</code> / <code>artifacts.node</code></td><td><code>miniapp/</code> 下的非空路径数组，必须存在且唯一；这两项就是被哈希与安装的全部内容，<code>node_modules</code> 会被排除</td></tr>
+            <tr><td><code>runtime.kind</code></td><td>固定为 <code>process</code></td></tr>
+            <tr><td><code>runtime.entry</code></td><td>以 <code>.mjs</code> / <code>.js</code> / <code>.cjs</code> 结尾，必须落在 <code>artifacts.node</code> 之内；<strong>用 <code>.mjs</code></strong> 以便写 ESM <code>export</code></td></tr>
+            <tr><td><code>runtime.lifecycle</code></td><td>只能是 <code>on-demand</code> 或省略</td></tr>
+            <tr><td><code>surface.path</code></td><td>页面路由，如 <code>/dashboard</code>；不带 origin / query / 片段 / 反斜杠，缺 <code>/</code> 会自动补</td></tr>
+            <tr><td><code>mcpEndpoints</code></td><td><code>{server, path}</code> 数组；<code>server</code> 必须是 <code>plugin.json.mcpServers</code> 中已声明的服务器，安装时会校验该引用；没有就写 <code>[]</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4 class="h4" id="h-ma-entry">Node 入口：导出 start(context)</h4>
+      <p>宿主用 ES module 导入入口，并要求具名导出 <code>start</code>。返回 <code>{dispose}</code>，<strong>没有 <code>dispose</code> 会被判为非法生命周期</strong>。</p>
+      <div class="code-block" data-lang="js">
+        <div class="code-head"><span class="code-lang">js</span></div>
+        <pre><code>import { createServer } from 'node:http';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+
+export async function start(context) {
+  const { pluginRoot, dataDir, listen, signal, logger } = context;
+
+  const server = createServer(async (req, res) =&gt; {
+    // 页面本身可以就是一个静态 HTML
+    const html = await readFile(join(pluginRoot, 'miniapp/client/index.html'));
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+    res.end(html);
+  });
+
+  // 必须绑定宿主给的地址，不要自己挑端口
+  await new Promise((resolve) =&gt; server.listen(listen.port, listen.host, resolve));
+  logger.info('miniapp ready');
+
+  // 不要在 start 里拉业务数据：注册好处理器就返回
+  signal.addEventListener('abort', () =&gt; server.close());
+
+  return {
+    async dispose() {
+      // 只关你自己启动的东西：服务器、定时器、子进程、文件句柄
+      await new Promise((resolve) =&gt; server.close(resolve));
+    }
+  };
+}</code></pre>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>context 字段</th><th>含义</th></tr></thead>
+          <tbody>
+            <tr><td><code>pluginId</code></td><td>插件 ID，即 <code>plugin.json.name</code></td></tr>
+            <tr><td><code>pluginRoot</code></td><td>安装后的包真实路径，页面文件从这里读</td></tr>
+            <tr><td><code>dataDir</code></td><td><strong>宿主为本插件创建的私有目录</strong>，位置不透明且可能变化；持久状态写这里</td></tr>
+            <tr><td><code>listen</code></td><td><code>{ host: "127.0.0.1", port }</code>，<strong>必须绑这个地址</strong></td></tr>
+            <tr><td><code>signal</code></td><td>宿主停止 MiniApp 时触发的 <code>AbortSignal</code></td></tr>
+            <tr><td><code>logger</code></td><td><code>debug/info/warn/error(message, fields?)</code>，消息截断 4 KiB；<strong>只有 fields 的键会离开进程</strong>，值留在本地，诊断细节写进 message</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <ul>
+        <li><strong>不要用 <code>console.log</code> 或 <code>process.stdout.write</code></strong>——stdout/stdin 归宿主所有，一律走 <code>context.logger</code>。</li>
+        <li><code>start()</code> resolve 之后才算就绪，<strong>没有健康检查路由</strong>。</li>
+        <li>第三方运行时代码要<strong>直接放进 <code>artifacts</code> 目录内</strong>，不要依赖 <code>node_modules</code>。</li>
+        <li>官方社区提供 <code>examples/hello-miniapp/</code> 作为起步模板，并附 <code>miniapp-api.ts</code> 类型声明（仅供编辑器提示，运行时不导入）。</li>
+      </ul>
+      <div class="callout callout-note">
+        <p><strong>适用范围</strong>：以上契约由官方社区仓库 <a href="https://github.com/MiniMax-AI/MiniMax-Code-MiniApps" target="_blank" rel="noopener">MiniMax-AI/MiniMax-Code-MiniApps</a> 给出，自述<strong>验证于 MiniMax Code 桌面端 3.0.73</strong>。桌面端目前支持 <strong>macOS 与 Windows</strong>；本手册其余部分覆盖的终端版 <code>mcode</code> 并不提供 MiniApp 能力。</p>
+      </div>
+
       <h3 class="h3" id="h-plugin-what">插件：把上面这些打包分发</h3>
-      <p>前面四个概念都可以单独存在，而<strong>插件是把它们装在一起、分发出去的那个盒子</strong>。一个插件就是一个文件夹：里面有一份清单 <code>.minimax-plugin/plugin.json</code>，声明自己提供哪些 Skill、哪些 MCP 服务器、哪些 Hook——想做成 MiniApp 也是这个格式。</p>
+      <p>前面四个概念都可以单独存在，而<strong>插件是把它们装在一起、分发出去的那个盒子</strong>。一个插件就是一个文件夹：里面有一份清单 <code>.minimax-plugin/plugin.json</code>，声明自己提供哪些 Skill、哪些 MCP 服务器、哪些 Hook。</p>
       <p>对使用者来说，插件的意义是<strong>一次安装，全部就位</strong>；不用分别去装 Skill、配 MCP、挂 Hook。</p>
+      <p>相比前面三个概念，插件是<strong>唯一「装完就一直在」的那个</strong>——它没有运行时，只是一份被反复读取的声明。详见 <a href="#h-lifecycle">生命周期对比</a>。</p>
 
       <h3 class="h3" id="h-plugin-mgmt">安装与管理插件</h3>
       <div class="code-block" data-lang="bash">
